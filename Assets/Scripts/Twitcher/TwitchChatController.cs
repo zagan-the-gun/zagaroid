@@ -149,22 +149,26 @@ public class TwitchChatController : MonoBehaviour {
         // テキストを設定
         TextMeshPro textComponent = newComment.GetComponent<TextMeshPro>();
         if (textComponent != null) {
-            textComponent.text = comment; // commentが文字列であることを確認
+            textComponent.text = comment;
+            // 折り返しを無効にする
+            textComponent.enableWordWrapping = false;
+            // 文字に黒いアウトラインを付ける
+            textComponent.outlineWidth = 0.2f; // アウトラインの太さ
+            textComponent.outlineColor = Color.black; // アウトラインの色
+            // textComponent.fontSharedMaterial = textComponent.fontSharedMaterial; // アウトラインを有効にするための設定 (不要かも)
+            // newCommentの幅をテキストの長さに合わせて調整
+            RectTransform rectTransform = newComment.GetComponent<RectTransform>();
+            float textWidth = textComponent.preferredWidth; // テキストの幅を取得
+            rectTransform.sizeDelta = new Vector2(textWidth, rectTransform.sizeDelta.y); // 幅を設定
         } else {
             Debug.LogError("コメントテンプレートが生成されていません！");
         }
-
-        // 文字に黒いアウトラインを付ける
-        textComponent.outlineWidth = 0.2f; // アウトラインの太さ
-        textComponent.outlineColor = Color.black; // アウトラインの色
-        textComponent.fontSharedMaterial = textComponent.fontSharedMaterial; // アウトラインを有効にするための設定
 
         // スクロールを開始
         StartCoroutine(ScrollComment(newComment));
     }
 
     private IEnumerator ScrollComment(GameObject comment) {
-        Debug.Log($"ScrollComment: {comment}");
         RectTransform rectTransform = comment.GetComponent<RectTransform>();
         float startPosition = rectTransform.anchoredPosition.x;
 
@@ -175,20 +179,25 @@ public class TwitchChatController : MonoBehaviour {
             yield break; // Canvasが見つからない場合は処理を中断
         }
 
-        // キャンバスの幅を取得
-        float canvasWidth = canvas.GetComponent<RectTransform>().sizeDelta.x;
+        // キャンバスのサイズを取得
+        RectTransform canvasRectTransform = canvas.GetComponent<RectTransform>();
+        float canvasHeight = canvasRectTransform.sizeDelta.y;
+        float canvasWidth = canvasRectTransform.sizeDelta.x;
 
-        // キャンバスの幅を取得
-        // float canvasWidth = GetComponentInParent<Canvas>().GetComponent<RectTransform>().sizeDelta.x;
+        // テキストオブジェクトの高さを取得
+        float textHeight = rectTransform.sizeDelta.y;
+        Debug.Log($"DEAD BEEF textHeight: {textHeight}");
 
-        // 初期位置をキャンバスの右端に設定
-        rectTransform.anchoredPosition = new Vector2(canvasWidth, rectTransform.anchoredPosition.y);
-        // 初期位置を画面外の右側に設定
-        // rectTransform.anchoredPosition = new Vector2(Screen.width + startPosition, rectTransform.anchoredPosition.y);
+        // スクロール開始位置をランダムに設定
+        // float randomYPosition = Random.Range(-canvas.GetComponent<RectTransform>().sizeDelta.y / 2, canvas.GetComponent<RectTransform>().sizeDelta.y / 2);
+        // float randomYPosition = Random.Range(-canvasHeight / 2 + rectTransform.sizeDelta.y / 2, canvasHeight / 2 - rectTransform.sizeDelta.y / 2);
+        float randomYPosition = Random.Range(-textHeight, -canvasHeight + textHeight);
+        rectTransform.anchoredPosition = new Vector2(canvasWidth, randomYPosition); // 初期位置をキャンバスの右端に設定し、Y位置をランダムに設定
+        Debug.Log($"DEAD BEEF randomYPosition: {randomYPosition}");
 
         // スクロール処理
         while (rectTransform.anchoredPosition.x > -rectTransform.sizeDelta.x) {
-            rectTransform.anchoredPosition += Vector2.left * 80f * Time.deltaTime; // スクロール速度を調整
+            rectTransform.anchoredPosition += Vector2.left * 100f * Time.deltaTime; // スクロール速度を調整
             yield return null;
         }
 
