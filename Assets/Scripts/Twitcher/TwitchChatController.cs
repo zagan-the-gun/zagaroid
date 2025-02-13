@@ -154,6 +154,11 @@ public class TwitchChatController : MonoBehaviour {
             Debug.LogError("コメントテンプレートが生成されていません！");
         }
 
+        // 文字に黒いアウトラインを付ける
+        textComponent.outlineWidth = 0.2f; // アウトラインの太さ
+        textComponent.outlineColor = Color.black; // アウトラインの色
+        textComponent.fontSharedMaterial = textComponent.fontSharedMaterial; // アウトラインを有効にするための設定
+
         // スクロールを開始
         StartCoroutine(ScrollComment(newComment));
     }
