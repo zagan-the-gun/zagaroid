@@ -36,7 +36,8 @@ public class TwitchChatController : MonoBehaviour {
     [Header("Entrance Sound Settings")]
     [SerializeField] private AudioClip entranceSound; // 音声ファイルを指定
     private AudioSource audioSource; // AudioSourceコンポーネントを格納する変数
-    private HashSet<string> usersWhoCommented = new HashSet<string>(); // コメントしたユーザーを追跡
+    // private HashSet<string> usersProfile = new HashSet<string>(); // コメントしたユーザーを追跡
+    private Dictionary<string, int> usersProfile = new Dictionary<string, int>(); // ユーザー名とスタイルIDを保持する辞書
     private VoiceVoxApiClient client;
 
     void Start() {
@@ -112,16 +113,16 @@ public class TwitchChatController : MonoBehaviour {
             // string chatMessage = message.Parameters[1];
 
             // 初めてのコメントかどうかをチェック
-            if (!usersWhoCommented.Contains(user)) {
-                Debug.Log($"DEAD BEEF user: {user}");
-                usersWhoCommented.Add(user); // ユーザーを追加
-                Debug.Log($"DEAD BEEF user add: {user}");
+            if (!usersProfile.ContainsKey(user)) {
+                // Debug.Log($"DEAD BEEF user: {user}");
+                usersProfile.Add(user, -1); // ユーザーを追加
+                // Debug.Log($"DEAD BEEF user add: {user}");
                 audioSource.PlayOneShot(entranceSound); // 音を鳴らす
-                Debug.Log($"DEAD BEEF play sound: {entranceSound}");
+                // Debug.Log($"DEAD BEEF play sound: {entranceSound}");
             }
 
             // コメント読み上げを開始
-            StartCoroutine(SpeakComment(message.ChatMessage));
+            StartCoroutine(SpeakComment(message.ChatMessage, user));
 
             // コメントをニコニコ風に表示
             AddComment(message.ChatMessage);
@@ -162,17 +163,21 @@ public class TwitchChatController : MonoBehaviour {
         }
     }
 
-    private IEnumerator SpeakComment(string comment) {
+    private IEnumerator SpeakComment(string comment, string user) {
+        // Todo: 複数同時に喋っても対応できるようにしたい、audioSourceを都度生成すれば良い？
 
-        // コルーチンの結果を取得するための変数を用意
-        int styleId = 0; // デフォルト値を設定
 
-        // コルーチンを実行し、結果を取得
-        yield return StartCoroutine(client.GetSpeakerRnd((result) => styleId = result));
-        Debug.Log($"styleId: {styleId})");
+        if (usersProfile[user] <= -1) {
+            // コルーチンの結果を取得するための変数を用意
+            int styleId = 3; // デフォルト値を設定
+            // コルーチンを実行し、結果を取得
+            yield return StartCoroutine(client.GetSpeakerRnd((result) => styleId = result));
+            Debug.Log($"styleId: {styleId})");
+            usersProfile[user] = styleId;
+        }
 
         // テキストからAudioClipを生成（話者は「8:春日部つむぎ」）
-        yield return client.TextToAudioClip(styleId, comment);
+        yield return client.TextToAudioClip(usersProfile[user], comment);
 
         if (client.AudioClip != null)
         {
