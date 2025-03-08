@@ -37,6 +37,7 @@ public class TwitchChatController : MonoBehaviour {
     [SerializeField] private AudioClip entranceSound; // 音声ファイルを指定
     private AudioSource audioSource; // AudioSourceコンポーネントを格納する変数
     private HashSet<string> usersWhoCommented = new HashSet<string>(); // コメントしたユーザーを追跡
+    private VoiceVoxApiClient client;
 
     void Start() {
         // メインカメラの取得
@@ -71,6 +72,8 @@ public class TwitchChatController : MonoBehaviour {
         TwitcherUtil.logging = TwitcherUtil.LoggingMode.Verbose;
 
         audioSource = gameObject.AddComponent<AudioSource>(); // AudioSourceを追加
+
+        client = new VoiceVoxApiClient();
 
         try {
             Debug.Log($"接続を試みています... チャンネル: {channelToJoin}");
@@ -160,10 +163,16 @@ public class TwitchChatController : MonoBehaviour {
     }
 
     private IEnumerator SpeakComment(string comment) {
-        VoiceVoxApiClient client = new VoiceVoxApiClient();
+
+        // コルーチンの結果を取得するための変数を用意
+        int styleId = 0; // デフォルト値を設定
+
+        // コルーチンを実行し、結果を取得
+        yield return StartCoroutine(client.GetSpeakerRnd((result) => styleId = result));
+        Debug.Log($"styleId: {styleId})");
 
         // テキストからAudioClipを生成（話者は「8:春日部つむぎ」）
-        yield return client.TextToAudioClip(0, comment);
+        yield return client.TextToAudioClip(styleId, comment);
 
         if (client.AudioClip != null)
         {
