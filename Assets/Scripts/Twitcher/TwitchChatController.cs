@@ -3,7 +3,7 @@ using Twitcher;
 using UnityEngine.Video;
 using TMPro;
 using System.Collections;
-
+using System.Collections.Generic;
 
 
 [System.Serializable]
@@ -32,6 +32,11 @@ public class TwitchChatController : MonoBehaviour {
     [Header("Video Settings")]
     [SerializeField] private VideoPlayerController videoPlayerController;
     [SerializeField] private VideoTriggerSetting[] videoSettings;
+
+    [Header("Entrance Sound Settings")]
+    [SerializeField] private AudioClip entranceSound; // 音声ファイルを指定
+    private AudioSource audioSource; // AudioSourceコンポーネントを格納する変数
+    private HashSet<string> usersWhoCommented = new HashSet<string>(); // コメントしたユーザーを追跡
 
     void Start() {
         // メインカメラの取得
@@ -65,6 +70,8 @@ public class TwitchChatController : MonoBehaviour {
         // Enable full verbose logging
         TwitcherUtil.logging = TwitcherUtil.LoggingMode.Verbose;
 
+        audioSource = gameObject.AddComponent<AudioSource>(); // AudioSourceを追加
+
         try {
             Debug.Log($"接続を試みています... チャンネル: {channelToJoin}");
             
@@ -96,6 +103,22 @@ public class TwitchChatController : MonoBehaviour {
             string chatMessage = message.Parameters[1].ToLower();
             // チャットスクロールは生メッセージ
             // StartCoroutine(AddComment(message.ChatMessage));
+
+            Debug.Log($"DEAD BEEF message.Parameters[0]: {message.Parameters[0]}");
+            string user = message.Parameters[0]; // ユーザー名を取得
+            // string chatMessage = message.Parameters[1];
+
+            // 初めてのコメントかどうかをチェック
+            if (!usersWhoCommented.Contains(user)) {
+                Debug.Log($"DEAD BEEF user: {user}");
+                usersWhoCommented.Add(user); // ユーザーを追加
+                Debug.Log($"DEAD BEEF user add: {user}");
+                audioSource.PlayOneShot(entranceSound); // 音を鳴らす
+                Debug.Log($"DEAD BEEF play sound: {entranceSound}");
+            }
+
+                // AddComment(chatMessage);
+
             AddComment(message.ChatMessage);
 
             Debug.Log($"Chat message: {message.ChatMessage}");
