@@ -117,8 +117,10 @@ public class TwitchChatController : MonoBehaviour {
                 Debug.Log($"DEAD BEEF play sound: {entranceSound}");
             }
 
-                // AddComment(chatMessage);
+            // コメント読み上げを開始
+            StartCoroutine(SpeakComment(message.ChatMessage));
 
+            // コメントをニコニコ風に表示
             AddComment(message.ChatMessage);
 
             Debug.Log($"Chat message: {message.ChatMessage}");
@@ -157,7 +159,24 @@ public class TwitchChatController : MonoBehaviour {
         }
     }
 
+    private IEnumerator SpeakComment(string comment) {
+        VoiceVoxApiClient client = new VoiceVoxApiClient();
+
+        // テキストからAudioClipを生成（話者は「8:春日部つむぎ」）
+        yield return client.TextToAudioClip(0, comment);
+
+        if (client.AudioClip != null)
+        {
+            // AudioClipを取得し、AudioSourceにアタッチ
+            audioSource.clip = client.AudioClip;
+            // AudioSourceで再生
+            audioSource.Play();
+        }
+
+    }
+
     // private IEnumerator AddComment(string comment) {
+    // スクロール前に表示テキストの処理
     private void AddComment(string comment) {
         // テンプレートから新しいコメントオブジェクトを生成
         // GameObject newComment = Instantiate(commentTemplate, transform);
