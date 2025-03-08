@@ -1401,6 +1401,7 @@ MonoBehaviour:
     - bomb
     position: {x: 0, y: 0}
     size: {x: 400, y: 300}
+  entranceSound: {fileID: 8300000, guid: 79c4874cf131d4c20a60906a37589342, type: 3}
 --- !u!4 &1952040207
 Transform:
   m_ObjectHideFlags: 0
