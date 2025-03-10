@@ -176,15 +176,21 @@ public class TwitchChatController : MonoBehaviour {
             usersProfile[user] = styleId;
         }
 
-        // テキストからAudioClipを生成（話者は「8:春日部つむぎ」）
+        // 新しいAudioSourceを生成
+        AudioSource spakAudioSource = gameObject.AddComponent<AudioSource>();
+
+        // テキストからAudioClipを生成
         yield return client.TextToAudioClip(usersProfile[user], comment);
 
         if (client.AudioClip != null)
         {
             // AudioClipを取得し、AudioSourceにアタッチ
-            audioSource.clip = client.AudioClip;
+            spakAudioSource.clip = client.AudioClip;
             // AudioSourceで再生
-            audioSource.Play();
+            spakAudioSource.Play();
+            // 再生が終わったらAudioSourceを破棄
+            yield return new WaitForSeconds(spakAudioSource.clip.length);
+            Destroy(spakAudioSource);
         }
 
     }
@@ -208,8 +214,9 @@ public class TwitchChatController : MonoBehaviour {
             textComponent.text = comment;
             // 折り返しを無効にする
             textComponent.enableWordWrapping = false;
+            textComponent.color = new Color(1f, 1f, 1f, 1f); // 白色で不透明
             // 文字に黒いアウトラインを付ける
-            textComponent.outlineWidth = 0.2f; // アウトラインの太さ
+            textComponent.outlineWidth = 0.6f; // アウトラインの太さ
             textComponent.outlineColor = Color.black; // アウトラインの色
             // textComponent.fontSharedMaterial = textComponent.fontSharedMaterial; // アウトラインを有効にするための設定 (不要かも)
             // newCommentの幅をテキストの長さに合わせて調整
