@@ -108,17 +108,14 @@ public class TwitchChatController : MonoBehaviour {
             // チャットスクロールは生メッセージ
             // StartCoroutine(AddComment(message.ChatMessage));
 
-            Debug.Log($"DEAD BEEF message.Parameters[0]: {message.Parameters[0]}");
-            string user = message.Parameters[0]; // ユーザー名を取得
-            // string chatMessage = message.Parameters[1];
+            // https://fatwednesday.co.uk/assets/Assets/Twitcher/ReadMe.pdf
+            string user = message.Info.displayName; // ユーザー名を取得
+            Debug.Log($"DEAD BEEF user: {user}");
 
             // 初めてのコメントかどうかをチェック
             if (!usersProfile.ContainsKey(user)) {
-                // Debug.Log($"DEAD BEEF user: {user}");
                 usersProfile.Add(user, -1); // ユーザーを追加
-                // Debug.Log($"DEAD BEEF user add: {user}");
                 audioSource.PlayOneShot(entranceSound); // 音を鳴らす
-                // Debug.Log($"DEAD BEEF play sound: {entranceSound}");
             }
 
             // コメント読み上げを開始
@@ -149,7 +146,6 @@ public class TwitchChatController : MonoBehaviour {
             // 動画再生の処理
             for (int i = 0; i < videoSettings.Length; i++) {
                 var setting = videoSettings[i];
-                // string[] triggers = setting.triggerWords.Split(',');
                 foreach (string trigger in setting.triggerWords) {
                     string[] words = trigger.ToLower().Split(',');
                     foreach (string word in words) {
