@@ -172,7 +172,6 @@ public class TwitchChatController : MonoBehaviour {
             int styleId = 3; // デフォルト値を設定
             // コルーチンを実行し、結果を取得
             yield return StartCoroutine(client.GetSpeakerRnd((result) => styleId = result));
-            Debug.Log($"styleId: {styleId})");
             usersProfile[user] = styleId;
         }
 
