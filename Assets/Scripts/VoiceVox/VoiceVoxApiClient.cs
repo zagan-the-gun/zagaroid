@@ -83,7 +83,7 @@ public class VoiceVoxApiClient
                     // リクエスト成功
                     _audioQuery = request.downloadHandler.text;
                     _audioQueryBytes = request.downloadHandler.data;
-                    Debug.Log("AudioQuery:" + request.downloadHandler.text);
+                    // Debug.Log("AudioQuery:" + request.downloadHandler.text);
                 }
                 else
                 {
