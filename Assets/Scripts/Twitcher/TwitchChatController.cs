@@ -239,8 +239,10 @@ public class TwitchChatController : MonoBehaviour {
 
         // キャンバスのサイズを取得
         RectTransform canvasRectTransform = canvas.GetComponent<RectTransform>();
-        float canvasHeight = canvasRectTransform.sizeDelta.y;
-        float canvasWidth = canvasRectTransform.sizeDelta.x;
+        // float canvasHeight = canvasRectTransform.sizeDelta.y;
+        // float canvasWidth = canvasRectTransform.sizeDelta.x;
+        float canvasHeight = 960;
+        float canvasWidth = 1920;
 
         // テキストオブジェクトの高さを取得
         float textHeight = rectTransform.sizeDelta.y;
