@@ -40,7 +40,19 @@ public class TwitchChatController : MonoBehaviour {
     private Dictionary<string, int> usersProfile = new Dictionary<string, int>(); // ユーザー名とスタイルIDを保持する辞書
     private VoiceVoxApiClient client;
 
+    private Canvas canvas; // Canvasの参照を保持
+
     void Start() {
+
+        // Canvasを直接取得
+        // Todo: この死最初に見つかったキャンバスを取得しているのでこのやり方はマズい
+        canvas = FindObjectOfType<Canvas>();
+        if (canvas == null)
+        {
+            Debug.LogError("Canvasが見つかりません！");
+            return; // Canvasが見つからない場合は処理を中断
+        }
+
         // メインカメラの取得
         mainCamera = Camera.main;
         if (mainCamera == null) {
@@ -231,11 +243,11 @@ public class TwitchChatController : MonoBehaviour {
         float startPosition = rectTransform.anchoredPosition.x;
 
         // Canvasを直接取得
-        Canvas canvas = FindObjectOfType<Canvas>();
-        if (canvas == null) {
-            Debug.LogError("Canvasが見つかりません！");
-            yield break; // Canvasが見つからない場合は処理を中断
-        }
+        // Canvas canvas = FindObjectOfType<Canvas>();
+        // if (canvas == null) {
+        //     Debug.LogError("Canvasが見つかりません！");
+        //     yield break; // Canvasが見つからない場合は処理を中断
+        // }
 
         // キャンバスのサイズを取得
         RectTransform canvasRectTransform = canvas.GetComponent<RectTransform>();
