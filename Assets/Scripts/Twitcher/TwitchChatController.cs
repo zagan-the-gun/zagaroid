@@ -4,6 +4,7 @@ using UnityEngine.Video;
 using TMPro;
 using System.Collections;
 using System.Collections.Generic;
+using System;
 
 
 [System.Serializable]
@@ -106,32 +107,58 @@ public class TwitchChatController : MonoBehaviour {
         }
     }
 
-    private void Update()
-    {
-        if (Client != null)
-        {
-            if (!Client.Connected)
-            {
-                Debug.Log("Twitchクライアントが切断されました。再接続を試みます...");
-                Client.Reconnect(); // 再接続を試みるメソッドを呼び出す
+    private void Update() {
+        if (twitch == null && twitch.Client == null) {
+            try {
+                twitch = TwitchController.Create(authToken, channelToJoin);
+                twitch.Client.onMessageReceived += OnMessageReceived;
+                Debug.Log($"Twitchに再接続しました。チャンネル: {channelToJoin}");
+            } catch (System.Exception e) {
+                Debug.LogError($"Twitch再接続エラー: {e.Message}");
             }
-            else
-            {
-                Client.ProcessMessages();
-            }
+
         }
     }
+
+    // メッセージが日本語を含まないか確認するメソッド
+    private bool IsEnglishOnly(string message, int minWordCount)
+    {
+        // 英語のアルファベットとスペースのみを許可
+        foreach (char c in message)
+        {
+            if (!char.IsLetter(c) && !char.IsWhiteSpace(c))
+            {
+                return false; // 英語以外の文字が含まれている
+            }
+        }
+
+        // メッセージをスペースで分割し、単語の数をカウント
+        string[] words = message.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        return (words.Length >= minWordCount); // 指定された単語数以上であればtrue
+    }
+
     private void OnMessageReceived(Message message) {
         if (message == null) {
             Debug.LogWarning("受信したメッセージがnullです");
             return;
         }
 
-        Debug.Log($"Message received: {message.Command} - {(message.Parameters != null && message.Parameters.Length > 1 ? message.Parameters[1] : "no content")}");
+        // チャットメッセージを取得
+        string chatMessage = message.ChatMessage;
+
+        // 全文日本語が含まれていなければ翻訳にかけてから読み上げた方が良いかもしれない
+        if (IsEnglishOnly(chatMessage, 3)) {
+            // 英語のみの場合の処理
+            Debug.Log("翻訳するよ！任せて！");
+            // 翻訳処理をここに追加
+        }
+
+        // Debug.Log($"Message received: {message.Command} - {(message.Parameters != null && message.Parameters.Length > 1 ? message.Parameters[1] : "no content")}");
+        Debug.Log($"Message received: message.Command: {message.Command}, TwitchClient.Commands.PRIVMSG: {TwitchClient.Commands.PRIVMSG}, message.Parameters: {message.Parameters}, message.Parameters.Length: {message.Parameters.Length}");
 
         // チャットメッセージの処理
         if (message.Command == TwitchClient.Commands.PRIVMSG && message.Parameters != null && message.Parameters.Length > 1) {
-            string chatMessage = message.Parameters[1].ToLower();
+            // string chatMessage = message.Parameters[1].ToLower();
             // チャットスクロールは生メッセージ
             // StartCoroutine(AddComment(message.ChatMessage));
 
@@ -139,19 +166,19 @@ public class TwitchChatController : MonoBehaviour {
             string user = message.Info.displayName; // ユーザー名を取得
             Debug.Log($"DEAD BEEF user: {user}");
 
-            // 初めてのコメントかどうかをチェック
+            // その配信で初めてのコメントかどうかをチェック
             if (!usersProfile.ContainsKey(user)) {
                 usersProfile.Add(user, -1); // ユーザーを追加
                 audioSource.PlayOneShot(entranceSound); // 音を鳴らす
             }
 
             // コメント読み上げを開始
-            StartCoroutine(SpeakComment(message.ChatMessage, user));
+            StartCoroutine(SpeakComment(chatMessage, user));
 
             // コメントをニコニコ風に表示
-            AddComment(message.ChatMessage);
+            AddComment(chatMessage);
 
-            Debug.Log($"[{DateTime.Now:HH:mm:ss}] Chat message: {message.ChatMessage}");
+            Debug.Log($"[{DateTime.Now:HH:mm:ss}] Chat message: {chatMessage}");
 
             // 背景色の変更処理
             if (mainCamera != null) {
@@ -278,7 +305,7 @@ public class TwitchChatController : MonoBehaviour {
         // スクロール開始位置をランダムに設定
         // float randomYPosition = Random.Range(-canvas.GetComponent<RectTransform>().sizeDelta.y / 2, canvas.GetComponent<RectTransform>().sizeDelta.y / 2);
         // float randomYPosition = Random.Range(-canvasHeight / 2 + rectTransform.sizeDelta.y / 2, canvasHeight / 2 - rectTransform.sizeDelta.y / 2);
-        float randomYPosition = Random.Range(-textHeight, -canvasHeight + textHeight);
+        float randomYPosition = UnityEngine.Random.Range(-textHeight, -canvasHeight + textHeight);
         rectTransform.anchoredPosition = new Vector2(canvasWidth, randomYPosition); // 初期位置をキャンバスの右端に設定し、Y位置をランダムに設定
         Debug.Log($"DEAD BEEF randomYPosition: {randomYPosition}");
 
