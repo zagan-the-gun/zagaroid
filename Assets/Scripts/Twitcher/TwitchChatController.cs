@@ -106,6 +106,21 @@ public class TwitchChatController : MonoBehaviour {
         }
     }
 
+    private void Update()
+    {
+        if (Client != null)
+        {
+            if (!Client.Connected)
+            {
+                Debug.Log("Twitchクライアントが切断されました。再接続を試みます...");
+                Client.Reconnect(); // 再接続を試みるメソッドを呼び出す
+            }
+            else
+            {
+                Client.ProcessMessages();
+            }
+        }
+    }
     private void OnMessageReceived(Message message) {
         if (message == null) {
             Debug.LogWarning("受信したメッセージがnullです");
@@ -136,7 +151,7 @@ public class TwitchChatController : MonoBehaviour {
             // コメントをニコニコ風に表示
             AddComment(message.ChatMessage);
 
-            Debug.Log($"Chat message: {message.ChatMessage}");
+            Debug.Log($"[{DateTime.Now:HH:mm:ss}] Chat message: {message.ChatMessage}");
 
             // 背景色の変更処理
             if (mainCamera != null) {
