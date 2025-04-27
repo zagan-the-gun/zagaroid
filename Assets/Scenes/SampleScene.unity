@@ -1568,8 +1568,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   obsUrl: ws://localhost:4455
+  OBS_WEBSOCKETS_PASSWORD: 
   textSourceName: ksk_subtitles
-  password: RbHO48AJVrnbmI5w
 --- !u!4 &1059368036
 Transform:
   m_ObjectHideFlags: 0
