@@ -231,6 +231,9 @@ public class TwitchChatController : MonoBehaviour {
             chatMessage = result;
         }));
 
+        // 翻訳後の文章をTwitchコメントに送信
+        twitch.Client.SendPrivMessage("[" + user + "]: " + chatMessage);
+
         // 翻訳後の処理を続ける
         StartCoroutine(SpeakComment(chatMessage, user)); // コメント読み上げを開始
         AddComment(chatMessage); // コメントをニコニコ風に表示
