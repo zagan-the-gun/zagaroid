@@ -114,6 +114,7 @@ public class TwitchChatController : MonoBehaviour {
 
     private void Update() {
         if (twitch == null && twitch.Client == null) {
+            Debug.Log("Twitchに再接続します");
             try {
                 twitch = TwitchController.Create(authToken, channelToJoin);
                 twitch.Client.onMessageReceived += OnMessageReceived;
@@ -121,7 +122,6 @@ public class TwitchChatController : MonoBehaviour {
             } catch (System.Exception e) {
                 Debug.LogError($"Twitch再接続エラー: {e.Message}");
             }
-
         }
     }
 
