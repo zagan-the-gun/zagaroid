@@ -22,35 +22,15 @@ public class DeepLApiClient : MonoBehaviour {
     private void Start()
     {
         ConfigLoader.Instance.LoadConfig();
-        Debug.LogError("ConfigLoader起動");
+        Debug.Log("ConfigLoader起動");
     }
-
-    // void Start() {
-    //     // ConfigLoaderを取得してAPIキーをロード
-    //     ConfigLoader configLoader = FindObjectOfType<ConfigLoader>();
-    //     if (configLoader != null)
-    //     {
-    //         AUTHORIZATION = configLoader.GetDeepLApiClientKey();
-    //         Debug.Log("DeepLApiClientKeyの取得に成功しました" + AUTHORIZATION);
-    //     }
-    //     else
-    //     {
-    //         Debug.LogError("DeepLApiClient 設定ファイルの読み込みに失敗しました");
-    //     }
-    // }
-
-    // Authorization
-    // private string GetAuthorization()
-    // {
-    //     return AUTHORIZATION; // APIキーを返す
-    // }
 
     public IEnumerator PostTranslate(string text, string toLang, Action<string> onTranslated) {
         // APIキーの読み取り
         AUTHORIZATION = ConfigLoader.Instance.GetDeepLApiClientKey();
         if (string.IsNullOrEmpty(AUTHORIZATION))
         {
-            Debug.LogError("でーぷるきー！読み込みエラー！");
+            Debug.LogError("でーぷるきー！よみこみえらー！");
         }
         else
         {
