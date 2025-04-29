@@ -43,7 +43,10 @@ public class CentralManager : MonoBehaviour
     [Range(0f, 1f)]
     public float MasterVolume = 1f;
     public string DefaultLanguage = "ja";
+
     private VoiceVoxApiClient _voiceVoxApiClient;
+    private DeepLApiClient _deepLApiClient;
+
     // ... 他のグローバル設定
 
     void Awake() {
@@ -56,6 +59,7 @@ public class CentralManager : MonoBehaviour
             Debug.Log("CentralManager initialized and config loaded.");
 
             _voiceVoxApiClient = new VoiceVoxApiClient();
+            _deepLApiClient = new DeepLApiClient();
 
             // 他のマネージャーのインスタンスを検索してキャッシュ
             // _translationManager = FindObjectOfType<TranslationManager>();
@@ -166,25 +170,26 @@ public class CentralManager : MonoBehaviour
     }
 
     // Twitchから情報を受け取り、それぞれの処理を実行する
-    void HandleTwitchMessageReceived(string user, string chatMessage) {
+    private void HandleTwitchMessageReceived(string user, string chatMessage) {
         Debug.Log("Twitchから受信しました！: " + chatMessage);
 
         // 翻訳処理
-        // messageをTwitchコメントに送信
-        // SendTwitchMessage("セントラルマネージャーテスト");
+        // 全文日本語が含まれていなければ翻訳処理に移行
+        if (isJapaneseFree(chatMessage)) {
+            // 日本語が含まれていない場合の処理
+            Debug.Log("翻訳するよ！任せて！");
+            // 翻訳処理
+            StartCoroutine(translate(user, chatMessage));
+        } else {
+            // コメントスクロールを開始
+            SendCanvasMessage(chatMessage);
 
-        // コメントスクロールを開始
-        // StartCoroutine(ScrollComment(newComment));
-        SendCanvasMessage(chatMessage);
-
-        // コメント読み上げを開始
-        StartCoroutine(speakComment(user, chatMessage));
-
-
-        // ニコニコ風にコメントを流す処理
-
+            // コメント読み上げを開始
+            StartCoroutine(speakComment(user, chatMessage));
+        }
     }
 
+    // コメントをVoiceVoxで喋らせる
     private IEnumerator speakComment(string user, string chatMessage) {
         Debug.Log("speakComment");
         // 新しいAudioSourceを生成
@@ -224,14 +229,45 @@ public class CentralManager : MonoBehaviour
         }
 
     }
+
+    // 翻訳を実行
+    private IEnumerator translate(string user, string chatMessage) {
+        // 翻訳処理を行う
+        yield return StartCoroutine(_deepLApiClient.PostTranslate(chatMessage, "JA", (result) => {
+            // 翻訳結果を処理
+            chatMessage = result;
+        }));
+
+        // 翻訳文をTwitchコメントに送信
+        SendTwitchMessage($"[{user}]: {chatMessage}");
+
+        // コメントスクロールを開始
+        SendCanvasMessage(chatMessage);
+
+        // コメント読み上げを開始
+        StartCoroutine(speakComment(user, chatMessage));
+
+    }
+
+    // メッセージが日本語を含まないか確認
+    private bool isJapaneseFree(string message) {
+        // 文字列内の各文字をチェック
+        foreach (char c in message) {
+            // 日本語の範囲に含まれる文字があるか確認
+            if (char.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.OtherLetter) {
+                // 日本語の文字が含まれている場合
+                return false; // 日本語が含まれている
+            }
+        }
+        return true; // 日本語が含まれていない
+    }
 }
 
 // Twitch        コメント受信 イベント セントラルマネージャーがイベントを受け取り各処理 OK
 // Twitch        コメント送信 イベント セントラルマネージャーがイベントを送信 OK
-// VoiceVox      音声生成   メソッド セントラルマネージャーがVoiceVoxのメソッドを直接実行する
-// VoiceVox      話者取得   メソッド セントラルマネージャーがVoiceVoxのメソッドを直接実行する
-// Media         音声再生   イベント セントラルマネージャーがイベントを送信
-// キャンバス       ニコニコ風  イベント セントラルマネージャーがイベントを送信
+// VoiceVox      音声生成   メソッド セントラルマネージャーがVoiceVoxのメソッドを直接実行する OK
+// VoiceVox      話者取得   メソッド セントラルマネージャーがVoiceVoxのメソッドを直接実行する OK
+// キャンバス       ニコニコ風  イベント セントラルマネージャーがイベントを送信 OK
+// 翻訳API　       翻訳       メソッド セントラルマネージャが翻訳APIのメソッドを直接参照する
 // OBS           字幕表示   イベント セントラルマネージャーがイベントを送信
 // YukariWhisper 自動字幕   イベント　セントラルマネージャーがイベントを受け取り各処理
-// 翻訳API　       翻訳       メソッド セントラルマネージャが翻訳APIのメソッドを直接参照する

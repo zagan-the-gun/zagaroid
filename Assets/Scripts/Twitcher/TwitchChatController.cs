@@ -32,9 +32,6 @@ public class TwitchChatController : MonoBehaviour {
     [SerializeField] private VideoPlayerController videoPlayerController;
     [SerializeField] private VideoTriggerSetting[] videoSettings;
 
-    private VoiceVoxApiClient client;
-    private DeepLApiClient deepLApiClient;
-
     private Canvas canvas; // Canvasの参照を保持
 
     // セントラルマネージャへ情報を送信するイベント
@@ -85,11 +82,6 @@ public class TwitchChatController : MonoBehaviour {
 
         // Enable full verbose logging
         TwitcherUtil.logging = TwitcherUtil.LoggingMode.Verbose;
-
-        client = new VoiceVoxApiClient();
-
-        // DeepLApiClient のインスタンスを作成
-        deepLApiClient = new DeepLApiClient();
 
         try {
             Debug.Log($"接続を試みています... チャンネル: {channelToJoin}");
@@ -148,22 +140,6 @@ public class TwitchChatController : MonoBehaviour {
         }
     }
 
-    // メッセージが日本語を含まないか確認するメソッド
-    private bool IsJapaneseFree(string message)
-    {
-        // 文字列内の各文字をチェック
-        foreach (char c in message)
-        {
-            // 日本語の範囲に含まれる文字があるか確認
-            if (char.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.OtherLetter)
-            {
-                // 日本語の文字が含まれている場合
-                return false; // 日本語が含まれている
-            }
-        }
-        return true; // 日本語が含まれていない
-    }
-
     private void OnMessageReceived(Message message) {
         if (message == null) {
             Debug.LogWarning("受信したメッセージがnullです");
@@ -183,26 +159,6 @@ public class TwitchChatController : MonoBehaviour {
 
             // セントラルマネージャーへ送信
             SendCentralManager(user, chatMessage);
-
-            // 全文日本語が含まれていなければ翻訳処理に移行
-            if (IsJapaneseFree(chatMessage))
-            {
-                // 日本語が含まれていない場合の処理
-                Debug.Log("翻訳するよ！任せて！");
-                // 翻訳結果を格納する変数
-                string translatedText = null;
-
-                // PostTranslate メソッドをコルーチンとして呼び出し、翻訳結果を取得
-                StartCoroutine(HandlePostTranslate(chatMessage, user));
-            }
-            else
-            {
-                // コメント読み上げを開始
-                // StartCoroutine(SpeakComment(chatMessage, user));
-
-                // コメントをニコニコ風に表示
-                // AddComment(chatMessage);
-            }
 
             Debug.Log($"[{DateTime.Now:HH:mm:ss}] Chat message: {chatMessage}");
 
@@ -237,18 +193,6 @@ public class TwitchChatController : MonoBehaviour {
                 }
             }
         }
-    }
-
-    private IEnumerator HandlePostTranslate(string chatMessage, string user) {
-        // 翻訳処理を行う
-        yield return StartCoroutine(deepLApiClient.PostTranslate(chatMessage, "JA", (result) => {
-            // 翻訳結果を処理
-            chatMessage = result;
-        }));
-
-        // 翻訳後の文章をTwitchコメントに送信
-        twitch.Client.SendPrivMessage("[" + user + "]: " + chatMessage);
-
     }
 
     private void PlayVideo(int index) {
