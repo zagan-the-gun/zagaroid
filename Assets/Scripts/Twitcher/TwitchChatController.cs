@@ -35,15 +35,17 @@ public class TwitchChatController : MonoBehaviour {
     [SerializeField] private VideoPlayerController videoPlayerController;
     [SerializeField] private VideoTriggerSetting[] videoSettings;
 
-    [Header("Entrance Sound Settings")]
-    [SerializeField] private AudioClip entranceSound; // 音声ファイルを指定
-    private AudioSource audioSource; // AudioSourceコンポーネントを格納する変数
-    // private HashSet<string> usersProfile = new HashSet<string>(); // コメントしたユーザーを追跡
-    private Dictionary<string, int> usersProfile = new Dictionary<string, int>(); // ユーザー名とスタイルIDを保持する辞書
     private VoiceVoxApiClient client;
     private DeepLApiClient deepLApiClient;
 
     private Canvas canvas; // Canvasの参照を保持
+
+    // セントラルマネージャへ情報を送信するイベント
+    public delegate void TwitchCommentReceivedDelegate(string user, string chatMessage);
+    public static event TwitchCommentReceivedDelegate OnTwitchMessageReceived;
+    public void SendCentralManager(string user, string chatMessage) {
+        OnTwitchMessageReceived?.Invoke(user, chatMessage);
+    }
 
     void Start() {
 
@@ -87,8 +89,6 @@ public class TwitchChatController : MonoBehaviour {
         // Enable full verbose logging
         TwitcherUtil.logging = TwitcherUtil.LoggingMode.Verbose;
 
-        audioSource = gameObject.AddComponent<AudioSource>(); // AudioSourceを追加
-
         client = new VoiceVoxApiClient();
 
         // DeepLApiClient のインスタンスを作成
@@ -110,6 +110,32 @@ public class TwitchChatController : MonoBehaviour {
         } catch (System.Exception e) {
             Debug.LogError($"Twitch接続エラー: {e.Message}");
         }
+
+        // セントラルマネージャーから設定情報を取得
+        if (CentralManager.Instance != null) {
+            // string apiKey = CentralManager.Instance.GetDeepLApiKey();
+            // float volume = CentralManager.Instance.GetMasterVolume();
+            // TranslationManager translator = CentralManager.Instance.TranslationManager;
+            // ...
+        } else {
+            Debug.LogError("CentralManager instance not found!");
+        }
+    }
+
+    void OnEnable() {
+        // セントラルマネージャからコメントを受信するイベントを登録
+        CentralManager.OnTwitchMessageSend += HandleTwitchMessageSend;
+    }
+
+    void OnDisable() {
+        CentralManager.OnTwitchMessageSend -= HandleTwitchMessageSend;
+    }
+
+    // セントラルマネージャーから情報を受け取るイベント
+    void HandleTwitchMessageSend(string text) {
+        Debug.Log("Global Message Received: " + text);
+        // messageをTwitchコメントに送信
+        twitch.Client.SendPrivMessage(text);
     }
 
     private void Update() {
@@ -151,23 +177,15 @@ public class TwitchChatController : MonoBehaviour {
 
         // チャットメッセージの処理
         if (message.Command == TwitchClient.Commands.PRIVMSG && message.Parameters != null && message.Parameters.Length > 1) {
-            // string chatMessage = message.Parameters[1].ToLower();
-            // チャットスクロールは生メッセージ
-            // StartCoroutine(AddComment(message.ChatMessage));
-
 
             // https://fatwednesday.co.uk/assets/Assets/Twitcher/ReadMe.pdf
             string user = message.Info.displayName; // ユーザー名を取得
             Debug.Log($"DEAD BEEF user: {user}");
-
-            // その配信で初めてのコメントかどうかをチェック
-            if (!usersProfile.ContainsKey(user)) {
-                usersProfile.Add(user, -1); // ユーザーを追加
-                audioSource.PlayOneShot(entranceSound); // 音を鳴らす
-            }
-
             // チャットメッセージを取得
             string chatMessage = message.ChatMessage;
+
+            // セントラルマネージャーへ送信
+            SendCentralManager(user, chatMessage);
 
             // 全文日本語が含まれていなければ翻訳処理に移行
             if (IsJapaneseFree(chatMessage))
@@ -183,7 +201,7 @@ public class TwitchChatController : MonoBehaviour {
             else
             {
                 // コメント読み上げを開始
-                StartCoroutine(SpeakComment(chatMessage, user));
+                // StartCoroutine(SpeakComment(chatMessage, user));
 
                 // コメントをニコニコ風に表示
                 AddComment(chatMessage);
@@ -235,42 +253,10 @@ public class TwitchChatController : MonoBehaviour {
         twitch.Client.SendPrivMessage("[" + user + "]: " + chatMessage);
 
         // 翻訳後の処理を続ける
-        StartCoroutine(SpeakComment(chatMessage, user)); // コメント読み上げを開始
+        // StartCoroutine(SpeakComment(chatMessage, user)); // コメント読み上げを開始
         AddComment(chatMessage); // コメントをニコニコ風に表示
     }
 
-    private IEnumerator SpeakComment(string comment, string user) {
-        // Todo: 複数同時に喋っても対応できるようにしたい、audioSourceを都度生成すれば良い？
-
-
-        if (usersProfile[user] <= -1) {
-            // コルーチンの結果を取得するための変数を用意
-            int styleId = 3; // デフォルト値を設定
-            // コルーチンを実行し、結果を取得
-            yield return StartCoroutine(client.GetSpeakerRnd((result) => styleId = result));
-            usersProfile[user] = styleId;
-        }
-
-        // 新しいAudioSourceを生成
-        AudioSource spakAudioSource = gameObject.AddComponent<AudioSource>();
-
-        // テキストからAudioClipを生成
-        yield return client.TextToAudioClip(usersProfile[user], comment);
-
-        if (client.AudioClip != null)
-        {
-            // AudioClipを取得し、AudioSourceにアタッチ
-            spakAudioSource.clip = client.AudioClip;
-            // AudioSourceで再生
-            spakAudioSource.Play();
-            // 再生が終わったらAudioSourceを破棄
-            yield return new WaitForSeconds(spakAudioSource.clip.length);
-            Destroy(spakAudioSource);
-        }
-
-    }
-
-    // private IEnumerator AddComment(string comment) {
     // スクロール前に表示テキストの処理
     private void AddComment(string comment) {
         // テンプレートから新しいコメントオブジェクトを生成
