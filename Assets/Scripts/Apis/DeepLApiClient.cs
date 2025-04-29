@@ -11,30 +11,22 @@ using Newtonsoft.Json;
 
 // DeepLのREST-APIクライアント
 public class DeepLApiClient : MonoBehaviour {
-    private ConfigLoader configLoader;
     // 基本URL
     private const string BASE = "https://api-free.deepl.com";
     // 翻訳 URL
     private const string TRANSLATE_URL = BASE + "/v2/translate";
-    // Authorization
-    private string AUTHORIZATION; // ここにAPIキーを入力
 
     private void Start()
     {
-        ConfigLoader.Instance.LoadConfig();
-        Debug.Log("ConfigLoader起動");
     }
 
     public IEnumerator PostTranslate(string text, string toLang, Action<string> onTranslated) {
         // APIキーの読み取り
-        AUTHORIZATION = ConfigLoader.Instance.GetDeepLApiClientKey();
-        if (string.IsNullOrEmpty(AUTHORIZATION))
-        {
+        string authorization = CentralManager.Instance != null ? CentralManager.Instance.GetDeepLApiClientKey() : null;
+        if (string.IsNullOrEmpty(authorization)) {
             Debug.LogError("でーぷるきー！よみこみえらー！");
-        }
-        else
-        {
-            Debug.Log("でーぷるきーをよみこみました！: " + AUTHORIZATION);
+        } else {
+            Debug.Log("でーぷるきーをよみこみました！: " + authorization);
         }
 
         // URL
@@ -54,9 +46,9 @@ public class DeepLApiClient : MonoBehaviour {
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(data);
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Authorization",  "DeepL-Auth-Key " + AUTHORIZATION);
+            request.SetRequestHeader("Authorization",  "DeepL-Auth-Key " + authorization);
             request.SetRequestHeader("Content-Type", "application/json");
-            Debug.Log("DeepLApiClientKey: " + AUTHORIZATION);
+            Debug.Log("DeepLApiClientKey: " + authorization);
 
             // リクエストを送信し、レスポンスを待つ
             yield return request.SendWebRequest();

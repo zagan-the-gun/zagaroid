@@ -10,21 +10,16 @@ public class OBSWebSocketClient : MonoBehaviour {
     public string OBS_WEBSOCKETS_PASSWORD = ""; // OBSの接続パスワード
     public string textSourceName = "ksk_subtitles"; // OBSのテキストソース名
 
-    private ConfigLoader configLoader;
-
     private string challengeResponse;
 
     private void Start() {
-        ConfigLoader.Instance.LoadConfig();
-        Debug.Log("ConfigLoader起動");
         // パスワードの読み取り
-        OBS_WEBSOCKETS_PASSWORD = ConfigLoader.Instance.GetObsWebSocketsPassword();
+        OBS_WEBSOCKETS_PASSWORD = CentralManager.Instance != null ? CentralManager.Instance.GetObsWebSocketsPassword() : null;
         if (string.IsNullOrEmpty(OBS_WEBSOCKETS_PASSWORD)) {
             Debug.LogError("おーびーえすうぇぶそけっつぱすわーど！よみこみえらー！");
         } else {
             Debug.Log("おーびーえすうぇぶそけっつぱすわーどをよみこみました！: " + OBS_WEBSOCKETS_PASSWORD);
         }
-
 
         ws = new WebSocket(obsUrl);
 
