@@ -16,8 +16,7 @@ public class DeepLApiClient : MonoBehaviour {
     // 翻訳 URL
     private const string TRANSLATE_URL = BASE + "/v2/translate";
 
-    private void Start()
-    {
+    private void Start() {
     }
 
     public IEnumerator PostTranslate(string text, string toLang, Action<string> onTranslated) {
