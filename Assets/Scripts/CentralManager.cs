@@ -145,6 +145,14 @@ public class CentralManager : MonoBehaviour
         OnTwitchMessageSend?.Invoke(text);
     }
 
+    // Canvasへの送信イベントを登録
+    public delegate void CanvasCommentSendDelegate(string comment);
+    public static event CanvasCommentSendDelegate OnCanvasCommentSend;
+    public static void SendCanvasMessage(string text) {
+        OnCanvasCommentSend?.Invoke(text);
+    }
+
+
     void OnEnable() {
         // Twitchからコメントを受信するイベントを登録
         TwitchChatController.OnTwitchMessageReceived += HandleTwitchMessageReceived;
@@ -167,6 +175,7 @@ public class CentralManager : MonoBehaviour
 
         // コメントスクロールを開始
         // StartCoroutine(ScrollComment(newComment));
+        SendCanvasMessage(chatMessage);
 
         // コメント読み上げを開始
         StartCoroutine(speakComment(user, chatMessage));
