@@ -1,102 +1,159 @@
+using UnityEngine;
 using System;
 using System.Net;
-using UnityEngine;
 using WebSocketSharp;
 using WebSocketSharp.Server;
-using System.Threading.Tasks;
-
+using System.Collections.Generic;
+using System.Collections;
 
 public class MultiPortWebSocketServer : MonoBehaviour {
-    private WebSocketServer wss1;
-    private WebSocketServer wss2;
+    private WebSocketServer wss1; // ポート50001
+    private WebSocketServer wss2; // ポート50002
+    private readonly Dictionary<int, Action<string, string>> messageHandlers = new Dictionary<int, Action<string, string>>();
 
-    // セントラルマネージャへ情報を送信するイベント
-    public delegate void WebSocketMessageReceivedDelegate(string user, string chatMessage);
-    public static event WebSocketMessageReceivedDelegate OnWebSocketMessageReceived;
-    public void SendCentralManager(string subtitle, string subtitleText) {
-        OnWebSocketMessageReceived?.Invoke(subtitle, subtitleText);
+    public static MultiPortWebSocketServer Instance { get; private set; }
+
+    // ポートごとのイベント定義
+    public static event Action<string, string> OnMessageReceivedFromPort50001;
+    public static event Action<string, string> OnMessageReceivedFromPort50002;
+
+    private readonly Queue<Action> _executionQueue = new Queue<Action>();
+
+    private void Awake() {
+        if (Instance == null) {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+            Debug.Log("MultiPortWebSocketServer: シングルトンとして初期化");
+        } else if (Instance != this) {
+            Debug.LogWarning("MultiPortWebSocketServer: 別のインスタンスが存在するため破棄");
+            Destroy(gameObject);
+        }
     }
 
     private void Start() {
-        // WebSocketサーバーをポート50001で初期化
-        wss1 = new WebSocketServer(IPAddress.Any, 50001);
-        wss1.AddWebSocketService<EchoService1>("/");
-        // wss1.AddWebSocketService<EchoService1>("/", () => new EchoService1(obsClient)); // インスタンスを渡す
-        wss1.Start();
-        Debug.Log("起動したよ！WebSocket server started on ws://localhost:50001/");
+        InitializeServer(50001);
+        InitializeServer(50002);
+    }
 
-        // WebSocketサーバーをポート50002で初期化
-        wss2 = new WebSocketServer(IPAddress.Any, 50002);
-        wss2.AddWebSocketService<EchoService2>("/");
-        wss2.Start();
-        Debug.Log("起動したよ！WebSocket server started on ws://localhost:50002/");
+    private void InitializeServer(int port) {
+        try {
+            var server = new WebSocketServer(IPAddress.Any, port);
+            if (port == 50001) {
+                server.AddWebSocketService<EchoService1>("/");
+            } else if (port == 50002) {
+                server.AddWebSocketService<EchoService2>("/");
+            }
+            server.Start();
+            Debug.Log($"MultiPortWebSocketServer: WebSocket サーバー開始 - ws://localhost:{port}/");
+        } catch (Exception ex) {
+            Debug.LogError($"MultiPortWebSocketServer: ポート {port} のサーバー開始に失敗 - {ex.Message}");
+        }
     }
 
     private void OnDestroy() {
-        // サーバーを停止
         if (wss1 != null) {
-            wss1.Stop();
-            Debug.Log("WebSocket server on port 50001 stopped.");
-        } if (wss2 != null) {
-            wss2.Stop();
-            Debug.Log("WebSocket server on port 50002 stopped.");
+            try {
+                wss1.Stop();
+                Debug.Log("MultiPortWebSocketServer: WebSocket サーバー停止 - ポート: 50001");
+            } catch (Exception ex) {
+                Debug.LogError($"MultiPortWebSocketServer: ポート 50001 のサーバー停止に失敗 - {ex.Message}");
+            }
+        }
+        if (wss2 != null) {
+            try {
+                wss2.Stop();
+                Debug.Log("MultiPortWebSocketServer: WebSocket サーバー停止 - ポート: 50002");
+            } catch (Exception ex) {
+                Debug.LogError($"MultiPortWebSocketServer: ポート 50002 のサーバー停止に失敗 - {ex.Message}");
+            }
+        }
+        messageHandlers.Clear();
+    }
+
+    public void RegisterMessageHandler(int port, Action<string, string> handler) {
+        messageHandlers[port] = handler;
+        Debug.Log($"MultiPortWebSocketServer: ポート {port} にメッセージハンドラを登録");
+    }
+
+    // WebSocket スレッドからメインスレッドへ処理をディスパッチ
+    public void Enqueue(Action action) {
+        lock (_executionQueue) {
+            _executionQueue.Enqueue(action);
         }
     }
-    // イベントハンドラーを登録するメソッド (CentralManager から呼び出す)
-    public void RegisterWebSocketMessageHandler(int port, Action<string, string> handler) {
-        switch (port) {
-            case 50001:
-                EchoService1.OnWebSocketMessageReceived += handler;
-                break;
-            case 50002:
-                EchoService2.OnWebSocketMessageReceived += handler;
-                break;
-            default:
-                Debug.LogError($"指定されたポート ({port}) のイベントハンドラー登録はサポートされていません。");
-                break;
+
+    private void Update() {
+        lock (_executionQueue) {
+            while (_executionQueue.Count > 0) {
+                _executionQueue.Dequeue().Invoke();
+            }
         }
     }
 
-}
+    // 各 WebSocketBehavior からメッセージを受け取り、対応するポートのイベントを発行する
+    public void HandleMessage(int port, string user, string message) {
+        Debug.Log($"MultiPortWebSocketServer: メッセージ受信 (スレッド: {System.Threading.Thread.CurrentThread.ManagedThreadId}) - ポート: {port}, ユーザー: {user}, メッセージ: {message}");
+        Enqueue(() => {
+            Debug.Log($"HandleMessage (メインスレッド): ポート: {port}, ユーザー: {user}, メッセージ: {message}");
+            if (port == 50001) {
+                OnMessageReceivedFromPort50001?.Invoke(user, message);
+            } else if (port == 50002) {
+                OnMessageReceivedFromPort50002?.Invoke(user, message);
+            }
 
-// ポート50001用のエコーサービス
-public class EchoService1 : WebSocketBehavior {
-
-    public static event Action<string, string> OnWebSocketMessageReceived;
-
-    protected override void OnMessage(MessageEventArgs e) {
-        // 受信したメッセージをそのまま返す
-        // Send("Echo from port 50001: " + e.Data);
-        Debug.Log("EchoService1 Received on port 50001: " + e.Data);
-        // if (UnityMainThreadDispatcher.Instance == null) {
-        //     Debug.Log("ディスパッチャーはヌルです！");
-        // }
-
-        // メインスレッドでイベントを処理
-        Debug.Log($"EchoService1 スレッドID: {System.Threading.Thread.CurrentThread.ManagedThreadId}");
-        OnWebSocketMessageReceived?.Invoke("ksk_subtitles", e.Data);
-        // try {
-        //     UnityMainThreadDispatcher.Instance.Enqueue(() => {
-        //         Debug.Log("ディスパッチャー！");
-        //         // 字幕をCentralManagerに送信
-        //         OnWebSocketMessageReceived?.Invoke("ksk_subtitles", e.Data);
-        //     });
-        //     Debug.Log("メソッド終了");
-        // } catch (Exception ex) {
-        //     Debug.LogError($"EchoService1.OnMessage で例外発生: {ex}");
-        // }
+            // (既存のポート固有のハンドラも呼び出す場合)
+            if (messageHandlers.TryGetValue(port, out var handler)) {
+                handler?.Invoke(user, message);
+            } else {
+                Debug.LogWarning($"MultiPortWebSocketServer: ポート {port} にハンドラが登録されていません");
+            }
+        });
     }
-}
 
-// ポート50002用のエコーサービス
-public class EchoService2 : WebSocketBehavior {
+    // private IEnumerator InvokeOnMainThread(Action action) {
+    //     yield return null;
+    //     action?.Invoke();
+    // }
 
-    public static event Action<string, string> OnWebSocketMessageReceived;
+    // ポート50001用のエコーサービス (内部クラス)
+    private class EchoService1 : WebSocketBehavior {
+        protected override void OnMessage(MessageEventArgs e) {
+            Debug.Log($"EchoService1 Received on port 50001 (スレッド: {System.Threading.Thread.CurrentThread.ManagedThreadId}): {e.Data}");
+            Instance?.HandleMessage(50001, "ksk_subtitles", e.Data);
+            // ポート50001ではエコーバックなし
+        }
 
-    protected override void OnMessage(MessageEventArgs e) {
-        // 受信したメッセージをそのまま返す
-        Send("Echo from port 50002: " + e.Data);
-        Debug.Log("Received on port 50002: " + e.Data);
-        OnWebSocketMessageReceived?.Invoke("ksk_subtitles", e.Data);
+        protected override void OnOpen() {
+            Debug.Log($"EchoService1: クライアント接続 (ポート 50001)");
+        }
+
+        protected override void OnClose(CloseEventArgs e) {
+            Debug.Log($"EchoService1: クライアント切断 (ポート 50001) - コード: {e.Code}, 理由: {e.Reason}");
+        }
+
+        protected override void OnError(ErrorEventArgs e) {
+            Debug.LogError($"EchoService1: エラー (ポート 50001) - {e.Message}");
+        }
+    }
+
+    // ポート50002用のエコーサービス (内部クラス)
+    private class EchoService2 : WebSocketBehavior {
+        protected override void OnMessage(MessageEventArgs e) {
+            Debug.Log($"EchoService2 Received on port 50002 (スレッド: {System.Threading.Thread.CurrentThread.ManagedThreadId}): {e.Data}");
+            Instance?.HandleMessage(50002, "ksk_subtitles", e.Data);
+            Send($"Echo from port 50002: {e.Data}");
+        }
+
+        protected override void OnOpen() {
+            Debug.Log($"EchoService2: クライアント接続 (ポート 50002)");
+        }
+
+        protected override void OnClose(CloseEventArgs e) {
+            Debug.Log($"EchoService2: クライアント切断 (ポート 50002) - コード: {e.Code}, 理由: {e.Reason}");
+        }
+
+        protected override void OnError(ErrorEventArgs e) {
+            Debug.LogError($"EchoService2: エラー (ポート 50002) - {e.Message}");
+        }
     }
 }

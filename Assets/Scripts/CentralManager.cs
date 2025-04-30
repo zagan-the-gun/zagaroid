@@ -49,7 +49,7 @@ public class CentralManager : MonoBehaviour {
 
     // ... 他のグローバル設定
 
-    void Awake() {
+    private void Awake() {
         // シングルトンパターンの実装
         if (Instance == null) {
             Instance = this;
@@ -60,6 +60,7 @@ public class CentralManager : MonoBehaviour {
 
             _voiceVoxApiClient = new VoiceVoxApiClient();
             _deepLApiClient = new DeepLApiClient();
+            _webSocketServer = MultiPortWebSocketServer.Instance;
 
             // 他のマネージャーのインスタンスを検索してキャッシュ
             // _translationManager = FindObjectOfType<TranslationManager>();
@@ -166,38 +167,26 @@ public class CentralManager : MonoBehaviour {
         // Twitchからコメントを受信するイベントを登録
         TwitchChatController.OnTwitchMessageReceived += HandleTwitchMessageReceived;
         // MultiPortWebSocketServerの情報を受信するイベントを登録
-        _webSocketServer = FindObjectOfType<MultiPortWebSocketServer>();
-        if (_webSocketServer != null) {
-            _webSocketServer.RegisterWebSocketMessageHandler(50001, HandleWebSocketMessageFromPort50001);
-            _webSocketServer.RegisterWebSocketMessageHandler(50002, HandleWebSocketMessageFromPort50002);
-            // 他のポートのハンドラーも同様に登録
+        if (MultiPortWebSocketServer.Instance != null) {
+            MultiPortWebSocketServer.OnMessageReceivedFromPort50001 += HandleWebSocketMessageFromPort50001;
+            MultiPortWebSocketServer.OnMessageReceivedFromPort50002 += HandleWebSocketMessageFromPort50002;
         } else {
-            Debug.LogError("MultiPortWebSocketServer が見つかりません。");
+            Debug.LogError("MultiPortWebSocketServer のインスタンスが見つかりません。");
         }
     }
 
     void OnDisable() {
         TwitchChatController.OnTwitchMessageReceived -= HandleTwitchMessageReceived;
-        if (_webSocketServer != null) {
-            _webSocketServer.RegisterWebSocketMessageHandler(50001, HandleWebSocketMessageFromPort50001); // これは登録処理なので削除
-            _webSocketServer.RegisterWebSocketMessageHandler(50002, HandleWebSocketMessageFromPort50002); // これは登録処理なので削除
-
-            // イベントの購読解除
-            EchoService1.OnWebSocketMessageReceived -= HandleWebSocketMessageFromPort50001;
-            EchoService2.OnWebSocketMessageReceived -= HandleWebSocketMessageFromPort50002;
-            // 他のポートのハンドラーも同様に解除
+        if (MultiPortWebSocketServer.Instance != null) {
+            MultiPortWebSocketServer.OnMessageReceivedFromPort50001 -= HandleWebSocketMessageFromPort50001;
+            MultiPortWebSocketServer.OnMessageReceivedFromPort50002 -= HandleWebSocketMessageFromPort50002;
         }
     }
     void OnDestroy() {
         TwitchChatController.OnTwitchMessageReceived -= HandleTwitchMessageReceived;
-        if (_webSocketServer != null) {
-            _webSocketServer.RegisterWebSocketMessageHandler(50001, HandleWebSocketMessageFromPort50001); // これは登録処理なので削除
-            _webSocketServer.RegisterWebSocketMessageHandler(50002, HandleWebSocketMessageFromPort50002); // これは登録処理なので削除
-
-            // イベントの購読解除
-            EchoService1.OnWebSocketMessageReceived -= HandleWebSocketMessageFromPort50001;
-            EchoService2.OnWebSocketMessageReceived -= HandleWebSocketMessageFromPort50002;
-            // 他のポートのハンドラーも同様に解除
+        if (MultiPortWebSocketServer.Instance != null) {
+            MultiPortWebSocketServer.OnMessageReceivedFromPort50001 -= HandleWebSocketMessageFromPort50001;
+            MultiPortWebSocketServer.OnMessageReceivedFromPort50002 -= HandleWebSocketMessageFromPort50002;
         }
     }
 
@@ -299,7 +288,7 @@ public class CentralManager : MonoBehaviour {
         SendObsSubtitles(subtitle, subtitleText);
 
         // 翻訳字幕の送信
-        // StartCoroutine(translateSubtitle(subtitle, subtitleText));
+        StartCoroutine(translateSubtitle(subtitle, subtitleText));
     }
 
     private void HandleWebSocketMessageFromPort50002(string subtitle, string subtitleText) {
@@ -307,18 +296,18 @@ public class CentralManager : MonoBehaviour {
         // ポート50002からのメッセージに対する処理
     }
 
-    // private IEnumerator translateSubtitle(string subtitle, string subtitleText) {
-    //     Debug.Log("字幕の翻訳開始");
-    //     yield return StartCoroutine(_deepLApiClient.PostTranslate(subtitleText, "JA", (result) => {
-    //         // 翻訳結果を取得
-    //         Debug.Log("コールバック実行: 翻訳結果受信");
-    //         subtitleText = result;
-    //     }));
-    //     Debug.Log($"翻訳字幕: {subtitleText}");
+    private IEnumerator translateSubtitle(string subtitle, string subtitleText) {
+        Debug.Log("字幕の翻訳開始");
+        yield return StartCoroutine(_deepLApiClient.PostTranslate(subtitleText, "EN", (result) => {
+            // 翻訳結果を取得
+            Debug.Log($"コールバック実行: 翻訳結果受信: {result}");
+            subtitleText = result;
+        }));
+        Debug.Log($"翻訳字幕: {subtitleText}");
 
-    //     // 字幕をOBSに送信
-    //     SendObsSubtitles($"{subtitle}_en", subtitleText);
-    // }
+        // 字幕をOBSに送信
+        SendObsSubtitles($"{subtitle}_en", subtitleText);
+    }
 }
 
 // Twitch        コメント受信   イベント セントラルマネージャーがイベントを受け取り各処理 OK
@@ -327,6 +316,6 @@ public class CentralManager : MonoBehaviour {
 // VoiceVox      話者取得    メソッド セントラルマネージャーがVoiceVoxのメソッドを直接実行する OK
 // キャンバス       ニコニコ風   イベント セントラルマネージャーがイベントを送信 OK
 // 翻訳API　       翻訳        メソッド セントラルマネージャが翻訳APIのメソッドを直接参照する OK
-// YukariWhisper 自動字幕    イベント　セントラルマネージャーがイベントを受け取り各処理
-// OBS           字幕表示    イベント セントラルマネージャーがイベントを送信
+// YukariWhisper 自動字幕    イベント　セントラルマネージャーがイベントを受け取り各処理 OK
+// OBS           字幕表示    イベント セントラルマネージャーがイベントを送信 OK
 // DiscordBOT　　　　　　　音声ストリーム 
