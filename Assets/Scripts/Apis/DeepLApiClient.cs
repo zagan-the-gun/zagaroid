@@ -28,9 +28,6 @@ public class DeepLApiClient : MonoBehaviour {
             Debug.Log("でーぷるきーをよみこみました！: " + authorization);
         }
 
-        // URL
-        string webUrl = $"TRANSLATE_URL";
-
         // JSON データを作成
         string data = $@"
         {{

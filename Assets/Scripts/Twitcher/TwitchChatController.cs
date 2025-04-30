@@ -81,7 +81,7 @@ public class TwitchChatController : MonoBehaviour {
         }
 
         // Enable full verbose logging
-        TwitcherUtil.logging = TwitcherUtil.LoggingMode.Verbose;
+        // TwitcherUtil.logging = TwitcherUtil.LoggingMode.Verbose;
 
         try {
             Debug.Log($"接続を試みています... チャンネル: {channelToJoin}");
@@ -118,6 +118,14 @@ public class TwitchChatController : MonoBehaviour {
 
     void OnDisable() {
         CentralManager.OnTwitchMessageSend -= HandleTwitchMessageSend;
+    }
+
+    void OnDestroy() {
+        CentralManager.OnTwitchMessageSend -= HandleTwitchMessageSend;
+        if (twitch != null && twitch.Client != null) {
+            twitch.Client.onMessageReceived -= OnMessageReceived;
+            Debug.Log("Twitchクライアントをクリーンアップしました");
+        }
     }
 
     // セントラルマネージャーから情報を受け取るイベント
@@ -200,14 +208,6 @@ public class TwitchChatController : MonoBehaviour {
             var setting = videoSettings[index];
             videoPlayerController.PlayVideo(setting.videoClip, setting.position, setting.size);
             Debug.Log($"動画を再生: {setting.videoClip.name}");
-        }
-    }
-
-    void OnDestroy() {
-        // Clean up
-        if (twitch != null && twitch.Client != null) {
-            twitch.Client.onMessageReceived -= OnMessageReceived;
-            Debug.Log("Twitchクライアントをクリーンアップしました");
         }
     }
 }
