@@ -2217,7 +2217,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   channelToJoin: zagan_the_gun
   authToken: oauth:53la669m2fhveqpb0urjt9dsudndno
-  commentTemplate: {fileID: 291405402}
   videoPlayerController: {fileID: 784621657}
   videoSettings:
   - videoClip: {fileID: 32900000, guid: 15e3c9f8f81a23f4dabb49d90ae7e1f8, type: 3}

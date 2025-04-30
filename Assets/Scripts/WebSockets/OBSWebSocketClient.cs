@@ -45,10 +45,6 @@ public class OBSWebSocketClient : MonoBehaviour {
         };
 
         ws.Connect();
-
-        // OnUpdateTextSource イベントに登録されたメソッドを実行
-        EchoService1.OnUpdateTextSource += UpdateTextSource;
-
     }
 
     private void HandleMessage(string message) {
@@ -107,15 +103,24 @@ public class OBSWebSocketClient : MonoBehaviour {
         return Convert.ToBase64String(sha256Hash);
     }
 
+    void OnEnable() {
+        // セントラルマネージャからコメントを受信するイベントを登録
+        CentralManager.OnObsSubtitlesSend += HandleObsSubtitlesSend;
+    }
+
+    private void OnDisable() {
+        CentralManager.OnObsSubtitlesSend -= HandleObsSubtitlesSend;
+    }
+
     private void OnDestroy() {
-        EchoService1.OnUpdateTextSource -= UpdateTextSource;
+        CentralManager.OnObsSubtitlesSend -= HandleObsSubtitlesSend;
         if (ws != null)
         {
             ws.Close();
         }
     }
 
-    public void UpdateTextSource(string textSourceName, string text) {
+    public void HandleObsSubtitlesSend(string textSourceName, string text) {
         // Debug.Log("DEAD BEEF OBS UpdateTextSource 発火！: " + text);
         // OBS WebSocket APIを使用してテキストソースを更新
         var updateTextSourceRequest = new UpdateTextSourceRequest {
