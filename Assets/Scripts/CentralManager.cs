@@ -148,6 +148,12 @@ public class CentralManager : MonoBehaviour {
     public static void SendTwitchMessage(string text) {
         OnTwitchMessageSend?.Invoke(text);
     }
+    // Twitchコメントへの送信イベントを登録
+    // public delegate void TwitchCommentSendDelegate(string text);
+    // public static event TwitchCommentSendDelegate OnTwitchMessageSend;
+    // public static void SendTwitchMessage(string text) {
+    //     OnTwitchMessageSend?.Invoke(text);
+    // }
 
     // Canvasへの送信イベントを登録
     public delegate void CanvasCommentSendDelegate(string comment);
@@ -165,7 +171,7 @@ public class CentralManager : MonoBehaviour {
 
     void OnEnable() {
         // Twitchからコメントを受信するイベントを登録
-        TwitchChatController.OnTwitchMessageReceived += HandleTwitchMessageReceived;
+        UnityTwitchChatController.OnTwitchMessageReceived += HandleTwitchMessageReceived;
         // MultiPortWebSocketServerの情報を受信するイベントを登録
         if (MultiPortWebSocketServer.Instance != null) {
             MultiPortWebSocketServer.OnMessageReceivedFromPort50001 += HandleWebSocketMessageFromPort50001;
@@ -176,14 +182,14 @@ public class CentralManager : MonoBehaviour {
     }
 
     void OnDisable() {
-        TwitchChatController.OnTwitchMessageReceived -= HandleTwitchMessageReceived;
+        UnityTwitchChatController.OnTwitchMessageReceived -= HandleTwitchMessageReceived;
         if (MultiPortWebSocketServer.Instance != null) {
             MultiPortWebSocketServer.OnMessageReceivedFromPort50001 -= HandleWebSocketMessageFromPort50001;
             MultiPortWebSocketServer.OnMessageReceivedFromPort50002 -= HandleWebSocketMessageFromPort50002;
         }
     }
     void OnDestroy() {
-        TwitchChatController.OnTwitchMessageReceived -= HandleTwitchMessageReceived;
+        UnityTwitchChatController.OnTwitchMessageReceived -= HandleTwitchMessageReceived;
         if (MultiPortWebSocketServer.Instance != null) {
             MultiPortWebSocketServer.OnMessageReceivedFromPort50001 -= HandleWebSocketMessageFromPort50001;
             MultiPortWebSocketServer.OnMessageReceivedFromPort50002 -= HandleWebSocketMessageFromPort50002;
@@ -202,11 +208,11 @@ public class CentralManager : MonoBehaviour {
             // 翻訳処理
             StartCoroutine(translate(user, chatMessage));
         } else {
-            // コメントスクロールを開始
-            SendCanvasMessage(chatMessage);
-
             // コメント読み上げを開始
             StartCoroutine(speakComment(user, chatMessage));
+
+            // コメントスクロールを開始
+            SendCanvasMessage(chatMessage);
         }
     }
 
@@ -259,14 +265,14 @@ public class CentralManager : MonoBehaviour {
             chatMessage = result;
         }));
 
+        // コメント読み上げを開始
+        StartCoroutine(speakComment(user, chatMessage));
+
         // 翻訳文をTwitchコメントに送信
         SendTwitchMessage($"[{user}]: {chatMessage}");
 
         // コメントスクロールを開始
         SendCanvasMessage(chatMessage);
-
-        // コメント読み上げを開始
-        StartCoroutine(speakComment(user, chatMessage));
     }
 
     // メッセージが日本語を含まないか確認
