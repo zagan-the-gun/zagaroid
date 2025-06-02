@@ -1,98 +1,141 @@
 using UnityEngine;
-using UnityEngine.UIElements; // UI Toolkit の名前空間
-using System; // DateTime のために必要
-using System.Collections.Generic; // List のために必要
+using UnityEngine.UIElements;
+using System;
+using System.Collections.Generic;
 
 public class LogUIController : MonoBehaviour {
-    // UXML から TextField を参照するためのUIDocumentsからの参照
     [SerializeField] private UIDocument uiDocument;
 
-    private TextField logTextField; // UXML 内の TextField を参照する変数
-    private ScrollView logScrollView; // TextField が配置されている可能性のあるScrollView
+    private TextField logTextField;
+    private ScrollView logScrollView;
 
     private List<string> logMessages = new List<string>();
-    private const int MaxLogLines = 100; // 表示する最大行数
+    private const int MaxLogLines = 100;
+
+    // スクロールが一番下に固定されているかどうか
+    private bool isScrolledToBottom = true; 
+
+    // スクロールバーが動いたかどうかを追跡するための過去のスクロールオフセット
+    // private Vector2 lastScrollOffset = Vector2.zero; // これは不要になるので削除
 
     void OnEnable() {
-        // ログメッセージを受信するイベントを登録
+        // Unityのシステムログイベントを購読
         Application.logMessageReceived += HandleLog;
 
-        // UIDocumentが設定されていることを確認
         if (uiDocument == null || uiDocument.rootVisualElement == null) {
             Debug.LogError("LogUIController: UIDocument またはそのルート要素が設定されていません。");
             return;
         }
 
         // UXML内のTextField要素を名前で取得
-        // UXMLでTextFieldにname="logOutput"のような名前を付けておくことを推奨
-        logTextField = uiDocument.rootVisualElement.Q<TextField>("logOutput"); // 仮にlogOutputというnameを持つTextFieldを想定
+        logTextField = uiDocument.rootVisualElement.Q<TextField>("logOutput");
         if (logTextField == null) {
             Debug.LogError("LogUIController: UXML内で 'logOutput' という名前のTextFieldが見つかりません。");
             return;
         }
 
-        // TextFieldをリードオンリーにする（ユーザーが直接入力できないように）
         logTextField.isReadOnly = true;
 
-        // TextFieldのスクロールビューを取得（もしあれば）
-        // TextFieldはデフォルトでスクロール可能なので、通常は明示的にScrollViewは不要ですが
-        // もしTextFieldをScrollViewに入れているなら参照
-        // logScrollView = logTextField.Q<ScrollView>(); //不要かも
-
-        // TextFieldの親要素であるScrollViewを取得する
-        // UXMLでは <ui:ScrollView><ui:TextField .../></ui:ScrollView> の構造なので
-        // TextFieldの親（parent）がScrollViewであるはずです。
+        // TextFieldの親要素であるScrollViewを取得
         logScrollView = logTextField.parent as ScrollView; 
-        if (logScrollView == null)
-        {
+        if (logScrollView == null) {
             Debug.LogWarning("LogUIController: 'logOutput' TextFieldの親としてScrollViewが見つかりませんでした。スクロール機能が正しく動作しない可能性があります。");
+        } else {
+            // スクロールオフセットの変更イベントを購読
+            // このイベントがユーザー操作によるスクロールを検知する主要な方法です
+            logScrollView.RegisterCallback<ChangeEvent<Vector2>>(OnScrollViewScrollChanged); 
+            
+            // 初回のスクロール位置を一番下にするためのスケジューリング
+            // レイアウトが確定するのを待つため、わずかな遅延を設ける
+            logScrollView.schedule.Execute(ScrollToBottomImmediately).StartingIn(100); 
         }
 
-        // 初期表示をクリア
         logTextField.value = "";
     }
 
     void OnDisable() {
-        // イベントの登録を解除
         Application.logMessageReceived -= HandleLog;
+        if (logScrollView != null) {
+            // イベントの購読解除
+            logScrollView.UnregisterCallback<ChangeEvent<Vector2>>(OnScrollViewScrollChanged);
+        }
     }
 
     private void HandleLog(string logString, string stackTrace, LogType type) {
-        if (logTextField == null) return; // TextFieldが初期化されていない場合は何もしない
+        if (logTextField == null) return;
 
-        // 現在の時刻を取得し、ログメッセージに追加
         string timestamp = DateTime.Now.ToString("HH:mm:ss");
         string formattedLog = $"[{timestamp}] {logString}";
 
         logMessages.Add(formattedLog);
 
-        // 最大行数を超えた場合、古い行を削除
         if (logMessages.Count > MaxLogLines) {
             logMessages.RemoveAt(0);
         }
 
-        // 全ログメッセージをTextFieldのvalueに設定
         logTextField.value = string.Join("\n", logMessages);
 
-        // ログメッセージが追加され、TextFieldのvalueが更新された後、
-        // 次のフレームでスクロールを一番下まで移動させる
-        if (logScrollView != null)
-        {
-            // スクロールコンテンツの一番下までスクロールします。
-            // VisualElement.schedule.Execute() を使うと、UIのレイアウト更新後に実行されるため確実です。
-            logScrollView.schedule.Execute(() => {
-                // ScrollTo(VisualElement element) は、指定した要素が見える位置までスクロールします。
-                // 今回はTextField全体を対象とするため、TextFieldを渡します。
-                // その後、スクロールビューのコンテンツの高さを取得し、最大スクロール量に設定することで、
-                // 強制的に一番下までスクロールさせます。
-                logScrollView.ScrollTo(logTextField); 
-                
-                // より確実に一番下までスクロールさせるために、contentContainerの高さとviewableAreaの差を直接設定します。
-                // Unity 2021.2 以降の新しい ScrollView の API を利用
-                logScrollView.scrollOffset = new Vector2(0, logScrollView.contentContainer.resolvedStyle.height - logScrollView.resolvedStyle.height);
+        // isScrolledToBottom が true の場合のみ自動スクロールをスケジュール
+        if (logScrollView != null && isScrolledToBottom) {
+            // ログ追加後、レイアウト更新を待ってから一番下へスクロール
+            logScrollView.schedule.Execute(ScrollToBottomImmediately).StartingIn(1); 
+        }
+    }
 
-            }).Every(1); // 毎フレームではなく、ログが来た次のフレームで一度だけ実行させる
+    // ScrollViewのscrollOffsetが変更されたときに呼び出されるメソッド
+    private void OnScrollViewScrollChanged(ChangeEvent<Vector2> evt)
+    {
+        // このメソッドはスクロールオフセットが変更されるたびに呼ばれる
+        // ここで isScrolledToBottom の状態を更新する
+        UpdateScrolledToBottomStatus();
+    }
+
+    // isScrolledToBottom の状態を更新するヘルパーメソッド
+    private void UpdateScrolledToBottomStatus()
+    {
+        if (logScrollView == null) return;
+
+        // 現在のスクロールオフセットY
+        float currentScrollY = logScrollView.scrollOffset.y;
+
+        // コンテンツの実際の高さ
+        float contentHeight = logScrollView.contentContainer.resolvedStyle.height;
+        // ScrollView自体の表示領域の高さ
+        float viewportHeight = logScrollView.resolvedStyle.height;
+        
+        // スクロール可能な最大のY座標 (一番下の位置)
+        float maxScrollY = contentHeight - viewportHeight;
+
+        // コンテンツがビューポートより短い場合、スクロールバーは表示されないので常に一番下とみなす
+        if (maxScrollY <= 0) { 
+            isScrolledToBottom = true;
+            return;
         }
 
+        // 浮動小数点数の比較のため、許容誤差を設定
+        const float epsilon = 1.0f; // 許容誤差を少し広げる
+
+        // 現在のスクロール位置が一番下の許容範囲内にあるか判定
+        isScrolledToBottom = (Mathf.Abs(currentScrollY - maxScrollY) < epsilon);
+
+        // Debug.Log($"Scroll Y: {currentScrollY}, Max Scroll Y: {maxScrollY}, IsBottom: {isScrolledToBottom}"); // デバッグ用
+    }
+
+    // 強制的に一番下までスクロールするメソッド
+    private void ScrollToBottomImmediately()
+    {
+        if (logScrollView != null)
+        {
+            float contentHeight = logScrollView.contentContainer.resolvedStyle.height;
+            float viewportHeight = logScrollView.resolvedStyle.height;
+            float maxScrollY = contentHeight - viewportHeight;
+            
+            // コンテンツがビューポートより短い場合はスクロール不要
+            if (maxScrollY <= 0) { 
+                maxScrollY = 0; // 負の値にならないように
+            }
+            logScrollView.scrollOffset = new Vector2(0, maxScrollY);
+            isScrolledToBottom = true; // 強制的に一番下へスクロールしたので、フラグをtrueに
+        }
     }
 }
