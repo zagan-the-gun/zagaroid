@@ -1,7 +1,8 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xmlns="UnityEngine.UIElements.StyleSheet" editor-extension-mode="False">
     <ui:VisualElement name="root" class="container" style="height: 960px;">
-        <ui:VisualElement style="flex-grow: 1; color: rgba(248, 255, 0, 0.49);" />
+        <ui:VisualElement name="main" style="flex-grow: 1; background-color: rgba(255, 255, 0, 0.5);" />
         <ui:VisualElement name="tabs" style="flex-grow: 1; align-items: auto; justify-content: flex-start; flex-direction: row; align-self: stretch; background-color: rgba(255, 0, 0, 0.25); max-height: 30px;">
+            <ui:Button text="▼" parse-escape-sequences="true" display-tooltip-when-elided="true" name="ToggleButton" />
             <ui:Button text="Log" parse-escape-sequences="true" display-tooltip-when-elided="true" name="Log" />
             <ui:Button text="Setting" parse-escape-sequences="true" display-tooltip-when-elided="true" name="Setting" />
         </ui:VisualElement>
