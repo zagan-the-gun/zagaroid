@@ -1,6 +1,7 @@
 using UnityEngine;
 using TMPro;
 using UnityEngine.UI;
+using System;
 using System.Collections.Generic;
 
 
@@ -8,6 +9,7 @@ using System.Collections.Generic;
 public class LogCanvasController : MonoBehaviour
 {
     [SerializeField] private TextMeshProUGUI logText; // Log CanvasのText要素を指定
+    // [SerializeField] private InputField logText; // Log CanvasのText要素を指定
     [SerializeField] private ScrollRect scrollRect; // スクロールを制御するScrollRect
     private List<string> logMessages = new List<string>(); // ログメッセージを保持するリスト
     private const int maxLines = 100; // 最大行数
@@ -33,13 +35,11 @@ public class LogCanvasController : MonoBehaviour
         // UpdateContentSize(); // 初期サイズを更新
     }
 
-    private void HandleLog(string logString, string stackTrace, LogType type)
-    {
+    private void HandleLog(string logString, string stackTrace, LogType type) {
         // ログメッセージを追加
-        logMessages.Add(logString); // メッセージを追加
+        logMessages.Add($"[{DateTime.Now:HH:mm:ss}] {logString}"); // メッセージを追加
         // 最大行数を超えた場合、古い行を削除
-        if (logMessages.Count > maxLines)
-        {
+        if (logMessages.Count > maxLines) {
             logMessages.RemoveAt(0); // 最初の行を削除
         }
 
