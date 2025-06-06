@@ -1,6 +1,6 @@
 using UnityEngine;
-using System.IO;
-using Newtonsoft.Json;
+// using System.IO;
+// using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.Collections;
 
@@ -8,16 +8,6 @@ using System.Collections;
 public class CentralManager : MonoBehaviour {
     // シングルトンインスタンス
     public static CentralManager Instance { get; private set; }
-
-
-    // 設定ファイルの読み込み処理
-    private Config config;
-
-    [System.Serializable]
-    public class Config {
-        public string DeepLApiClientKey; // APIキーを格納するプロパティ
-        public string ObsWebSocketsPassword;
-    }
 
     [Header("Entrance Sound Settings")]
     [SerializeField] private AudioClip entranceSound; // 初コメ入室音を指定
@@ -46,17 +36,12 @@ public class CentralManager : MonoBehaviour {
     private VoiceVoxApiClient _voiceVoxApiClient;
     private DeepLApiClient _deepLApiClient;
     private MultiPortWebSocketServer _webSocketServer;
-
     // ... 他のグローバル設定
 
     private void Awake() {
         // シングルトンパターンの実装
         if (Instance == null) {
             Instance = this;
-            // シーンを跨いでも破棄しないようにする場合
-            // DontDestroyOnLoad(gameObject);
-            LoadConfig(); // CentralManager の初期化時に設定を読み込む
-            Debug.Log("CentralManager initialized and config loaded.");
 
             _voiceVoxApiClient = new VoiceVoxApiClient();
             _deepLApiClient = new DeepLApiClient();
@@ -82,26 +67,28 @@ public class CentralManager : MonoBehaviour {
         // 他のマネージャーのインスタンスを FindObjectOfType<>() で検索し、メンバ変数にキャッシュしています。これにより、他のマネージャーへのアクセスが容易になります。
     }
 
-    public void LoadConfig() {
-        Debug.Log("Loading config...");
-        string path = Path.Combine(Application.streamingAssetsPath, "config.json");
-
-        if (File.Exists(path)) {
-            string json = File.ReadAllText(path);
-            config = JsonConvert.DeserializeObject<Config>(json);
-            Debug.Log("Config loaded: " + json);
-        } else {
-            Debug.LogError("Config file not found: " + path);
-        }
-    }
-
+    // PlayerPrefs を使った設定の読み書きメソッド
     public string GetDeepLApiClientKey() {
-        return config?.DeepLApiClientKey; // APIキーを返す
+        // "DeepLApiClientKey"というキーで保存された文字列を読み込む。存在しない場合は空文字列を返す。
+        return PlayerPrefs.GetString("DeepLApiClientKey", "");
+    }
+    public void SetDeepLApiClientKey(string key) {
+        PlayerPrefs.SetString("DeepLApiClientKey", key);
+    }
+    public string GetObsWebSocketsPassword() {
+        // "ObsWebSocketsPassword"というキーで保存された文字列を読み込む。存在しない場合は空文字列を返す。
+        return PlayerPrefs.GetString("ObsWebSocketsPassword", "");
+    }
+    public void SetObsWebSocketsPassword(string password) {
+        PlayerPrefs.SetString("ObsWebSocketsPassword", password);
     }
 
-    public string GetObsWebSocketsPassword() {
-        return config?.ObsWebSocketsPassword; // APIキーを返す
+    // すべての PlayerPrefs の変更をディスクに書き込む
+    public void SaveAllPlayerPrefs() {
+        PlayerPrefs.Save();
+        Debug.Log("すべての PlayerPrefs 設定をセーブしました");
     }
+
 
     // 他のマネージャーへのアクセス用プロパティ (読み取り専用)
     // public TranslationManager TranslationManager => _translationManager;
@@ -112,27 +99,6 @@ public class CentralManager : MonoBehaviour {
     // public SubtitleManager SubtitleManager => _subtitleManager;
     // 各マネージャーへの参照を読み取り専用のプロパティ (TranslationManager, TwitchChatIOManager など) として公開しています。
     // これにより、他のクラスから CentralManager.Instance.TranslationManager のようにアクセスできます。
-
-
-    // アプリケーション全体で利用する設定を取得するメソッド
-    // public string GetDeepLApiKey() {
-    //     return DeepLApiKey;
-    // }
-
-    // public string GetTwitchOAuthToken() {
-    //     return TwitchOAuthToken;
-    // }
-
-    // public float GetMasterVolume() {
-    //     return MasterVolume;
-    // }
-
-    // public string GetDefaultLanguage() {
-    //     return DefaultLanguage;
-    // }
-    //public な変数として API キーやグローバル設定を定義しており、Unity エディターのインスペクターから値を設定できます。
-    // これらの設定値を取得するためのメソッド (GetDeepLApiKey(), GetMasterVolume() など) を提供しています。
-
 
     // アプリケーション全体で利用する可能性のある機能 (例: グローバルイベントの発行など)
     public delegate void GlobalMessageDelegate(string message);
@@ -187,6 +153,8 @@ public class CentralManager : MonoBehaviour {
             MultiPortWebSocketServer.OnMessageReceivedFromPort50001 -= HandleWebSocketMessageFromPort50001;
             MultiPortWebSocketServer.OnMessageReceivedFromPort50002 -= HandleWebSocketMessageFromPort50002;
         }
+        // アプリケーションが終了する際や、CentralManagerが無効になる際に保存
+        SaveAllPlayerPrefs(); 
     }
     void OnDestroy() {
         UnityTwitchChatController.OnTwitchMessageReceived -= HandleTwitchMessageReceived;
@@ -194,6 +162,8 @@ public class CentralManager : MonoBehaviour {
             MultiPortWebSocketServer.OnMessageReceivedFromPort50001 -= HandleWebSocketMessageFromPort50001;
             MultiPortWebSocketServer.OnMessageReceivedFromPort50002 -= HandleWebSocketMessageFromPort50002;
         }
+        // アプリケーションが終了する際や、CentralManagerが無効になる際に保存
+        SaveAllPlayerPrefs(); 
     }
 
     // Twitchから情報を受け取り、それぞれの処理を実行する
