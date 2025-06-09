@@ -7,13 +7,13 @@ using WebSocketSharp;
 public class OBSWebSocketClient : MonoBehaviour {
     private WebSocket ws;
     public string obsUrl = "ws://localhost:4455"; // OBS WebSocketのURL
-    public string OBS_WEBSOCKETS_PASSWORD = ""; // OBSの接続パスワード
+    public string OBS_WEBSOCKETS_PASSWORD; // OBSの接続パスワード
     public string textSourceName = "ksk_subtitles"; // OBSのテキストソース名
 
     private string challengeResponse;
 
     private void Start() {
-        // パスワードの読み取り
+        // OBS WebSocket接続用パスワードの読み取り
         OBS_WEBSOCKETS_PASSWORD = CentralManager.Instance != null ? CentralManager.Instance.GetObsWebSocketsPassword() : null;
         if (string.IsNullOrEmpty(OBS_WEBSOCKETS_PASSWORD)) {
             Debug.LogError("おーびーえすうぇぶそけっつぱすわーど！よみこみえらー！");

@@ -13,17 +13,17 @@ public class SettingUIController : MonoBehaviour {
     private Toggle autoStartSubtitleAIToggle;
     private TextField subtitleAIPathInput;
     private Button browseSubtitleAIPathButton; // 参照ボタン
+
+    private TextField obsWebSocketsPasswordInput;
     private TextField mySubtitleInput;
     private TextField myEnglishSubtitleInput;
+
     private TextField deepLApiClientKeyInput;
     private Button saveSettingsButton;
 
     // PlayerPrefsで使用するキー名 (定数として定義しておくとミスが減る)
     private const string KEY_AUTO_START_SUBTITLE_AI = "AutoStartSubtitleAI";
     private const string KEY_SUBTITLE_AI_PATH = "SubtitleAIPath";
-    private const string KEY_MY_SUBTITLE = "MySubtitle";
-    private const string KEY_MY_ENGLISH_SUBTITLE = "MyEnglishSubtitle";
-    private const string DEEPL_API_CLIENT_KEY = "DeepLApiClientKey";
 
     void OnEnable() {
         Debug.LogWarning("設定UI起動");
@@ -45,8 +45,9 @@ public class SettingUIController : MonoBehaviour {
         autoStartSubtitleAIToggle = settingContentRoot.Q<Toggle>(KEY_AUTO_START_SUBTITLE_AI);
         subtitleAIPathInput = settingContentRoot.Q<TextField>(KEY_SUBTITLE_AI_PATH);
         browseSubtitleAIPathButton = settingContentRoot.Q<Button>("BrowseSubtitleAIPathButton"); // 参照ボタン
-        mySubtitleInput = settingContentRoot.Q<TextField>(KEY_MY_SUBTITLE);
-        myEnglishSubtitleInput = settingContentRoot.Q<TextField>(KEY_MY_ENGLISH_SUBTITLE);
+        obsWebSocketsPasswordInput = settingContentRoot.Q<TextField>("ObsWebSocketsPasswordInput");
+        mySubtitleInput = settingContentRoot.Q<TextField>("MySubtitleInput");
+        myEnglishSubtitleInput = settingContentRoot.Q<TextField>("MyEnglishSubtitleInput");
         deepLApiClientKeyInput = settingContentRoot.Q<TextField>("DeepLApiClientKeyInput"); // DeepL APIキー
         saveSettingsButton = settingContentRoot.Q<Button>("SaveSettingsButton"); // 設定を保存ボタン
 
@@ -81,11 +82,22 @@ public class SettingUIController : MonoBehaviour {
 
     // 設定値をUIに読み込むメソッド
     private void LoadSettingsToUI() {
+        // PlayerPrefsからOBSのWebSocket接続パスワードを読み込み、UIに設定
+        if (obsWebSocketsPasswordInput != null) {
+            obsWebSocketsPasswordInput.value = CentralManager.Instance.GetObsWebSocketsPassword();
+        }
+
+        // PlayerPrefsからOBSの字幕表示用のテキストソース名を読み込み、UIに設定
+        if (mySubtitleInput != null) {
+            mySubtitleInput.value = CentralManager.Instance.GetMySubtitle();
+        }
+        if (myEnglishSubtitleInput != null) {
+            myEnglishSubtitleInput.value = CentralManager.Instance.GetMyEnglishSubtitle();
+        }
+
         // PlayerPrefsからDeepL APIキーを読み込み、UIに設定
         if (deepLApiClientKeyInput != null) {
-            // CentralManagerからAPIキーを取得するように変更
             deepLApiClientKeyInput.value = CentralManager.Instance.GetDeepLApiClientKey();
-            // PlayerPrefs.GetString(KEY_DEEPL_API_KEY, ""); // PlayerPrefs直接使用の場合
         }
 
         // その他の設定も同様に読み込み
@@ -107,6 +119,19 @@ public class SettingUIController : MonoBehaviour {
 
     // --- UIから設定値を読み込み、保存するメソッド ---
     private void SaveSettingsFromUI() {
+        // OBSのWebSocket接続パスワードをCentralManagerに設定
+        if (obsWebSocketsPasswordInput != null) {
+            CentralManager.Instance.SetObsWebSocketsPassword(obsWebSocketsPasswordInput.value);
+        }
+
+        // OBSの字幕表示用のテキストソース名をCentralManagerに設定
+        if (mySubtitleInput != null) {
+            CentralManager.Instance.SetMySubtitle(mySubtitleInput.value);
+        }
+        if (myEnglishSubtitleInput != null) {
+            CentralManager.Instance.SetMyEnglishSubtitle(myEnglishSubtitleInput.value);
+        }
+
         // DeepL APIキーをCentralManagerに設定
         if (deepLApiClientKeyInput != null) {
             CentralManager.Instance.SetDeepLApiClientKey(deepLApiClientKeyInput.value);
@@ -118,12 +143,6 @@ public class SettingUIController : MonoBehaviour {
         }
         if (subtitleAIPathInput != null) {
             PlayerPrefs.SetString(KEY_SUBTITLE_AI_PATH, subtitleAIPathInput.value);
-        }
-        if (mySubtitleInput != null) {
-            PlayerPrefs.SetString(KEY_MY_SUBTITLE, mySubtitleInput.value);
-        }
-        if (myEnglishSubtitleInput != null) {
-            PlayerPrefs.SetString(KEY_MY_ENGLISH_SUBTITLE, myEnglishSubtitleInput.value);
         }
 
         // PlayerPrefsの変更をディスクに書き込む
