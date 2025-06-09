@@ -19,6 +19,8 @@ public class MultiPortWebSocketServer : MonoBehaviour {
 
     private readonly Queue<Action> _executionQueue = new Queue<Action>();
 
+    public string mySubtitle;
+
     private void Awake() {
         if (Instance == null) {
             Instance = this;
@@ -33,6 +35,7 @@ public class MultiPortWebSocketServer : MonoBehaviour {
     private void Start() {
         InitializeServer(50001);
         InitializeServer(50002);
+        mySubtitle = CentralManager.Instance != null ? CentralManager.Instance.GetMySubtitle() : null;
     }
 
     private void InitializeServer(int port) {
@@ -102,11 +105,11 @@ public class MultiPortWebSocketServer : MonoBehaviour {
             }
 
             // (既存のポート固有のハンドラも呼び出す場合)
-            if (messageHandlers.TryGetValue(port, out var handler)) {
-                handler?.Invoke(user, message);
-            } else {
-                Debug.LogWarning($"MultiPortWebSocketServer: ポート {port} にハンドラが登録されていません");
-            }
+            // if (messageHandlers.TryGetValue(port, out var handler)) {
+            //     handler?.Invoke(user, message);
+            // } else {
+            //     Debug.LogWarning($"MultiPortWebSocketServer: ポート {port} にハンドラが登録されていません");
+            // }
         });
     }
 
@@ -119,7 +122,7 @@ public class MultiPortWebSocketServer : MonoBehaviour {
     private class EchoService1 : WebSocketBehavior {
         protected override void OnMessage(MessageEventArgs e) {
             Debug.Log($"EchoService1 Received on port 50001 (スレッド: {System.Threading.Thread.CurrentThread.ManagedThreadId}): {e.Data}");
-            Instance?.HandleMessage(50001, "ksk_subtitles", e.Data);
+            Instance?.HandleMessage(50001, MultiPortWebSocketServer.Instance.mySubtitle, e.Data);
             // ポート50001ではエコーバックなし
         }
 

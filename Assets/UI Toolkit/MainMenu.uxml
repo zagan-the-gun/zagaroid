@@ -19,9 +19,9 @@
                         <ui:TextField label="字幕AIパス" value="/" style="margin-bottom: 5px; flex-grow: 1;" />
                         <ui:Button text="参照" parse-escape-sequences="true" display-tooltip-when-elided="true" />
                     </ui:VisualElement>
-                    <ui:TextField picking-mode="Ignore" label="OBS WebSocket Password" value="filler text" name="ObsWebSocketsPasswordInput" />
-                    <ui:TextField label="自分の字幕" value="zagan_subtitle" name="MySubtitleInput" style="margin-bottom: 5px;" />
-                    <ui:TextField picking-mode="Ignore" label="自分の英語字幕" value="zagan_subtitle_en" name="MyEnglishSubtitleInput" />
+                    <ui:TextField picking-mode="Ignore" label="OBS WebSocket Password" value="OBS WebSocket Password" name="ObsWebSocketsPasswordInput" />
+                    <ui:TextField label="自分の字幕" value="my_subtitle" name="MySubtitleInput" style="margin-bottom: 5px;" />
+                    <ui:TextField picking-mode="Ignore" label="自分の英語字幕" value="my_subtitle_en" name="MyEnglishSubtitleInput" />
                     <ui:TextField picking-mode="Ignore" label="DeepL用APIキー" value="asdfasdf" name="DeepLApiClientKeyInput" />
                     <ui:Button text="設定を保存" name="SaveSettingsButton" style="margin-top: 10px;" />
                 </ui:ScrollView>
