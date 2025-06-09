@@ -68,6 +68,22 @@ public class CentralManager : MonoBehaviour {
     }
 
     // PlayerPrefs を使った設定の読み書きメソッド
+    public string GetMySubtitle() {
+        // "MySubtitle"というキーで保存された文字列を読み込む。存在しない場合は空文字列を返す。
+        return PlayerPrefs.GetString("MySubtitle", "");
+    }
+    public void SetMySubtitle(string key) {
+        PlayerPrefs.SetString("MySubtitle", key);
+    }
+
+    public string GetMyEnglishSubtitle() {
+        // "MyEnglishSubtitle"というキーで保存された文字列を読み込む。存在しない場合は空文字列を返す。
+        return PlayerPrefs.GetString("MyEnglishSubtitle", "");
+    }
+    public void SetMyEnglishSubtitle(string key) {
+        PlayerPrefs.SetString("MyEnglishSubtitle", key);
+    }
+
     public string GetDeepLApiClientKey() {
         // "DeepLApiClientKey"というキーで保存された文字列を読み込む。存在しない場合は空文字列を返す。
         return PlayerPrefs.GetString("DeepLApiClientKey", "");
@@ -75,6 +91,7 @@ public class CentralManager : MonoBehaviour {
     public void SetDeepLApiClientKey(string key) {
         PlayerPrefs.SetString("DeepLApiClientKey", key);
     }
+
     public string GetObsWebSocketsPassword() {
         // "ObsWebSocketsPassword"というキーで保存された文字列を読み込む。存在しない場合は空文字列を返す。
         return PlayerPrefs.GetString("ObsWebSocketsPassword", "");
