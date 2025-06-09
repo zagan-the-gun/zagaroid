@@ -67,6 +67,18 @@ public class CentralManager : MonoBehaviour {
         // 他のマネージャーのインスタンスを FindObjectOfType<>() で検索し、メンバ変数にキャッシュしています。これにより、他のマネージャーへのアクセスが容易になります。
     }
 
+    void Start() {
+        // Twitchからコメントを受信するイベントを登録
+        UnityTwitchChatController.OnTwitchMessageReceived += HandleTwitchMessageReceived;
+        // MultiPortWebSocketServerの情報を受信するイベントを登録
+        if (MultiPortWebSocketServer.Instance != null) {
+            MultiPortWebSocketServer.OnMessageReceivedFromPort50001 += HandleWebSocketMessageFromPort50001;
+            MultiPortWebSocketServer.OnMessageReceivedFromPort50002 += HandleWebSocketMessageFromPort50002;
+        } else {
+            Debug.LogError("MultiPortWebSocketServer のインスタンスが見つかりません。");
+        }
+    }
+
     // PlayerPrefs を使った設定の読み書きメソッド
     public string GetMySubtitle() {
         // "MySubtitle"というキーで保存された文字列を読み込む。存在しない場合は空文字列を返す。
@@ -150,18 +162,6 @@ public class CentralManager : MonoBehaviour {
     public static event ObsSubtitlesSendDelegate OnObsSubtitlesSend;
     public static void SendObsSubtitles(string subtitle, string subtitleText) {
         OnObsSubtitlesSend?.Invoke(subtitle, subtitleText);
-    }
-
-    void OnEnable() {
-        // Twitchからコメントを受信するイベントを登録
-        UnityTwitchChatController.OnTwitchMessageReceived += HandleTwitchMessageReceived;
-        // MultiPortWebSocketServerの情報を受信するイベントを登録
-        if (MultiPortWebSocketServer.Instance != null) {
-            MultiPortWebSocketServer.OnMessageReceivedFromPort50001 += HandleWebSocketMessageFromPort50001;
-            MultiPortWebSocketServer.OnMessageReceivedFromPort50002 += HandleWebSocketMessageFromPort50002;
-        } else {
-            Debug.LogError("MultiPortWebSocketServer のインスタンスが見つかりません。");
-        }
     }
 
     void OnDisable() {
@@ -280,8 +280,11 @@ public class CentralManager : MonoBehaviour {
         // 字幕をOBSに送信
         SendObsSubtitles(subtitle, subtitleText);
 
+        // 字幕用取得
+        string myEnglishSubtitle = CentralManager.Instance != null ? CentralManager.Instance.GetMyEnglishSubtitle() : null;
+
         // 翻訳字幕の送信
-        StartCoroutine(translateSubtitle(subtitle, subtitleText));
+        StartCoroutine(translateSubtitle(myEnglishSubtitle, subtitleText));
     }
 
     private void HandleWebSocketMessageFromPort50002(string subtitle, string subtitleText) {
@@ -289,6 +292,7 @@ public class CentralManager : MonoBehaviour {
         // ポート50002からのメッセージに対する処理
     }
 
+    // 英語字幕の送信
     private IEnumerator translateSubtitle(string subtitle, string subtitleText) {
         Debug.Log("字幕の翻訳開始");
         yield return StartCoroutine(_deepLApiClient.PostTranslate(subtitleText, "EN", (result) => {
@@ -299,7 +303,7 @@ public class CentralManager : MonoBehaviour {
         Debug.Log($"翻訳字幕: {subtitleText}");
 
         // 字幕をOBSに送信
-        SendObsSubtitles($"{subtitle}_en", subtitleText);
+        SendObsSubtitles($"{subtitle}", subtitleText);
     }
 }
 
