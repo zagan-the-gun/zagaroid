@@ -34,6 +34,7 @@ public class MultiPortWebSocketServer : MonoBehaviour {
 
     private void Start() {
         InitializeServer(50001);
+        // InitializeServer(50000);
         InitializeServer(50002);
         mySubtitle = CentralManager.Instance != null ? CentralManager.Instance.GetMySubtitle() : null;
     }
@@ -42,6 +43,7 @@ public class MultiPortWebSocketServer : MonoBehaviour {
         try {
             var server = new WebSocketServer(IPAddress.Any, port);
             if (port == 50001) {
+            // if (port == 50000) {
                 server.AddWebSocketService<EchoService1>("/");
             } else if (port == 50002) {
                 server.AddWebSocketService<EchoService2>("/");
@@ -99,6 +101,7 @@ public class MultiPortWebSocketServer : MonoBehaviour {
         Enqueue(() => {
             Debug.Log($"HandleMessage (メインスレッド): ポート: {port}, ユーザー: {user}, メッセージ: {message}");
             if (port == 50001) {
+            // if (port == 50000) {
                 OnMessageReceivedFromPort50001?.Invoke(user, message);
             } else if (port == 50002) {
                 OnMessageReceivedFromPort50002?.Invoke(user, message);
@@ -123,6 +126,7 @@ public class MultiPortWebSocketServer : MonoBehaviour {
         protected override void OnMessage(MessageEventArgs e) {
             Debug.Log($"EchoService1 Received on port 50001 (スレッド: {System.Threading.Thread.CurrentThread.ManagedThreadId}): {e.Data}");
             Instance?.HandleMessage(50001, MultiPortWebSocketServer.Instance.mySubtitle, e.Data);
+            // Instance?.HandleMessage(50000, MultiPortWebSocketServer.Instance.mySubtitle, e.Data);
             // ポート50001ではエコーバックなし
         }
 
