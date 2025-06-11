@@ -14,6 +14,10 @@ public class SettingUIController : MonoBehaviour {
     private TextField subtitleAIPathInput;
     private Button browseSubtitleAIPathButton; // 参照ボタン
 
+    private IntegerField charactersPerSecondInput;
+    private FloatField minDisplayTimeInput;
+    private FloatField maxDisplayTimeInput;
+
     private TextField obsWebSocketsPasswordInput;
     private TextField mySubtitleInput;
     private TextField myEnglishSubtitleInput;
@@ -45,6 +49,11 @@ public class SettingUIController : MonoBehaviour {
         autoStartSubtitleAIToggle = settingContentRoot.Q<Toggle>(KEY_AUTO_START_SUBTITLE_AI);
         subtitleAIPathInput = settingContentRoot.Q<TextField>(KEY_SUBTITLE_AI_PATH);
         browseSubtitleAIPathButton = settingContentRoot.Q<Button>("BrowseSubtitleAIPathButton"); // 参照ボタン
+
+        charactersPerSecondInput = settingContentRoot.Q<IntegerField>("CharactersPerSecondInput");
+        minDisplayTimeInput = settingContentRoot.Q<FloatField>("MinDisplayTimeInput");
+        maxDisplayTimeInput = settingContentRoot.Q<FloatField>("MaxDisplayTimeInput");
+
         obsWebSocketsPasswordInput = settingContentRoot.Q<TextField>("ObsWebSocketsPasswordInput");
         mySubtitleInput = settingContentRoot.Q<TextField>("MySubtitleInput");
         myEnglishSubtitleInput = settingContentRoot.Q<TextField>("MyEnglishSubtitleInput");
@@ -52,8 +61,8 @@ public class SettingUIController : MonoBehaviour {
         saveSettingsButton = settingContentRoot.Q<Button>("SaveSettingsButton"); // 設定を保存ボタン
 
         // UI要素が見つからない場合のエラーチェック
-        if (deepLApiClientKeyInput == null) Debug.LogError("SettingUIController: 'DeepLApiClientKeyInput' TextFieldが見つかりません。");
-        if (saveSettingsButton == null) Debug.LogError("SettingUIController: 'SaveSettingsButton' Buttonが見つかりません。");
+        // if (deepLApiClientKeyInput == null) Debug.LogError("SettingUIController: 'DeepLApiClientKeyInput' TextFieldが見つかりません。");
+        // if (saveSettingsButton == null) Debug.LogError("SettingUIController: 'SaveSettingsButton' Buttonが見つかりません。");
         // 他の要素についても同様にチェックを入れるとより堅牢になります。
 
         // --- 初期値の読み込みとUIへの反映 ---
@@ -82,12 +91,21 @@ public class SettingUIController : MonoBehaviour {
 
     // 設定値をUIに読み込むメソッド
     private void LoadSettingsToUI() {
-        // PlayerPrefsからOBSのWebSocket接続パスワードを読み込み、UIに設定
+        // PlayerPrefsから読み込み、UIに設定
+        if (charactersPerSecondInput != null) {
+            charactersPerSecondInput.value = CentralManager.Instance.GetCharactersPerSecond();
+        }
+        if (minDisplayTimeInput != null) {
+            minDisplayTimeInput.value = CentralManager.Instance.GetMinDisplayTime();
+        }
+        if (maxDisplayTimeInput != null) {
+            maxDisplayTimeInput.value = CentralManager.Instance.GetMaxDisplayTime();
+        }
+
         if (obsWebSocketsPasswordInput != null) {
             obsWebSocketsPasswordInput.value = CentralManager.Instance.GetObsWebSocketsPassword();
         }
 
-        // PlayerPrefsからOBSの字幕表示用のテキストソース名を読み込み、UIに設定
         if (mySubtitleInput != null) {
             mySubtitleInput.value = CentralManager.Instance.GetMySubtitle();
         }
@@ -95,36 +113,31 @@ public class SettingUIController : MonoBehaviour {
             myEnglishSubtitleInput.value = CentralManager.Instance.GetMyEnglishSubtitle();
         }
 
-        // PlayerPrefsからDeepL APIキーを読み込み、UIに設定
         if (deepLApiClientKeyInput != null) {
             deepLApiClientKeyInput.value = CentralManager.Instance.GetDeepLApiClientKey();
         }
 
-        // その他の設定も同様に読み込み
-        // if (autoStartSubtitleAIToggle != null) {
-        //     autoStartSubtitleAIToggle.value = PlayerPrefs.GetInt(KEY_AUTO_START_SUBTITLE_AI, 0) == 1;
-        // }
-        // if (subtitleAIPathInput != null) {
-        //     subtitleAIPathInput.value = PlayerPrefs.GetString(KEY_SUBTITLE_AI_PATH, "/");
-        // }
-        // if (mySubtitleInput != null) {
-        //     mySubtitleInput.value = PlayerPrefs.GetString(KEY_MY_SUBTITLE, "zagan_subtitle");
-        // }
-        // if (myEnglishSubtitleInput != null) {
-        //     myEnglishSubtitleInput.value = PlayerPrefs.GetString(KEY_MY_ENGLISH_SUBTITLE, "zagan_subtitle_en");
-        // }
-
         Debug.Log("設定UIに値をロードしました。");
     }
 
-    // --- UIから設定値を読み込み、保存するメソッド ---
+    // UIから設定値を読み込み、保存するメソッド
     private void SaveSettingsFromUI() {
-        // OBSのWebSocket接続パスワードをCentralManagerに設定
+        if (charactersPerSecondInput != null) {
+            CentralManager.Instance.SetCharactersPerSecond(charactersPerSecondInput.value);
+        }
+
+        if (minDisplayTimeInput != null) {
+            CentralManager.Instance.SetMinDisplayTime(minDisplayTimeInput.value);
+        }
+
+        if (maxDisplayTimeInput != null) {
+            CentralManager.Instance.SetMaxDisplayTime(maxDisplayTimeInput.value);
+        }
+
         if (obsWebSocketsPasswordInput != null) {
             CentralManager.Instance.SetObsWebSocketsPassword(obsWebSocketsPasswordInput.value);
         }
 
-        // OBSの字幕表示用のテキストソース名をCentralManagerに設定
         if (mySubtitleInput != null) {
             CentralManager.Instance.SetMySubtitle(mySubtitleInput.value);
         }
@@ -132,7 +145,6 @@ public class SettingUIController : MonoBehaviour {
             CentralManager.Instance.SetMyEnglishSubtitle(myEnglishSubtitleInput.value);
         }
 
-        // DeepL APIキーをCentralManagerに設定
         if (deepLApiClientKeyInput != null) {
             CentralManager.Instance.SetDeepLApiClientKey(deepLApiClientKeyInput.value);
         }

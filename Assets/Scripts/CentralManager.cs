@@ -3,6 +3,8 @@ using UnityEngine;
 // using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.Collections;
+using System.Collections.Generic; // Queue<T> を使うため
+using System.Linq; // 文字数計算にLinqを使う場合
 
 
 public class CentralManager : MonoBehaviour {
@@ -37,6 +39,16 @@ public class CentralManager : MonoBehaviour {
     private DeepLApiClient _deepLApiClient;
     private MultiPortWebSocketServer _webSocketServer;
     // ... 他のグローバル設定
+
+    // private const int CHARS_PER_SECOND = 4; // 1秒あたりの文字数 (例: 4文字で1秒)
+    // private const float MIN_DISPLAY_TIME = 4.0f; // 最低表示時間 (例: 2秒)
+    // private const float MAX_DISPLAY_TIME = 8.0f; // 最大表示時間 (例: 30秒)
+
+    private Queue<string> _japaneseSubtitleQueue = new Queue<string>(); // 日本語字幕のキュー
+    private CurrentDisplaySubtitle _currentJapaneseDisplay; // 現在表示中の日本語字幕とその情報
+
+    // 現在の字幕が結合された状態かどうかのフラグ
+    private bool _isCombiningJapaneseSubtitles = false;
 
     private void Awake() {
         // シングルトンパターンの実装
@@ -79,7 +91,71 @@ public class CentralManager : MonoBehaviour {
         }
     }
 
+    private void Update() {
+        // 字幕の表示時間処理
+        if (_currentJapaneseDisplay != null) {
+            _currentJapaneseDisplay.remainingDuration -= Time.deltaTime;
+
+            if (_currentJapaneseDisplay.remainingDuration <= 0) {
+                Debug.Log("日本語字幕の表示時間が終了しました。");
+                // OBS側で日本語字幕をクリアする (テキストを空にする)
+                SendObsSubtitles(_currentJapaneseDisplay.japaneseSubtitle, "");
+                // 日本語字幕が消えたら、英語字幕も消す
+                if (!string.IsNullOrEmpty(_currentJapaneseDisplay.englishSubtitle)) {
+                     SendObsSubtitles(_currentJapaneseDisplay.englishSubtitle, "");
+                }
+               
+                _currentJapaneseDisplay = null;
+                _isCombiningJapaneseSubtitles = false; // 結合フラグをリセット
+
+                // キューに次の日本語字幕があれば表示を開始
+                if (_japaneseSubtitleQueue.Count > 0) {
+                    Debug.Log("キューから次の日本語字幕を表示します。");
+                    string nextJapaneseText = _japaneseSubtitleQueue.Dequeue();
+                    // 新しいCurrentDisplaySubtitleオブジェクトを作成
+                    // 英語字幕は別途翻訳されるため、ここでは日本語の情報のみで十分
+                    float nextDuration = calculateDisplayDuration(nextJapaneseText.Length);
+                    CurrentDisplaySubtitle nextJpEntry = new CurrentDisplaySubtitle(
+                        nextJapaneseText,
+                        _currentJapaneseDisplay?.japaneseSubtitle ?? "zagan_subtitle", // 前のチャンネル情報を引き継ぐかデフォルト
+                        _currentJapaneseDisplay?.englishSubtitle ?? "zagan_subtitle_en", // 前のチャンネル情報を引き継ぐかデフォルト
+                        nextDuration
+                    );
+                    startDisplayingJapaneseSubtitle(nextJpEntry);
+
+                    // キューから取り出した日本語字幕に対応する英語字幕も非同期で翻訳・送信
+                    // ※ ここでチャンネル名が適切に渡されるように注意
+                    StartCoroutine(translateSubtitle(nextJpEntry.englishSubtitle, nextJapaneseText));
+                }
+            }
+        }
+    }
+
     // PlayerPrefs を使った設定の読み書きメソッド
+    public int GetCharactersPerSecond() {
+        // 存在しない場合はデフォルト値として 4 を返す。
+        return PlayerPrefs.GetInt("CharactersPerSecond", 4);
+    }
+    public void SetCharactersPerSecond(int value) {
+        PlayerPrefs.SetInt("CharactersPerSecond", value);
+    }
+
+    public float GetMinDisplayTime() {
+        // 存在しない場合はデフォルト値として 4.0f を返す。
+        return PlayerPrefs.GetFloat("MinDisplayTime", 4.0f);
+    }
+    public void SetMinDisplayTime(float value) {
+        PlayerPrefs.SetFloat("MinDisplayTime", value);
+    }
+
+    public float GetMaxDisplayTime() {
+        // 存在しない場合はデフォルト値として 8.0f を返す。
+        return PlayerPrefs.GetFloat("MaxDisplayTime", 8.0f);
+    }
+    public void SetMaxDisplayTime(float value) {
+        PlayerPrefs.SetFloat("MaxDisplayTime", value);
+    }
+
     public string GetMySubtitle() {
         // "MySubtitle"というキーで保存された文字列を読み込む。存在しない場合は空文字列を返す。
         return PlayerPrefs.GetString("MySubtitle", "");
@@ -173,6 +249,7 @@ public class CentralManager : MonoBehaviour {
         // アプリケーションが終了する際や、CentralManagerが無効になる際に保存
         SaveAllPlayerPrefs(); 
     }
+
     void OnDestroy() {
         UnityTwitchChatController.OnTwitchMessageReceived -= HandleTwitchMessageReceived;
         if (MultiPortWebSocketServer.Instance != null) {
@@ -278,13 +355,98 @@ public class CentralManager : MonoBehaviour {
     private void HandleWebSocketMessageFromPort50001(string subtitle, string subtitleText) {
         Debug.Log($"字幕を受信しました！ Subtitle: {subtitle}, Message: {subtitleText}");
         // 字幕をOBSに送信
-        SendObsSubtitles(subtitle, subtitleText);
+        // SendObsSubtitles(subtitle, subtitleText);
 
-        // 字幕用取得
+        // 英語字幕用テキストソース名取得
         string myEnglishSubtitle = CentralManager.Instance != null ? CentralManager.Instance.GetMyEnglishSubtitle() : null;
+
+        // 文字数に応じて日本語字幕表示時間を調整する
+        float calculatedDuration = calculateDisplayDuration(subtitleText.Length);
+
+        // 新しい日本語字幕エントリを作成
+        CurrentDisplaySubtitle newJpEntry = new CurrentDisplaySubtitle(
+            subtitleText,
+            subtitle,
+            myEnglishSubtitle, // 英語チャンネルも情報として保持
+            calculatedDuration
+        );
+
+        // 日本語字幕の表示ロジックを管理
+        manageJapaneseSubtitleDisplay(newJpEntry);
 
         // 翻訳字幕の送信
         StartCoroutine(translateSubtitle(myEnglishSubtitle, subtitleText));
+    }
+
+    // 字幕表示時間を計算するヘルパーメソッド
+    private float calculateDisplayDuration(int charCount) {
+        // 設定値を取得して利用
+        float charsPerSecond = GetCharactersPerSecond();
+        float minDisplayTime = GetMinDisplayTime();
+        float maxDisplayTime = GetMaxDisplayTime();
+
+        float duration = (float)charCount / charsPerSecond;
+        duration = Mathf.Max(duration, minDisplayTime); // durationがminDisplayTimeより小さければminDisplayTimeなる
+        return Mathf.Clamp(duration, minDisplayTime, maxDisplayTime); // 最終的にminDisplayTimeからmaxDisplayTimeの間にクランプ
+    }
+
+    // 日本語字幕の表示状態を管理するメインロジック
+    private void manageJapaneseSubtitleDisplay(CurrentDisplaySubtitle newJpEntry) {
+        if (_currentJapaneseDisplay == null) {
+            // 現在表示中の日本語字幕がない場合、すぐに表示
+            startDisplayingJapaneseSubtitle(newJpEntry);
+            Debug.Log("字幕：新しい日本語字幕をすぐに表示します。");
+        } else if (!_isCombiningJapaneseSubtitles) {
+            // 表示中の日本語字幕があり、まだ結合中でない場合
+            // 2. 先の字幕+次の字幕を同時に表示する
+            // 2. 先の字幕の残表示時間+次の字幕の表示時間の間表示する
+            Debug.Log("字幕：既存の日本語字幕と新しい日本語字幕を結合して表示します。");
+            combineAndDisplayJapaneseSubtitles(_currentJapaneseDisplay, newJpEntry);
+            _isCombiningJapaneseSubtitles = true; // 結合中フラグを立てる
+        } else {
+            // 3. 既に結合表示中にさらに新しい日本語字幕が来た場合、キューに追加して待機
+            Debug.Log("字幕：既に結合表示中またはキューに他の字幕があるため、新しい日本語字幕をキューに追加します。");
+            _japaneseSubtitleQueue.Enqueue(newJpEntry.japaneseText); // テキストのみキューに入れる
+        }
+    }
+
+    // 実際に日本語字幕の表示を開始するメソッド
+    private void startDisplayingJapaneseSubtitle(CurrentDisplaySubtitle jpEntry) {
+        _currentJapaneseDisplay = jpEntry;
+        _isCombiningJapaneseSubtitles = false; // 新しい日本語字幕なので結合フラグはリセット
+
+        // 日本語字幕をOBSに送信
+        SendObsSubtitles(_currentJapaneseDisplay.japaneseSubtitle, _currentJapaneseDisplay.japaneseText);
+
+        Debug.Log($"日本語字幕表示開始: 『{_currentJapaneseDisplay.japaneseText}』, 残り時間: {_currentJapaneseDisplay.remainingDuration:F2}秒");
+    }
+
+    // 日本語字幕を結合して表示するメソッド
+    private void combineAndDisplayJapaneseSubtitles(CurrentDisplaySubtitle existingJp, CurrentDisplaySubtitle newJp) {
+        // 日本語字幕の結合 (既存 + 新規)
+        string combinedJapaneseText = $"{existingJp.japaneseText}\n{newJp.japaneseText}";
+
+        // 設定値を取得して利用
+        float minDisplayTime = GetMinDisplayTime();
+        float maxDisplayTime = GetMaxDisplayTime();
+
+        // 新しい表示時間を計算: 既存字幕の残り時間 + 新規字幕の表示時間 (ただし最大時間を超えない)
+        float newDuration = existingJp.remainingDuration + newJp.displayDuration;
+        newDuration = Mathf.Clamp(newDuration, minDisplayTime, maxDisplayTime);
+
+        // 新しい結合済みCurrentDisplaySubtitleとして設定
+        _currentJapaneseDisplay = new CurrentDisplaySubtitle(
+            combinedJapaneseText, 
+            existingJp.japaneseSubtitle, // チャンネルは既存のものを引き継ぐ
+            existingJp.englishSubtitle,   // 英語チャンネルも引き継ぐ
+            newDuration
+        );
+        _currentJapaneseDisplay.remainingDuration = newDuration; // 残り時間も更新
+
+        // OBSに送信
+        SendObsSubtitles(_currentJapaneseDisplay.japaneseSubtitle, _currentJapaneseDisplay.japaneseText);
+
+        Debug.Log($"日本語字幕結合表示開始: 『{_currentJapaneseDisplay.japaneseText}』, 残り時間: {_currentJapaneseDisplay.remainingDuration:F2}秒");
     }
 
     private void HandleWebSocketMessageFromPort50002(string subtitle, string subtitleText) {
@@ -304,6 +466,22 @@ public class CentralManager : MonoBehaviour {
 
         // 字幕をOBSに送信
         SendObsSubtitles($"{subtitle}", subtitleText);
+    }
+}
+
+public class CurrentDisplaySubtitle {
+    public string japaneseText; // 表示中の日本語字幕テキスト
+    public string japaneseSubtitle; // 日本語字幕のOBSソース名 (例: "zagan_subtitle")
+    public string englishSubtitle; // 英語字幕のOBSソース名 (例: "zagan_subtitle_en") // 英語字幕チャンネルも保持
+    public float displayDuration; // この日本語字幕の表示時間（秒）
+    public float remainingDuration; // この日本語字幕の残り表示時間（秒）
+
+    public CurrentDisplaySubtitle(string jpText, string jpSubtitle, string enSubtitle, float duration) {
+        japaneseText = jpText;
+        japaneseSubtitle = jpSubtitle;
+        englishSubtitle = enSubtitle; // 英語チャンネルもここで設定
+        displayDuration = duration;
+        remainingDuration = duration;
     }
 }
 
