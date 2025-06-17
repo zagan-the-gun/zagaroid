@@ -15,11 +15,12 @@
             <ui:VisualElement name="settingContent" style="flex-grow: 1; display: flex;">
                 <ui:ScrollView class="setting-scroll-view" style="flex-grow: 1;">
                     <ui:VisualElement name="SubtitleAI" style="flex-grow: 1;">
-                        <ui:Toggle label="字幕AI自動起動" style="margin-bottom: 5px;" />
+                        <ui:Toggle label="字幕AI自動起動" name="AutoStartSubtitleAIToggle" style="margin-bottom: 5px;" />
                         <ui:VisualElement name="SubtitleAIExecutionPath" style="flex-grow: 1; flex-direction: row;">
                             <ui:TextField label="字幕AIパス" value="/" name="SubtitleAIExecutionPathInput" style="margin-bottom: 5px; flex-grow: 1;" />
-                            <ui:Button text="参照" parse-escape-sequences="true" display-tooltip-when-elided="true" />
+                            <ui:Button text="参照" parse-escape-sequences="true" display-tooltip-when-elided="true" name="BrowseSubtitleAIPathButton" />
                         </ui:VisualElement>
+                        <ui:Button text="字幕AI起動" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartSubtitleAIButton" style="margin-bottom: 5px;" />
                         <ui:IntegerField label="Char Per Sec(char)" value="4" name="CharactersPerSecondInput" />
                         <ui:FloatField label="Min Display Time(sec)" value="4" name="MinDisplayTimeInput" />
                         <ui:FloatField label="Max Display Time(sec)" value="8" name="MaxDisplayTimeInput" />

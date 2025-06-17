@@ -1,5 +1,7 @@
 using UnityEngine;
 using UnityEngine.UIElements;
+using SFB; // ★ 追加: StandaloneFileBrowserの名前空間
+using System.IO; // ★ 追加: パス操作のため
 
 public class SettingUIController : MonoBehaviour {
     // InspectorからUIDocumentをアタッチできるよう、[SerializeField] を付ける
@@ -11,8 +13,9 @@ public class SettingUIController : MonoBehaviour {
 
     // 各設定UI要素への参照
     private Toggle autoStartSubtitleAIToggle;
-    private TextField subtitleAIPathInput;
+    private TextField subtitleAIExecutionPathInput;
     private Button browseSubtitleAIPathButton; // 参照ボタン
+    private Button startSubtitleAIButton; // 手動起動ボタン
 
     private IntegerField charactersPerSecondInput;
     private FloatField minDisplayTimeInput;
@@ -25,9 +28,6 @@ public class SettingUIController : MonoBehaviour {
     private TextField deepLApiClientKeyInput;
     private Button saveSettingsButton;
 
-    // PlayerPrefsで使用するキー名 (定数として定義しておくとミスが減る)
-    private const string KEY_AUTO_START_SUBTITLE_AI = "AutoStartSubtitleAI";
-    private const string KEY_SUBTITLE_AI_PATH = "SubtitleAIPath";
 
     void OnEnable() {
         Debug.LogWarning("設定UI起動");
@@ -46,9 +46,12 @@ public class SettingUIController : MonoBehaviour {
         }
 
         // 各UI要素を取得
-        autoStartSubtitleAIToggle = settingContentRoot.Q<Toggle>(KEY_AUTO_START_SUBTITLE_AI);
-        subtitleAIPathInput = settingContentRoot.Q<TextField>(KEY_SUBTITLE_AI_PATH);
+        autoStartSubtitleAIToggle = settingContentRoot.Q<Toggle>("AutoStartSubtitleAIToggle");
+        subtitleAIExecutionPathInput = settingContentRoot.Q<TextField>("SubtitleAIExecutionPathInput");
+        browseSubtitleAIPathButton = settingContentRoot.Q<Button>(null, "BrowseSubtitleAIPathButton"); // ボタンに特定のname属性がないため、ここではタイプでQします
+
         browseSubtitleAIPathButton = settingContentRoot.Q<Button>("BrowseSubtitleAIPathButton"); // 参照ボタン
+        startSubtitleAIButton = settingContentRoot.Q<Button>("StartSubtitleAIButton"); // 手動起動ボタン
 
         charactersPerSecondInput = settingContentRoot.Q<IntegerField>("CharactersPerSecondInput");
         minDisplayTimeInput = settingContentRoot.Q<FloatField>("MinDisplayTimeInput");
@@ -70,28 +73,46 @@ public class SettingUIController : MonoBehaviour {
         Debug.LogWarning("設定UI LoadSettingsToUI処理終了");
 
         // --- イベントリスナーの登録 ---
+        if (browseSubtitleAIPathButton != null)
+        {
+            browseSubtitleAIPathButton.clicked += OnBrowseSubtitleAIPathClicked;
+        }
+
+        if (startSubtitleAIButton != null) {
+            startSubtitleAIButton.clicked += OnStartSubtitleAIClicked;
+        }
+
         if (saveSettingsButton != null) {
             saveSettingsButton.clicked += SaveSettingsFromUI;
-        }
-        // 他のボタンやトグルのイベントもここに追加
-        if (browseSubtitleAIPathButton != null) {
-            browseSubtitleAIPathButton.clicked += OnBrowseSubtitleAIPathClicked;
         }
     }
 
     void OnDisable() {
         // イベントリスナーの解除 (オブジェクトが無効になったときにメモリリークを防ぐ)
-        if (saveSettingsButton != null) {
-            saveSettingsButton.clicked -= SaveSettingsFromUI;
-        }
         if (browseSubtitleAIPathButton != null) {
             browseSubtitleAIPathButton.clicked -= OnBrowseSubtitleAIPathClicked;
+        }
+
+        if (startSubtitleAIButton != null) {
+            startSubtitleAIButton.clicked -= OnStartSubtitleAIClicked;
+        }
+
+        if (saveSettingsButton != null) {
+            saveSettingsButton.clicked -= SaveSettingsFromUI;
         }
     }
 
     // 設定値をUIに読み込むメソッド
     private void LoadSettingsToUI() {
         // PlayerPrefsから読み込み、UIに設定
+        if (autoStartSubtitleAIToggle != null) {
+            autoStartSubtitleAIToggle.value = CentralManager.Instance.GetAutoStartSubtitleAI();
+        }
+
+        if (subtitleAIExecutionPathInput != null) {
+            subtitleAIExecutionPathInput.value = CentralManager.Instance.GetSubtitleAIExecutionPath();
+        }
+
         if (charactersPerSecondInput != null) {
             charactersPerSecondInput.value = CentralManager.Instance.GetCharactersPerSecond();
         }
@@ -122,6 +143,14 @@ public class SettingUIController : MonoBehaviour {
 
     // UIから設定値を読み込み、保存するメソッド
     private void SaveSettingsFromUI() {
+        if (autoStartSubtitleAIToggle != null) {
+            CentralManager.Instance.SetAutoStartSubtitleAI(autoStartSubtitleAIToggle.value);
+        }
+
+        if (subtitleAIExecutionPathInput != null) {
+            CentralManager.Instance.SetSubtitleAIExecutionPath(subtitleAIExecutionPathInput.value);
+        }
+
         if (charactersPerSecondInput != null) {
             CentralManager.Instance.SetCharactersPerSecond(charactersPerSecondInput.value);
         }
@@ -149,14 +178,6 @@ public class SettingUIController : MonoBehaviour {
             CentralManager.Instance.SetDeepLApiClientKey(deepLApiClientKeyInput.value);
         }
 
-        // その他の設定もPlayerPrefsに直接保存
-        if (autoStartSubtitleAIToggle != null) {
-            PlayerPrefs.SetInt(KEY_AUTO_START_SUBTITLE_AI, autoStartSubtitleAIToggle.value ? 1 : 0);
-        }
-        if (subtitleAIPathInput != null) {
-            PlayerPrefs.SetString(KEY_SUBTITLE_AI_PATH, subtitleAIPathInput.value);
-        }
-
         // PlayerPrefsの変更をディスクに書き込む
         // CentralManager の OnDisable/OnDestroy で自動的に保存されるため、
         // ここで毎回 PlayerPrefs.Save(); を呼ぶ必要はありませんが、
@@ -171,8 +192,29 @@ public class SettingUIController : MonoBehaviour {
     // --- 参照ボタンのクリックハンドラ (例) ---
     private void OnBrowseSubtitleAIPathClicked() {
         Debug.Log("字幕AIパス参照ボタンがクリックされました。ファイル選択ダイアログなどを実装します。");
-        // ここにファイル選択ダイアログを表示するロジックを実装します。
-        // Unityでは通常、UnityStandaloneFileBrowserなどの外部ライブラリを使うと便利です。
+
+        // Windows向けビルドで実行ファイルを選択する場合を想定したフィルター
+        var extensions = new [] {
+            new ExtensionFilter("Execute Files", "exe"), // ここを BasicSample.cs のように SFB. をつける
+            new ExtensionFilter("All Files", "*" ),
+        };
+
+        // ファイル選択ダイアログを開く
+        // ShowOpenFileDialog(string title, string defaultPath, ExtensionFilter[] extensions, bool multiselect)
+        string[] paths = StandaloneFileBrowser.OpenFilePanel("Subtitle AI execution path select", "/", extensions, false);
+
+        if (paths.Length > 0 && !string.IsNullOrEmpty(paths[0])) {
+            // 選択されたパスをTextFieldに設定
+            subtitleAIExecutionPathInput.value = paths[0];
+            // ここでCentralManagerに保存するメソッドを呼び出すことも可能
+            CentralManager.Instance.SetSubtitleAIExecutionPath(paths[0]);
+        }
+    }
+
+    // --- 手動起動ボタンのクリックハンドラ ---
+    private void OnStartSubtitleAIClicked() {
+        Debug.Log("字幕AI手動起動ボタンがクリックされました");
+        CentralManager.Instance.StartSubtitleAI();
     }
 
     // 必要に応じて、他のカスタムイベントハンドラーやヘルパーメソッドを追加できます。
