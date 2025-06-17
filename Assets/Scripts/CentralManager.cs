@@ -89,6 +89,18 @@ public class CentralManager : MonoBehaviour {
         } else {
             Debug.LogError("MultiPortWebSocketServer のインスタンスが見つかりません。");
         }
+
+        // 字幕AIの自動起動
+        if (GetAutoStartSubtitleAI()) {
+            // 少し遅延させてから起動（他のコンポーネントの初期化を待つ）
+            StartCoroutine(DelayedSubtitleAIStart());
+        }
+    }
+
+    private IEnumerator DelayedSubtitleAIStart() {
+        yield return new WaitForSeconds(2f); // 2秒待機
+        UnityEngine.Debug.Log("字幕AIの自動起動を開始します");
+        StartSubtitleAI();
     }
 
     private void Update() {
@@ -132,6 +144,14 @@ public class CentralManager : MonoBehaviour {
     }
 
     // PlayerPrefs を使った設定の読み書きメソッド
+    public string GetSubtitleAIExecutionPath() {
+        // 存在しない場合はデフォルト値として 4 を返す。
+        return PlayerPrefs.GetString("SubtitleAIExecutionPath", "");
+    }
+    public void SetSubtitleAIExecutionPath(string value) {
+        PlayerPrefs.SetString("SubtitleAIExecutionPath", value);
+    }
+
     public int GetCharactersPerSecond() {
         // 存在しない場合はデフォルト値として 4 を返す。
         return PlayerPrefs.GetInt("CharactersPerSecond", 4);
@@ -186,6 +206,75 @@ public class CentralManager : MonoBehaviour {
     }
     public void SetObsWebSocketsPassword(string password) {
         PlayerPrefs.SetString("ObsWebSocketsPassword", password);
+    }
+
+    public bool GetAutoStartSubtitleAI() {
+        // "AutoStartSubtitleAI"というキーで保存された値を読み込む。存在しない場合はfalseを返す。
+        return PlayerPrefs.GetInt("AutoStartSubtitleAI", 0) == 1;
+    }
+    public void SetAutoStartSubtitleAI(bool value) {
+        PlayerPrefs.SetInt("AutoStartSubtitleAI", value ? 1 : 0);
+    }
+
+    // 字幕AIの簡単起動メソッド
+    public void StartSubtitleAI() {
+        string execPath = GetSubtitleAIExecutionPath();
+        if (string.IsNullOrEmpty(execPath)) {
+            UnityEngine.Debug.LogWarning("字幕AIの実行パスが設定されていません");
+            return;
+        }
+
+        if (!System.IO.File.Exists(execPath)) {
+            UnityEngine.Debug.LogError($"字幕AIの実行ファイルが見つかりません: {execPath}");
+            return;
+        }
+
+        try {
+            // スクリプトファイル（.sh, .bat）をターミナル/コマンドプロンプトで実行
+            if (execPath.EndsWith(".sh") || execPath.EndsWith(".bat") || execPath.EndsWith(".cmd")) {
+                var startInfo = new System.Diagnostics.ProcessStartInfo();
+                
+                #if UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX
+                // macOSの場合：ターミナルでスクリプトを実行
+                if (execPath.EndsWith(".sh")) {
+                    startInfo.FileName = "open";
+                    startInfo.Arguments = $"-a Terminal.app \"{execPath}\"";
+                } else {
+                    // .batや.cmdファイルはmacOSでは直接実行
+                    startInfo.FileName = execPath;
+                    startInfo.UseShellExecute = true;
+                }
+                #elif UNITY_EDITOR_LINUX || UNITY_STANDALONE_LINUX
+                // Linuxの場合：gnome-terminalでスクリプトを実行
+                if (execPath.EndsWith(".sh")) {
+                    startInfo.FileName = "gnome-terminal";
+                    startInfo.Arguments = $"-- bash \"{execPath}\"";
+                } else {
+                    // .batや.cmdファイルはLinuxでは直接実行
+                    startInfo.FileName = execPath;
+                    startInfo.UseShellExecute = true;
+                }
+                #else
+                // Windowsの場合：コマンドプロンプトで実行
+                startInfo.FileName = "cmd.exe";
+                startInfo.Arguments = $"/c \"{execPath}\"";
+                #endif
+                
+                startInfo.UseShellExecute = true;
+                System.Diagnostics.Process.Start(startInfo);
+            } else {
+                // 通常の実行ファイルの場合
+                var startInfo = new System.Diagnostics.ProcessStartInfo();
+                startInfo.FileName = execPath;
+                startInfo.UseShellExecute = true;
+                startInfo.CreateNoWindow = false; // ウィンドウを表示
+                System.Diagnostics.Process.Start(startInfo);
+            }
+            
+            UnityEngine.Debug.Log($"字幕AIを起動しました: {execPath}");
+        } catch (System.Exception e) {
+            UnityEngine.Debug.LogError($"字幕AIの起動に失敗しました: {e.Message}");
+        }
     }
 
     // すべての PlayerPrefs の変更をディスクに書き込む
