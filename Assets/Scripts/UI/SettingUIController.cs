@@ -193,21 +193,47 @@ public class SettingUIController : MonoBehaviour {
     private void OnBrowseSubtitleAIPathClicked() {
         Debug.Log("字幕AIパス参照ボタンがクリックされました。ファイル選択ダイアログなどを実装します。");
 
-        // Windows向けビルドで実行ファイルを選択する場合を想定したフィルター
-        var extensions = new [] {
-            new ExtensionFilter("Execute Files", "exe"), // ここを BasicSample.cs のように SFB. をつける
-            new ExtensionFilter("All Files", "*" ),
+        // OS別の実行ファイル拡張子を設定
+        var extensions = new ExtensionFilter[] {
+            #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+            new ExtensionFilter("Execute Files", "exe", "bat", "cmd"),
+            #elif UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+            new ExtensionFilter("Execute Files", "sh", "command", "app"),
+            #elif UNITY_STANDALONE_LINUX || UNITY_EDITOR_LINUX
+            new ExtensionFilter("Execute Files", "sh"),
+            #else
+            new ExtensionFilter("Execute Files", "exe", "sh", "bat", "cmd"),
+            #endif
+            new ExtensionFilter("All Files", "*"),
         };
 
+        // デフォルトパスを現在の設定から取得
+        string defaultPath = CentralManager.Instance.GetSubtitleAIExecutionPath();
+        if (string.IsNullOrEmpty(defaultPath)) {
+            #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+            defaultPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Desktop);
+            #else
+            defaultPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal);
+            #endif
+        } else {
+            try {
+                defaultPath = System.IO.Path.GetDirectoryName(defaultPath);
+            } catch {
+                defaultPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Desktop);
+            }
+        }
+
         // ファイル選択ダイアログを開く
-        // ShowOpenFileDialog(string title, string defaultPath, ExtensionFilter[] extensions, bool multiselect)
-        string[] paths = StandaloneFileBrowser.OpenFilePanel("Subtitle AI execution path select", "/", extensions, false);
+        string[] paths = StandaloneFileBrowser.OpenFilePanel("字幕AI実行ファイルを選択", defaultPath, extensions, false);
 
         if (paths.Length > 0 && !string.IsNullOrEmpty(paths[0])) {
             // 選択されたパスをTextFieldに設定
             subtitleAIExecutionPathInput.value = paths[0];
-            // ここでCentralManagerに保存するメソッドを呼び出すことも可能
+            
+            // CentralManagerに保存
             CentralManager.Instance.SetSubtitleAIExecutionPath(paths[0]);
+            
+            Debug.Log($"字幕AIパスが設定されました: {paths[0]}");
         }
     }
 

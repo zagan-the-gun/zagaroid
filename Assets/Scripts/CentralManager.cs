@@ -55,6 +55,8 @@ public class CentralManager : MonoBehaviour {
         if (Instance == null) {
             Instance = this;
 
+
+
             _voiceVoxApiClient = new VoiceVoxApiClient();
             _deepLApiClient = new DeepLApiClient();
             _webSocketServer = MultiPortWebSocketServer.Instance;
@@ -145,7 +147,7 @@ public class CentralManager : MonoBehaviour {
 
     // PlayerPrefs を使った設定の読み書きメソッド
     public string GetSubtitleAIExecutionPath() {
-        // 存在しない場合はデフォルト値として 4 を返す。
+        // 存在しない場合はデフォルト値として空文字列を返す。
         return PlayerPrefs.GetString("SubtitleAIExecutionPath", "");
     }
     public void SetSubtitleAIExecutionPath(string value) {
