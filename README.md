@@ -1,5 +1,5 @@
 # 自分の自動字幕機能  
-yukariWhisper自動起動  
+~~yukariWhisper自動起動~~  
 ~~WebSockで受信して字幕表示~~  
 ~~字幕を翻訳~~  
 字幕の表示時間調整  
