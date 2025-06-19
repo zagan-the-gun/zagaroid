@@ -16,7 +16,7 @@ LLMに呪文掛けてガヤにする
 ksk翻訳用AI  
 コメント翻訳用AI  
 # UI  
-Unity UI Toolkit (UIToolkit)を導入  
+~~Unity UI Toolkit (UIToolkit)を導入~~  
 ログが選択コピー出来る用にする  
 オプションとログのタブ切り替え
 # ~~画面の一部をOBSに飛ばす方法を模索する~~  
