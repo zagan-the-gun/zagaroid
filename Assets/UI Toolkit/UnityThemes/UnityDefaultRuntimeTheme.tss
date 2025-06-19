@@ -1,1 +1,31 @@
 @import url("unity-theme://default");
+
+/* 日本語フォント設定 */
+* {
+    -unity-font: url("project://database/Assets/Fonts/NotoSansJP-Medium.ttf");
+    -unity-font-definition: url("project://database/Assets/Fonts/NotoSansJP-Medium SDF.asset");
+}
+
+/* TextField の日本語入力サポート */
+TextField {
+    -unity-font: url("project://database/Assets/Fonts/NotoSansJP-Medium.ttf");
+    -unity-font-definition: url("project://database/Assets/Fonts/NotoSansJP-Medium SDF.asset");
+}
+
+/* Button の日本語表示サポート */
+Button {
+    -unity-font: url("project://database/Assets/Fonts/NotoSansJP-Medium.ttf");
+    -unity-font-definition: url("project://database/Assets/Fonts/NotoSansJP-Medium SDF.asset");
+}
+
+/* Label の日本語表示サポート */
+Label {
+    -unity-font: url("project://database/Assets/Fonts/NotoSansJP-Medium.ttf");
+    -unity-font-definition: url("project://database/Assets/Fonts/NotoSansJP-Medium SDF.asset");
+}
+
+/* Toggle の日本語表示サポート */
+Toggle {
+    -unity-font: url("project://database/Assets/Fonts/NotoSansJP-Medium.ttf");
+    -unity-font-definition: url("project://database/Assets/Fonts/NotoSansJP-Medium SDF.asset");
+}
