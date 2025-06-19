@@ -41,12 +41,13 @@ public class LogUIController : MonoBehaviour {
         if (logScrollView == null) {
             Debug.LogWarning("LogUIController: 'logOutput' TextFieldの親としてScrollViewが見つかりませんでした。スクロール機能が正しく動作しない可能性があります。");
         } else {
+            // スクロール速度を高速化（デフォルトの3倍）
+            logScrollView.mouseWheelScrollSize = 60.0f; // デフォルトは約18
+            
             // スクロールオフセットの変更イベントを購読
-            // このイベントがユーザー操作によるスクロールを検知する主要な方法です
             logScrollView.RegisterCallback<ChangeEvent<Vector2>>(OnScrollViewScrollChanged); 
             
             // 初回のスクロール位置を一番下にするためのスケジューリング
-            // レイアウトが確定するのを待つため、わずかな遅延を設ける
             logScrollView.schedule.Execute(ScrollToBottomImmediately).StartingIn(100); 
         }
 
@@ -85,9 +86,8 @@ public class LogUIController : MonoBehaviour {
     // ScrollViewのscrollOffsetが変更されたときに呼び出されるメソッド
     private void OnScrollViewScrollChanged(ChangeEvent<Vector2> evt)
     {
-        // このメソッドはスクロールオフセットが変更されるたびに呼ばれる
-        // ここで isScrolledToBottom の状態を更新する
-        UpdateScrolledToBottomStatus();
+        // 性能改善：スクロール変更の呼び出し頻度を制限
+        logScrollView.schedule.Execute(UpdateScrolledToBottomStatus).StartingIn(50); // 50ms遅延で実行
     }
 
     // isScrolledToBottom の状態を更新するヘルパーメソッド
@@ -113,7 +113,7 @@ public class LogUIController : MonoBehaviour {
         }
 
         // 浮動小数点数の比較のため、許容誤差を設定
-        const float epsilon = 1.0f; // 許容誤差を少し広げる
+        const float epsilon = 5.0f; // 許容誤差を少し広げる（性能改善）
 
         // 現在のスクロール位置が一番下の許容範囲内にあるか判定
         isScrolledToBottom = (Mathf.Abs(currentScrollY - maxScrollY) < epsilon);
