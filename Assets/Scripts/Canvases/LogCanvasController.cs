@@ -3,6 +3,7 @@ using TMPro;
 using UnityEngine.UI;
 using System;
 using System.Collections.Generic;
+using System.Collections;
 
 
 
@@ -32,6 +33,10 @@ public class LogCanvasController : MonoBehaviour
         // 初期化
         logText.text = ""; // 最初は空にする
         contentRectTransform = scrollRect.content; // ContentのRectTransformを取得
+        
+        // スクロール速度を高速化
+        scrollRect.scrollSensitivity = 50.0f; // デフォルトの約2.5倍（デフォルトは約20）
+        
         // UpdateContentSize(); // 初期サイズを更新
     }
 
@@ -44,8 +49,19 @@ public class LogCanvasController : MonoBehaviour
         }
 
         logText.text = string.Join("\n", logMessages); // Text要素に表示
-        UpdateContentSize(); // Contentのサイズを更新
-        UpdateScrollPosition(); // スクロール位置を更新
+        
+        // 性能改善：サイズ更新とスクロール位置更新を遅延実行
+        StartCoroutine(UpdateContentSizeWithDelay());
+    }
+
+    // ContentのサイズをLog Textに同期させる（遅延実行版）
+    private System.Collections.IEnumerator UpdateContentSizeWithDelay()
+    {
+        // フレーム終了まで待機（レイアウト計算完了を待つ）
+        yield return new WaitForEndOfFrame();
+        
+        UpdateContentSize();
+        UpdateScrollPosition();
     }
 
     // ContentのサイズをLog Textに同期させる
