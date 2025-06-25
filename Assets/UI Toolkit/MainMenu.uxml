@@ -30,6 +30,10 @@
                         <ui:TextField label="my subtitle" value="my_subtitle" name="MySubtitleInput" style="margin-bottom: 5px;" />
                         <ui:TextField picking-mode="Ignore" label="my english subtitle" value="my_subtitle_en" name="MyEnglishSubtitleInput" />
                     </ui:VisualElement>
+                    <ui:VisualElement name="translation" style="flex-grow: 1;">
+                        <ui:DropdownField label="翻訳方式" name="TranslationModeDropdown" style="margin-bottom: 5px;" />
+                        <ui:TextField label="MenZ翻訳サーバーURL" value="ws://127.0.0.1:55001" name="MenZTranslationServerUrlInput" style="margin-bottom: 5px;" />
+                    </ui:VisualElement>
                     <ui:TextField picking-mode="Ignore" label="DeepL API key" value="asdfasdf" name="DeepLApiClientKeyInput" />
                     <ui:Button text="設定を保存" name="SaveSettingsButton" style="margin-top: 10px;" />
                 </ui:ScrollView>

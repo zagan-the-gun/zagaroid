@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using SFB; // ★ 追加: StandaloneFileBrowserの名前空間
 using System.IO; // ★ 追加: パス操作のため
+using System.Collections.Generic; // ★ 追加: List<T>のため
 
 public class SettingUIController : MonoBehaviour {
     // InspectorからUIDocumentをアタッチできるよう、[SerializeField] を付ける
@@ -26,6 +27,8 @@ public class SettingUIController : MonoBehaviour {
     private TextField myEnglishSubtitleInput;
 
     private TextField deepLApiClientKeyInput;
+    private DropdownField translationModeDropdown;
+    private TextField menZTranslationServerUrlInput;
     private Button saveSettingsButton;
 
 
@@ -61,6 +64,8 @@ public class SettingUIController : MonoBehaviour {
         mySubtitleInput = settingContentRoot.Q<TextField>("MySubtitleInput");
         myEnglishSubtitleInput = settingContentRoot.Q<TextField>("MyEnglishSubtitleInput");
         deepLApiClientKeyInput = settingContentRoot.Q<TextField>("DeepLApiClientKeyInput"); // DeepL APIキー
+        translationModeDropdown = settingContentRoot.Q<DropdownField>("TranslationModeDropdown"); // 翻訳方式選択
+        menZTranslationServerUrlInput = settingContentRoot.Q<TextField>("MenZTranslationServerUrlInput"); // MenZ翻訳サーバーURL
         saveSettingsButton = settingContentRoot.Q<Button>("SaveSettingsButton"); // 設定を保存ボタン
 
         // UI要素が見つからない場合のエラーチェック
@@ -138,6 +143,42 @@ public class SettingUIController : MonoBehaviour {
             deepLApiClientKeyInput.value = CentralManager.Instance.GetDeepLApiClientKey();
         }
 
+        if (translationModeDropdown != null) {
+            Debug.Log("翻訳方式ドロップダウンの初期化を開始");
+            
+            // CentralManagerインスタンスの確認
+            if (CentralManager.Instance == null) {
+                Debug.LogError("CentralManager.Instanceがnullです！");
+                return;
+            }
+            
+            // ドロップダウンの選択肢を設定
+            var choices = new List<string> { "deepl", "menz" };
+            translationModeDropdown.choices = choices;
+            Debug.Log($"ドロップダウンの選択肢を設定しました: {string.Join(", ", choices)}");
+            
+            // 現在の設定値を取得
+            string currentMode = CentralManager.Instance.GetTranslationMode();
+            Debug.Log($"現在の翻訳方式: '{currentMode}'");
+            
+            // 値を設定
+            translationModeDropdown.value = currentMode;
+            Debug.Log($"ドロップダウンの値を設定しました: '{translationModeDropdown.value}'");
+            
+            // 選択肢に現在の値が含まれているかチェック
+            if (!choices.Contains(currentMode)) {
+                Debug.LogWarning($"現在の設定値 '{currentMode}' が選択肢に含まれていません。デフォルト値を設定します。");
+                translationModeDropdown.value = "deepl";
+                CentralManager.Instance.SetTranslationMode("deepl");
+            }
+        } else {
+            Debug.LogError("translationModeDropdownがnullです！");
+        }
+
+        if (menZTranslationServerUrlInput != null) {
+            menZTranslationServerUrlInput.value = CentralManager.Instance.GetMenZTranslationServerUrl();
+        }
+
         Debug.Log("設定UIに値をロードしました。");
     }
 
@@ -176,6 +217,14 @@ public class SettingUIController : MonoBehaviour {
 
         if (deepLApiClientKeyInput != null) {
             CentralManager.Instance.SetDeepLApiClientKey(deepLApiClientKeyInput.value);
+        }
+
+        if (translationModeDropdown != null) {
+            CentralManager.Instance.SetTranslationMode(translationModeDropdown.value);
+        }
+
+        if (menZTranslationServerUrlInput != null) {
+            CentralManager.Instance.SetMenZTranslationServerUrl(menZTranslationServerUrlInput.value);
         }
 
         // PlayerPrefsの変更をディスクに書き込む
