@@ -218,6 +218,22 @@ public class CentralManager : MonoBehaviour {
         PlayerPrefs.SetInt("AutoStartSubtitleAI", value ? 1 : 0);
     }
 
+    public string GetMenZTranslationServerUrl() {
+        // "MenZTranslationServerUrl"というキーで保存された文字列を読み込む。存在しない場合はデフォルト値を返す。
+        return PlayerPrefs.GetString("MenZTranslationServerUrl", "ws://127.0.0.1:55001");
+    }
+    public void SetMenZTranslationServerUrl(string url) {
+        PlayerPrefs.SetString("MenZTranslationServerUrl", url);
+    }
+
+    public string GetTranslationMode() {
+        // "TranslationMode"というキーで保存された文字列を読み込む。存在しない場合はデフォルト値を返す。
+        return PlayerPrefs.GetString("TranslationMode", "deepl");
+    }
+    public void SetTranslationMode(string mode) {
+        PlayerPrefs.SetString("TranslationMode", mode);
+    }
+
     // 字幕AIの簡単起動メソッド
     public void StartSubtitleAI() {
         string execPath = GetSubtitleAIExecutionPath();
@@ -414,11 +430,68 @@ public class CentralManager : MonoBehaviour {
 
     // 翻訳を実行
     private IEnumerator translate(string user, string chatMessage) {
-        // 翻訳処理を行う
-        yield return StartCoroutine(_deepLApiClient.PostTranslate(chatMessage, "JA", (result) => {
-            // 翻訳結果を処理
-            chatMessage = result;
-        }));
+        string originalMessage = chatMessage; // 元のメッセージを保持
+        string translationMode = GetTranslationMode();
+        Debug.Log($"Twitchコメント翻訳方式: {translationMode}");
+
+        bool firstTranslationSucceeded = false;
+
+        if (translationMode == "menz") {
+            // MenZ翻訳サーバーを使用
+            MenZTranslationClient menZClient = FindObjectOfType<MenZTranslationClient>();
+            if (menZClient != null) {
+                yield return StartCoroutine(menZClient.PostTranslate(originalMessage, "JA", "", (result) => {
+                    if (!string.IsNullOrEmpty(result)) {
+                        Debug.Log($"MenZ翻訳結果: {result}");
+                        chatMessage = result;
+                        firstTranslationSucceeded = true;
+                    }
+                }));
+            }
+
+            // MenZ翻訳に失敗した場合はDeepLにフォールバック
+            if (!firstTranslationSucceeded) {
+                Debug.LogWarning("MenZ翻訳に失敗しました。DeepLにフォールバックします。");
+                yield return StartCoroutine(_deepLApiClient.PostTranslate(originalMessage, "JA", (deepLResult) => {
+                    if (!string.IsNullOrEmpty(deepLResult)) {
+                        Debug.Log($"DeepL翻訳結果（フォールバック）: {deepLResult}");
+                        chatMessage = deepLResult;
+                    } else {
+                        Debug.LogWarning("DeepL翻訳（フォールバック）も失敗しました。元のメッセージを使用します。");
+                        chatMessage = originalMessage;
+                    }
+                }));
+            }
+        } else {
+            // DeepLを使用（デフォルト）
+            yield return StartCoroutine(_deepLApiClient.PostTranslate(originalMessage, "JA", (result) => {
+                if (!string.IsNullOrEmpty(result)) {
+                    Debug.Log($"DeepL翻訳結果: {result}");
+                    chatMessage = result;
+                    firstTranslationSucceeded = true;
+                }
+            }));
+
+            // DeepL翻訳に失敗した場合はMenZにフォールバック
+            if (!firstTranslationSucceeded) {
+                Debug.LogWarning("DeepL翻訳に失敗しました。MenZ翻訳にフォールバックします。");
+                MenZTranslationClient menZClient = FindObjectOfType<MenZTranslationClient>();
+                if (menZClient != null) {
+                    yield return StartCoroutine(menZClient.PostTranslate(originalMessage, "JA", "", (menZResult) => {
+                        if (!string.IsNullOrEmpty(menZResult)) {
+                            Debug.Log($"MenZ翻訳結果（フォールバック）: {menZResult}");
+                            chatMessage = menZResult;
+                        } else {
+                            Debug.LogWarning("MenZ翻訳（フォールバック）も失敗しました。元のメッセージを使用します。");
+                            chatMessage = originalMessage;
+                        }
+                    }));
+                } else {
+                    Debug.LogWarning("MenZTranslationClientが見つかりません。元のメッセージを使用します。");
+                    chatMessage = originalMessage;
+                }
+            }
+        }
 
         // コメント読み上げを開始
         StartCoroutine(speakComment(user, chatMessage));
@@ -548,11 +621,70 @@ public class CentralManager : MonoBehaviour {
     // 英語字幕の送信
     private IEnumerator translateSubtitle(string subtitle, string subtitleText) {
         Debug.Log("字幕の翻訳開始");
-        yield return StartCoroutine(_deepLApiClient.PostTranslate(subtitleText, "EN", (result) => {
-            // 翻訳結果を取得
-            Debug.Log($"コールバック実行: 翻訳結果受信: {result}");
-            subtitleText = result;
-        }));
+        
+        string originalSubtitleText = subtitleText; // 元の字幕テキストを保持
+        string translationMode = GetTranslationMode();
+        Debug.Log($"翻訳方式: {translationMode}");
+
+        bool firstTranslationSucceeded = false;
+
+        if (translationMode == "menz") {
+            // MenZ翻訳サーバーを使用
+            MenZTranslationClient menZClient = FindObjectOfType<MenZTranslationClient>();
+            if (menZClient != null) {
+                yield return StartCoroutine(menZClient.PostTranslate(originalSubtitleText, "EN", "", (result) => {
+                    if (!string.IsNullOrEmpty(result)) {
+                        Debug.Log($"MenZ翻訳結果: {result}");
+                        subtitleText = result;
+                        firstTranslationSucceeded = true;
+                    }
+                }));
+            }
+
+            // MenZ翻訳に失敗した場合はDeepLにフォールバック
+            if (!firstTranslationSucceeded) {
+                Debug.LogWarning("MenZ翻訳に失敗しました。DeepLにフォールバックします。");
+                yield return StartCoroutine(_deepLApiClient.PostTranslate(originalSubtitleText, "EN", (deepLResult) => {
+                    if (!string.IsNullOrEmpty(deepLResult)) {
+                        Debug.Log($"DeepL翻訳結果（フォールバック）: {deepLResult}");
+                        subtitleText = deepLResult;
+                    } else {
+                        Debug.LogWarning("DeepL翻訳（フォールバック）も失敗しました。英語字幕は空欄にします。");
+                        subtitleText = "";
+                    }
+                }));
+            }
+        } else {
+            // DeepLを使用（デフォルト）
+            yield return StartCoroutine(_deepLApiClient.PostTranslate(originalSubtitleText, "EN", (result) => {
+                if (!string.IsNullOrEmpty(result)) {
+                    Debug.Log($"DeepL翻訳結果: {result}");
+                    subtitleText = result;
+                    firstTranslationSucceeded = true;
+                }
+            }));
+
+            // DeepL翻訳に失敗した場合はMenZにフォールバック
+            if (!firstTranslationSucceeded) {
+                Debug.LogWarning("DeepL翻訳に失敗しました。MenZ翻訳にフォールバックします。");
+                MenZTranslationClient menZClient = FindObjectOfType<MenZTranslationClient>();
+                if (menZClient != null) {
+                    yield return StartCoroutine(menZClient.PostTranslate(originalSubtitleText, "EN", "", (menZResult) => {
+                        if (!string.IsNullOrEmpty(menZResult)) {
+                            Debug.Log($"MenZ翻訳結果（フォールバック）: {menZResult}");
+                            subtitleText = menZResult;
+                        } else {
+                            Debug.LogWarning("MenZ翻訳（フォールバック）も失敗しました。英語字幕は空欄にします。");
+                            subtitleText = "";
+                        }
+                    }));
+                } else {
+                    Debug.LogWarning("MenZTranslationClientが見つかりません。英語字幕は空欄にします。");
+                    subtitleText = "";
+                }
+            }
+        }
+
         Debug.Log($"翻訳字幕: {subtitleText}");
 
         // 字幕をOBSに送信
