@@ -14,9 +14,9 @@ public class MenZTranslationClient : MonoBehaviour {
     private WebSocket ws;
     private Dictionary<string, Action<string>> pendingRequests = new Dictionary<string, Action<string>>();
     private bool isConnected = false;
-    
+
     void Start() {
-        ConnectToServer();
+        // ConnectToServer();
     }
     
     private void ConnectToServer() {
