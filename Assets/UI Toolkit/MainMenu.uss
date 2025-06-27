@@ -1,0 +1,15 @@
+.panel {
+    border-width: 1px;
+    border-color: black;
+    border-radius: 5px;
+    padding: 10px;
+    margin: 5px;
+}
+
+.container {
+    /* rootコンテナ用のスタイル */
+}
+
+.setting-scroll-view {
+    /* スクロールビュー用のスタイル */
+} 
