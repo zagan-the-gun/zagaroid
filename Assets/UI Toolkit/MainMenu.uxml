@@ -19,8 +19,8 @@
                         <ui:VisualElement name="PanelSubtitleAI" class="panel" style="flex-grow: 1; flex-basis: 1px;">
                             <ui:Toggle label="Auto launch" name="AutoStartSubtitleAIToggle" style="margin-bottom: 5px;" />
                             <ui:VisualElement name="SubtitleAIExecutionPath" style="flex-grow: 0; flex-direction: row; flex-basis: auto; flex-shrink: 0;">
-                                <ui:VisualElement style="flex-grow: 1;">
-                                    <ui:TextField label="字幕AIパス" value="/" name="SubtitleAIExecutionPathInput" style="margin-bottom: 5px; margin-right: 5px; flex-grow: 0;" />
+                                <ui:VisualElement name="VisualElement" style="flex-grow: 1;">
+                                    <ui:TextField label="SubtitleAI Path" value="/" name="SubtitleAIExecutionPathInput" style="margin-bottom: 5px; margin-right: 5px; flex-grow: 0;" />
                                 </ui:VisualElement>
                                 <ui:Button text="..." name="BrowseSubtitleAIPathButton" style="flex-grow: 0;" />
                             </ui:VisualElement>
@@ -37,14 +37,35 @@
                     </ui:VisualElement>
                     <ui:VisualElement name="2" style="flex-grow: 1; flex-direction: row;">
                         <ui:VisualElement name="PanelTranslation" class="panel" style="flex-grow: 1; flex-basis: 1px;">
-                            <ui:DropdownField label="翻訳方式" name="TranslationModeDropdown" style="margin-bottom: 5px;" />
-                            <ui:TextField label="MenZ翻訳サーバーURL" value="ws://127.0.0.1:55001" name="MenZTranslationServerUrlInput" style="margin-bottom: 5px;" />
+                            <ui:DropdownField label="Translation type" name="TranslationModeDropdown" style="margin-bottom: 5px;" />
                         </ui:VisualElement>
                         <ui:VisualElement name="PanelDeepLApi" class="panel" style="flex-grow: 1; flex-shrink: 1; flex-basis: 1px;">
                             <ui:TextField picking-mode="Ignore" label="DeepL API key" value="asdfasdf" name="DeepLApiClientKeyInput" />
                         </ui:VisualElement>
                     </ui:VisualElement>
-                    <ui:VisualElement name="3" style="flex-grow: 1;" />
+                    <ui:VisualElement name="3" style="flex-grow: 1; flex-direction: row;">
+                        <ui:VisualElement name="PanelVoiceVox" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Toggle label="Auto launch" name="AutoStartVoiceVoxToggle" style="margin-bottom: 5px;" />
+                            <ui:VisualElement name="VoiceVoxPath" style="flex-grow: 0; flex-direction: row; flex-basis: auto; flex-shrink: 0;">
+                                <ui:VisualElement name="VisualElement" style="flex-grow: 1;">
+                                    <ui:TextField label="VoiceVox Path" value="/" name="VoiceVoxExecutionPathInput" style="margin-bottom: 5px; margin-right: 5px; flex-grow: 0;" />
+                                </ui:VisualElement>
+                                <ui:Button text="..." name="BrowseVoiceVoxPathButton" style="flex-grow: 0;" />
+                            </ui:VisualElement>
+                            <ui:Button text="Launch" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartVoiceVoxButton" style="margin-bottom: 5px;" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="PanelMenzTranslation" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Toggle label="Auto launch" name="AutoStartMenzTranslationToggle" style="margin-bottom: 5px;" />
+                            <ui:VisualElement name="MenzTranslationPath" style="flex-grow: 0; flex-direction: row; flex-basis: auto; flex-shrink: 0;">
+                                <ui:VisualElement style="flex-grow: 1;">
+                                    <ui:TextField label="Menz-Translation Path" value="/" name="MenzTranslationExecutionPathInput" style="margin-bottom: 5px; margin-right: 5px; flex-grow: 0;" />
+                                </ui:VisualElement>
+                                <ui:Button text="..." name="BrowseMenzTranslationPathButton" style="flex-grow: 0;" />
+                            </ui:VisualElement>
+                            <ui:Button text="Launch" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartMenzTranslationButton" style="margin-bottom: 5px;" />
+                            <ui:TextField label="MenzTranslation URL" value="ws://127.0.0.1:55001" name="MenZTranslationServerUrlInput" style="margin-bottom: 5px; flex-grow: 1;" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
                     <ui:Button text="Save" name="SaveSettingsButton" style="margin-top: 10px;" />
                 </ui:ScrollView>
             </ui:VisualElement>
