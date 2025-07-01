@@ -97,12 +97,36 @@ public class CentralManager : MonoBehaviour {
             // 少し遅延させてから起動（他のコンポーネントの初期化を待つ）
             StartCoroutine(DelayedSubtitleAIStart());
         }
+
+        // VoiceVoxの自動起動
+        if (GetAutoStartVoiceVox()) {
+            // 少し遅延させてから起動（他のコンポーネントの初期化を待つ）
+            StartCoroutine(DelayedVoiceVoxStart());
+        }
+
+        // MenzTranslationの自動起動
+        if (GetAutoStartMenzTranslation()) {
+            // 少し遅延させてから起動（他のコンポーネントの初期化を待つ）
+            StartCoroutine(DelayedMenzTranslationStart());
+        }
     }
 
     private IEnumerator DelayedSubtitleAIStart() {
         yield return new WaitForSeconds(2f); // 2秒待機
         UnityEngine.Debug.Log("字幕AIの自動起動を開始します");
         StartSubtitleAI();
+    }
+
+    private IEnumerator DelayedVoiceVoxStart() {
+        yield return new WaitForSeconds(3f); // 3秒待機（字幕AIと少しずらす）
+        UnityEngine.Debug.Log("VoiceVoxの自動起動を開始します");
+        StartVoiceVox();
+    }
+
+    private IEnumerator DelayedMenzTranslationStart() {
+        yield return new WaitForSeconds(4f); // 4秒待機（他と少しずらす）
+        UnityEngine.Debug.Log("MenzTranslationの自動起動を開始します");
+        StartMenzTranslation();
     }
 
     private void Update() {
@@ -234,16 +258,48 @@ public class CentralManager : MonoBehaviour {
         PlayerPrefs.SetString("TranslationMode", mode);
     }
 
-    // 字幕AIの簡単起動メソッド
-    public void StartSubtitleAI() {
-        string execPath = GetSubtitleAIExecutionPath();
+    // VoiceVox関連の設定メソッド
+    public bool GetAutoStartVoiceVox() {
+        // "AutoStartVoiceVox"というキーで保存された値を読み込む。存在しない場合はfalseを返す。
+        return PlayerPrefs.GetInt("AutoStartVoiceVox", 0) == 1;
+    }
+    public void SetAutoStartVoiceVox(bool value) {
+        PlayerPrefs.SetInt("AutoStartVoiceVox", value ? 1 : 0);
+    }
+
+    public string GetVoiceVoxExecutionPath() {
+        // 存在しない場合はデフォルト値として空文字列を返す。
+        return PlayerPrefs.GetString("VoiceVoxExecutionPath", "");
+    }
+    public void SetVoiceVoxExecutionPath(string value) {
+        PlayerPrefs.SetString("VoiceVoxExecutionPath", value);
+    }
+
+    public bool GetAutoStartMenzTranslation() {
+        // 存在しない場合はデフォルト値として false を返す。
+        return PlayerPrefs.GetInt("AutoStartMenzTranslation", 0) == 1;
+    }
+    public void SetAutoStartMenzTranslation(bool value) {
+        PlayerPrefs.SetInt("AutoStartMenzTranslation", value ? 1 : 0);
+    }
+
+    public string GetMenzTranslationExecutionPath() {
+        // 存在しない場合はデフォルト値として空文字列を返す。
+        return PlayerPrefs.GetString("MenzTranslationExecutionPath", "");
+    }
+    public void SetMenzTranslationExecutionPath(string value) {
+        PlayerPrefs.SetString("MenzTranslationExecutionPath", value);
+    }
+
+    // 汎用的な外部プログラム起動メソッド
+    private void StartExternalProgram(string execPath, string programName) {
         if (string.IsNullOrEmpty(execPath)) {
-            UnityEngine.Debug.LogWarning("字幕AIの実行パスが設定されていません");
+            UnityEngine.Debug.LogWarning($"{programName}の実行パスが設定されていません");
             return;
         }
 
         if (!System.IO.File.Exists(execPath)) {
-            UnityEngine.Debug.LogError($"字幕AIの実行ファイルが見つかりません: {execPath}");
+            UnityEngine.Debug.LogError($"{programName}の実行ファイルが見つかりません: {execPath}");
             return;
         }
 
@@ -289,10 +345,25 @@ public class CentralManager : MonoBehaviour {
                 System.Diagnostics.Process.Start(startInfo);
             }
             
-            UnityEngine.Debug.Log($"字幕AIを起動しました: {execPath}");
+            UnityEngine.Debug.Log($"{programName}を起動しました: {execPath}");
         } catch (System.Exception e) {
-            UnityEngine.Debug.LogError($"字幕AIの起動に失敗しました: {e.Message}");
+            UnityEngine.Debug.LogError($"{programName}の起動に失敗しました: {e.Message}");
         }
+    }
+
+    // 字幕AIの簡単起動メソッド
+    public void StartSubtitleAI() {
+        StartExternalProgram(GetSubtitleAIExecutionPath(), "字幕AI");
+    }
+
+    // VoiceVoxの簡単起動メソッド
+    public void StartVoiceVox() {
+        StartExternalProgram(GetVoiceVoxExecutionPath(), "VoiceVox");
+    }
+
+    // MenzTranslationの簡単起動メソッド
+    public void StartMenzTranslation() {
+        StartExternalProgram(GetMenzTranslationExecutionPath(), "MenzTranslation");
     }
 
     // すべての PlayerPrefs の変更をディスクに書き込む

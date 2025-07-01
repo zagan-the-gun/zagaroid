@@ -18,6 +18,16 @@ public class SettingUIController : MonoBehaviour {
     private Button browseSubtitleAIPathButton; // 参照ボタン
     private Button startSubtitleAIButton; // 手動起動ボタン
 
+    private Toggle autoStartVoiceVoxToggle;
+    private TextField voiceVoxExecutionPathInput;
+    private Button browseVoiceVoxPathButton; // 参照ボタン
+    private Button startVoiceVoxButton; // 手動起動ボタン
+
+    private Toggle autoStartMenzTranslationToggle;
+    private TextField menzTranslationExecutionPathInput;
+    private Button browseMenzTranslationPathButton; // 参照ボタン
+    private Button startMenzTranslationButton; // 手動起動ボタン
+
     private IntegerField charactersPerSecondInput;
     private FloatField minDisplayTimeInput;
     private FloatField maxDisplayTimeInput;
@@ -51,10 +61,18 @@ public class SettingUIController : MonoBehaviour {
         // 各UI要素を取得
         autoStartSubtitleAIToggle = settingContentRoot.Q<Toggle>("AutoStartSubtitleAIToggle");
         subtitleAIExecutionPathInput = settingContentRoot.Q<TextField>("SubtitleAIExecutionPathInput");
-        browseSubtitleAIPathButton = settingContentRoot.Q<Button>(null, "BrowseSubtitleAIPathButton"); // ボタンに特定のname属性がないため、ここではタイプでQします
-
         browseSubtitleAIPathButton = settingContentRoot.Q<Button>("BrowseSubtitleAIPathButton"); // 参照ボタン
         startSubtitleAIButton = settingContentRoot.Q<Button>("StartSubtitleAIButton"); // 手動起動ボタン
+
+        autoStartVoiceVoxToggle = settingContentRoot.Q<Toggle>("AutoStartVoiceVoxToggle");
+        voiceVoxExecutionPathInput = settingContentRoot.Q<TextField>("VoiceVoxExecutionPathInput");
+        browseVoiceVoxPathButton = settingContentRoot.Q<Button>("BrowseVoiceVoxPathButton"); // 参照ボタン
+        startVoiceVoxButton = settingContentRoot.Q<Button>("StartVoiceVoxButton"); // 手動起動ボタン
+
+        autoStartMenzTranslationToggle = settingContentRoot.Q<Toggle>("AutoStartMenzTranslationToggle");
+        menzTranslationExecutionPathInput = settingContentRoot.Q<TextField>("MenzTranslationExecutionPathInput");
+        browseMenzTranslationPathButton = settingContentRoot.Q<Button>("BrowseMenzTranslationPathButton"); // 参照ボタン
+        startMenzTranslationButton = settingContentRoot.Q<Button>("StartMenzTranslationButton"); // 手動起動ボタン
 
         charactersPerSecondInput = settingContentRoot.Q<IntegerField>("CharactersPerSecondInput");
         minDisplayTimeInput = settingContentRoot.Q<FloatField>("MinDisplayTimeInput");
@@ -87,6 +105,24 @@ public class SettingUIController : MonoBehaviour {
             startSubtitleAIButton.clicked += OnStartSubtitleAIClicked;
         }
 
+        if (browseVoiceVoxPathButton != null)
+        {
+            browseVoiceVoxPathButton.clicked += OnBrowseVoiceVoxPathClicked;
+        }
+
+        if (startVoiceVoxButton != null) {
+            startVoiceVoxButton.clicked += OnStartVoiceVoxClicked;
+        }
+
+        if (browseMenzTranslationPathButton != null)
+        {
+            browseMenzTranslationPathButton.clicked += OnBrowseMenzTranslationPathClicked;
+        }
+
+        if (startMenzTranslationButton != null) {
+            startMenzTranslationButton.clicked += OnStartMenzTranslationClicked;
+        }
+
         if (saveSettingsButton != null) {
             saveSettingsButton.clicked += SaveSettingsFromUI;
         }
@@ -100,6 +136,22 @@ public class SettingUIController : MonoBehaviour {
 
         if (startSubtitleAIButton != null) {
             startSubtitleAIButton.clicked -= OnStartSubtitleAIClicked;
+        }
+
+        if (browseVoiceVoxPathButton != null) {
+            browseVoiceVoxPathButton.clicked -= OnBrowseVoiceVoxPathClicked;
+        }
+
+        if (startVoiceVoxButton != null) {
+            startVoiceVoxButton.clicked -= OnStartVoiceVoxClicked;
+        }
+
+        if (browseMenzTranslationPathButton != null) {
+            browseMenzTranslationPathButton.clicked -= OnBrowseMenzTranslationPathClicked;
+        }
+
+        if (startMenzTranslationButton != null) {
+            startMenzTranslationButton.clicked -= OnStartMenzTranslationClicked;
         }
 
         if (saveSettingsButton != null) {
@@ -116,6 +168,22 @@ public class SettingUIController : MonoBehaviour {
 
         if (subtitleAIExecutionPathInput != null) {
             subtitleAIExecutionPathInput.value = CentralManager.Instance.GetSubtitleAIExecutionPath();
+        }
+
+        if (autoStartVoiceVoxToggle != null) {
+            autoStartVoiceVoxToggle.value = CentralManager.Instance.GetAutoStartVoiceVox();
+        }
+
+        if (voiceVoxExecutionPathInput != null) {
+            voiceVoxExecutionPathInput.value = CentralManager.Instance.GetVoiceVoxExecutionPath();
+        }
+
+        if (autoStartMenzTranslationToggle != null) {
+            autoStartMenzTranslationToggle.value = CentralManager.Instance.GetAutoStartMenzTranslation();
+        }
+
+        if (menzTranslationExecutionPathInput != null) {
+            menzTranslationExecutionPathInput.value = CentralManager.Instance.GetMenzTranslationExecutionPath();
         }
 
         if (charactersPerSecondInput != null) {
@@ -192,6 +260,22 @@ public class SettingUIController : MonoBehaviour {
             CentralManager.Instance.SetSubtitleAIExecutionPath(subtitleAIExecutionPathInput.value);
         }
 
+        if (autoStartVoiceVoxToggle != null) {
+            CentralManager.Instance.SetAutoStartVoiceVox(autoStartVoiceVoxToggle.value);
+        }
+
+        if (voiceVoxExecutionPathInput != null) {
+            CentralManager.Instance.SetVoiceVoxExecutionPath(voiceVoxExecutionPathInput.value);
+        }
+
+        if (autoStartMenzTranslationToggle != null) {
+            CentralManager.Instance.SetAutoStartMenzTranslation(autoStartMenzTranslationToggle.value);
+        }
+
+        if (menzTranslationExecutionPathInput != null) {
+            CentralManager.Instance.SetMenzTranslationExecutionPath(menzTranslationExecutionPathInput.value);
+        }
+
         if (charactersPerSecondInput != null) {
             CentralManager.Instance.SetCharactersPerSecond(charactersPerSecondInput.value);
         }
@@ -238,12 +322,25 @@ public class SettingUIController : MonoBehaviour {
         // ユーザーに保存完了のフィードバックを与えるUI表示などをここに追加
     }
 
-    // --- 参照ボタンのクリックハンドラ (例) ---
-    private void OnBrowseSubtitleAIPathClicked() {
-        Debug.Log("字幕AIパス参照ボタンがクリックされました。ファイル選択ダイアログなどを実装します。");
-
+    // --- 共通の実行ファイル選択メソッド ---
+    private void BrowseExecutableFile(string title, string currentPath, System.Action<string> onPathSelected) {
         // OS別の実行ファイル拡張子を設定
-        var extensions = new ExtensionFilter[] {
+        var extensions = GetExecutableExtensions();
+
+        // デフォルトパスを設定
+        string defaultPath = GetDefaultBrowsePath(currentPath);
+
+        // ファイル選択ダイアログを開く
+        string[] paths = StandaloneFileBrowser.OpenFilePanel(title, defaultPath, extensions, false);
+
+        if (paths.Length > 0 && !string.IsNullOrEmpty(paths[0])) {
+            onPathSelected?.Invoke(paths[0]);
+        }
+    }
+
+    // --- OS別の実行ファイル拡張子を取得 ---
+    private ExtensionFilter[] GetExecutableExtensions() {
+        return new ExtensionFilter[] {
             #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
             new ExtensionFilter("Execute Files", "exe", "bat", "cmd"),
             #elif UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
@@ -255,35 +352,46 @@ public class SettingUIController : MonoBehaviour {
             #endif
             new ExtensionFilter("All Files", "*"),
         };
+    }
 
-        // デフォルトパスを現在の設定から取得
-        string defaultPath = CentralManager.Instance.GetSubtitleAIExecutionPath();
-        if (string.IsNullOrEmpty(defaultPath)) {
+    // --- デフォルトの参照パスを取得 ---
+    private string GetDefaultBrowsePath(string currentPath) {
+        if (string.IsNullOrEmpty(currentPath)) {
             #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-            defaultPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Desktop);
+            return System.Environment.GetFolderPath(System.Environment.SpecialFolder.Desktop);
             #else
-            defaultPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal);
+            return System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal);
             #endif
         } else {
             try {
-                defaultPath = System.IO.Path.GetDirectoryName(defaultPath);
+                return System.IO.Path.GetDirectoryName(currentPath);
             } catch {
-                defaultPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Desktop);
+                #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+                return System.Environment.GetFolderPath(System.Environment.SpecialFolder.Desktop);
+                #else
+                return System.Environment.GetFolderPath(System.Environment.SpecialFolder.Personal);
+                #endif
             }
         }
+    }
 
-        // ファイル選択ダイアログを開く
-        string[] paths = StandaloneFileBrowser.OpenFilePanel("字幕AI実行ファイルを選択", defaultPath, extensions, false);
-
-        if (paths.Length > 0 && !string.IsNullOrEmpty(paths[0])) {
-            // 選択されたパスをTextFieldに設定
-            subtitleAIExecutionPathInput.value = paths[0];
-            
-            // CentralManagerに保存
-            CentralManager.Instance.SetSubtitleAIExecutionPath(paths[0]);
-            
-            Debug.Log($"字幕AIパスが設定されました: {paths[0]}");
-        }
+    // --- 参照ボタンのクリックハンドラ ---
+    private void OnBrowseSubtitleAIPathClicked() {
+        Debug.Log("字幕AIパス参照ボタンがクリックされました。");
+        
+        BrowseExecutableFile(
+            "字幕AI実行ファイルを選択",
+            CentralManager.Instance.GetSubtitleAIExecutionPath(),
+            (selectedPath) => {
+                // 選択されたパスをTextFieldに設定
+                subtitleAIExecutionPathInput.value = selectedPath;
+                
+                // CentralManagerに保存
+                CentralManager.Instance.SetSubtitleAIExecutionPath(selectedPath);
+                
+                Debug.Log($"字幕AIパスが設定されました: {selectedPath}");
+            }
+        );
     }
 
     // --- 手動起動ボタンのクリックハンドラ ---
@@ -292,5 +400,53 @@ public class SettingUIController : MonoBehaviour {
         CentralManager.Instance.StartSubtitleAI();
     }
 
-    // 必要に応じて、他のカスタムイベントハンドラーやヘルパーメソッドを追加できます。
+    // --- VoiceVox参照ボタンのクリックハンドラ ---
+    private void OnBrowseVoiceVoxPathClicked() {
+        Debug.Log("VoiceVoxパス参照ボタンがクリックされました。");
+        
+        BrowseExecutableFile(
+            "VoiceVox実行ファイルを選択",
+            CentralManager.Instance.GetVoiceVoxExecutionPath(),
+            (selectedPath) => {
+                // 選択されたパスをTextFieldに設定
+                voiceVoxExecutionPathInput.value = selectedPath;
+                
+                // CentralManagerに保存
+                CentralManager.Instance.SetVoiceVoxExecutionPath(selectedPath);
+                
+                Debug.Log($"VoiceVoxパスが設定されました: {selectedPath}");
+            }
+        );
+    }
+
+    // --- VoiceVox手動起動ボタンのクリックハンドラ ---
+    private void OnStartVoiceVoxClicked() {
+        Debug.Log("VoiceVox手動起動ボタンがクリックされました");
+        CentralManager.Instance.StartVoiceVox();
+    }
+
+    // --- MenzTranslation参照ボタンのクリックハンドラ ---
+    private void OnBrowseMenzTranslationPathClicked() {
+        Debug.Log("MenzTranslationパス参照ボタンがクリックされました。");
+        
+        BrowseExecutableFile(
+            "MenzTranslation実行ファイルを選択",
+            CentralManager.Instance.GetMenzTranslationExecutionPath(),
+            (selectedPath) => {
+                // 選択されたパスをTextFieldに設定
+                menzTranslationExecutionPathInput.value = selectedPath;
+                
+                // CentralManagerに保存
+                CentralManager.Instance.SetMenzTranslationExecutionPath(selectedPath);
+                
+                Debug.Log($"MenzTranslationパスが設定されました: {selectedPath}");
+            }
+        );
+    }
+
+    // --- MenzTranslation手動起動ボタンのクリックハンドラ ---
+    private void OnStartMenzTranslationClicked() {
+        Debug.Log("MenzTranslation手動起動ボタンがクリックされました");
+        CentralManager.Instance.StartMenzTranslation();
+    }
 }
