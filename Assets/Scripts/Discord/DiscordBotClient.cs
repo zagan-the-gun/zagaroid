@@ -458,110 +458,361 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private async Task ProcessVoiceMessage(string message) {
         try {
             var payload = JsonConvert.DeserializeObject<VoiceGatewayPayload>(message);
-            
-            // Discord.js VoiceWebSocket.ts準拠のシーケンス管理
-            var jsonPayload = JObject.Parse(message);
-            if (jsonPayload["seq"] != null) {
-                _voiceSequence = jsonPayload["seq"].ToObject<int>();
-            }
+            UpdateVoiceSequence(message);
             
             switch (payload.op) {
-                case 8: // Hello - Discord.js Networking.ts準拠
-                    // Discord.js実装通り：OpeningWs → Identifying状態遷移
-                    _networkingState = NetworkingState.Identifying;
-                    
-                    var helloData = JsonConvert.DeserializeObject<VoiceHelloData>(payload.d.ToString());
-                    await StartVoiceHeartbeat(helloData.heartbeat_interval);
-                    await SendVoiceIdentify();
-                    break;
-                    
-                case 2: // Ready - Discord.js Networking.ts準拠
-                    // Discord.js実装通り：Identifying → UdpHandshaking状態遷移
-                    _networkingState = NetworkingState.Identifying;
-                    
-                    var readyData = JsonConvert.DeserializeObject<VoiceReadyData>(payload.d.ToString());
-                    _ourSSRC = readyData.ssrc;
-                    _voiceServerEndpoint = new IPEndPoint(IPAddress.Parse(readyData.ip), readyData.port);
-                    _availableModes = readyData.modes; // Discord.js実装通り：暗号化モード保存
-                    
-                    LogMessage($"🎯 Voice Ready - BOT SSRC: {_ourSSRC}, Server: {readyData.ip}:{readyData.port}");
-                    
-                    await SetupUdpClient();
-                    
-                    bool discoverySuccess = await PerformUdpIpDiscovery();
-                    
-                    if (!discoverySuccess) {
-                        LogMessage("⚠️ UDP IP Discovery failed, attempting fallback approach");
-                        
-                        // Discord.js実装通り：IP discoveryが失敗した場合のフォールバック
-                        var localEndpoint = (IPEndPoint)_voiceUdpClient.Client.LocalEndPoint;
-                        string fallbackIP = GetLocalIPAddress();
-                        
-                        bool fallbackSuccess = await CompleteUdpDiscovery(fallbackIP, localEndpoint.Port);
-                        
-                        if (!fallbackSuccess) {
-                            LogMessage("❌ WARNING: Both IP discovery and fallback failed. Voice may not work.");
-                        }
-                    }
-                    break;
-                    
-                case 4: // Session Description - Discord.js Networking.ts準拠
-                    // Discord.js実装通り：SelectingProtocol → Ready状態遷移
-                    _networkingState = NetworkingState.Ready;
-                    
-                    var sessionData = JsonConvert.DeserializeObject<VoiceSessionDescriptionData>(payload.d.ToString());
-                    _secretKey = sessionData.secret_key;
-                    _encryptionMode = sessionData.mode; // Discord.js実装通り：暗号化モード保存
-                    
-                    LogMessage($"🔐 Encryption mode: {_encryptionMode}");
-                    LogMessage($"🎯 Voice connection ready! (Discord.js style)");
-                    
-                    await StartUdpAudioReceive();
-                    break;
-                    
-                case 3: // Heartbeat ACK - Discord.js VoiceWebSocket.ts準拠
-                    // Discord.js VoiceWebSocket.ts準拠のハートビートACK処理
-                    _lastHeartbeatAck = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                    _missedHeartbeats = 0;
-                    
-                    if (_lastHeartbeatSend != 0) {
-                        _ping = (int)(_lastHeartbeatAck - _lastHeartbeatSend);
-                    }
-                    break;
-                    
-                case 5: // Speaking
-                    var speakingData = JsonConvert.DeserializeObject<VoiceSpeakingData>(payload.d.ToString());
-                    if (speakingData.user_id != null) {
-                        _ssrcToUserMap[speakingData.ssrc] = speakingData.user_id;
-                    
-                        if (speakingData.user_id == targetUserId) {
-                            LogMessage($"🎯 Target user {(speakingData.speaking ? "started" : "stopped")} speaking (SSRC: {speakingData.ssrc})");
-                            _isTargetUserSpeaking = speakingData.speaking;
-
-                            if (!_isTargetUserSpeaking)
-                            {
-                                ProcessAudioBuffer(true);
-                            }
-                        }
-                    }
-                    break;
-                    
-                case 6: // Heartbeat (Discord.jsでは一般的に無視)
-                case 11: // Voice State Update
-                case 18: // Client Flags Update
-                case 20: // Platform Update
-                    // Discord.jsの実装を参考に、これらは静かに無視
-                    break;
-                    
-                default:
-                    LogMessage($"Unknown voice OP code: {payload.op}");
-                    LogMessage($"Voice message data: {payload.d?.ToString() ?? "null"}");
-                    break;
+                case 8: await HandleVoiceHello(payload); break;
+                case 2: await HandleVoiceReady(payload); break;
+                case 4: await HandleVoiceSessionDescription(payload); break;
+                case 3: HandleVoiceHeartbeatAck(); break;
+                case 5: HandleVoiceSpeaking(payload); break;
+                case 6: case 11: case 18: case 20: break; // 無視するメッセージ
+                default: LogUnknownVoiceMessage(payload.op, payload.d); break;
             }
         } catch (Exception ex) {
             LogMessage($"Voice message processing error: {ex.Message}");
             LogMessage($"Raw message: {message}");
         }
+    }
+
+    /// <summary>
+    /// Voice GatewayのHelloメッセージを処理
+    /// </summary>
+    private async Task HandleVoiceHello(VoiceGatewayPayload payload) {
+        _networkingState = NetworkingState.Identifying;
+        var helloData = JsonConvert.DeserializeObject<VoiceHelloData>(payload.d.ToString());
+        await StartVoiceHeartbeat(helloData.heartbeat_interval);
+        await SendVoiceIdentify();
+    }
+
+    /// <summary>
+    /// Voice GatewayのReadyメッセージを処理
+    /// </summary>
+    private async Task HandleVoiceReady(VoiceGatewayPayload payload) {
+        _networkingState = NetworkingState.Identifying;
+        var readyData = JsonConvert.DeserializeObject<VoiceReadyData>(payload.d.ToString());
+        
+        await InitializeVoiceConnection(readyData);
+        await PerformUdpDiscovery();
+    }
+
+    /// <summary>
+    /// Voice GatewayのSession Descriptionメッセージを処理
+    /// </summary>
+    private async Task HandleVoiceSessionDescription(VoiceGatewayPayload payload) {
+        _networkingState = NetworkingState.Ready;
+        var sessionData = JsonConvert.DeserializeObject<VoiceSessionDescriptionData>(payload.d.ToString());
+        
+        _secretKey = sessionData.secret_key;
+        _encryptionMode = sessionData.mode;
+        
+        LogMessage($"🔐 Encryption mode: {_encryptionMode}");
+        LogMessage($"🎯 Voice connection ready! (Discord.js style)");
+        
+        await StartUdpAudioReceive();
+    }
+
+    /// <summary>
+    /// Voice GatewayのHeartbeat ACKを処理
+    /// </summary>
+    private void HandleVoiceHeartbeatAck() {
+        _lastHeartbeatAck = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        _missedHeartbeats = 0;
+        
+        if (_lastHeartbeatSend != 0) {
+            _ping = (int)(_lastHeartbeatAck - _lastHeartbeatSend);
+        }
+    }
+
+    /// <summary>
+    /// Voice GatewayのSpeakingメッセージを処理
+    /// </summary>
+    private void HandleVoiceSpeaking(VoiceGatewayPayload payload) {
+        var speakingData = JsonConvert.DeserializeObject<VoiceSpeakingData>(payload.d.ToString());
+        if (speakingData.user_id == null) return;
+        
+        _ssrcToUserMap[speakingData.ssrc] = speakingData.user_id;
+        
+        if (speakingData.user_id == targetUserId) {
+            LogMessage($"🎯 Target user {(speakingData.speaking ? "started" : "stopped")} speaking (SSRC: {speakingData.ssrc})");
+            _isTargetUserSpeaking = speakingData.speaking;
+
+            if (!_isTargetUserSpeaking) {
+                ProcessAudioBuffer(true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 音声接続を初期化
+    /// </summary>
+    private async Task InitializeVoiceConnection(VoiceReadyData readyData) {
+        _ourSSRC = readyData.ssrc;
+        _voiceServerEndpoint = new IPEndPoint(IPAddress.Parse(readyData.ip), readyData.port);
+        _availableModes = readyData.modes;
+        
+        LogMessage($"🎯 Voice Ready - BOT SSRC: {_ourSSRC}, Server: {readyData.ip}:{readyData.port}");
+        
+        await SetupUdpClient();
+    }
+
+    /// <summary>
+    /// UDP発見処理を実行
+    /// </summary>
+    private async Task<bool> PerformUdpDiscovery() {
+        bool discoverySuccess = await PerformUdpIpDiscovery();
+        
+        if (!discoverySuccess) {
+            LogMessage("⚠️ UDP IP Discovery failed, attempting fallback approach");
+            await PerformUdpFallback();
+        }
+        
+        return discoverySuccess;
+    }
+
+    /// <summary>
+    /// UDP発見のフォールバック処理
+    /// </summary>
+    private async Task PerformUdpFallback() {
+        var localEndpoint = (IPEndPoint)_voiceUdpClient.Client.LocalEndPoint;
+        string fallbackIP = GetLocalIPAddress();
+        
+        bool fallbackSuccess = await CompleteUdpDiscovery(fallbackIP, localEndpoint.Port);
+        
+        if (!fallbackSuccess) {
+            LogMessage("❌ WARNING: Both IP discovery and fallback failed. Voice may not work.");
+        }
+    }
+
+    /// <summary>
+    /// DiscordのVoice Serverに対してUDP IP Discoveryを実行し、
+    /// 外部から見た自身のIPアドレスとポートを取得します。
+    /// </summary>
+    /// <returns>IP Discoveryが成功した場合はtrue、それ以外はfalse。</returns>
+    private async Task<bool> PerformUdpIpDiscovery() {
+        try {
+            _networkingState = NetworkingState.UdpHandshaking;
+            
+            await SetupUdpClientForDiscovery();
+            var discoveryPacket = CreateDiscoveryPacket();
+            await SendDiscoveryPacket(discoveryPacket);
+            
+            return await WaitForDiscoveryResponse();
+            
+        } catch (Exception ex) {
+            LogMessage($"❌ UDP discovery error: {ex.Message}");
+            return await UseDiscordJsFallback();
+        }
+    }
+
+    /// <summary>
+    /// UDP発見用のクライアントをセットアップ
+    /// </summary>
+    private async Task SetupUdpClientForDiscovery() {
+        _voiceUdpClient.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
+        var boundEndpoint = (IPEndPoint)_voiceUdpClient.Client.LocalEndPoint;
+        LogMessage($"UDP client bound to: {boundEndpoint}");
+    }
+
+    /// <summary>
+    /// 発見パケットを作成
+    /// </summary>
+    private byte[] CreateDiscoveryPacket() {
+        var discoveryBuffer = new byte[DiscordConstants.UDP_DISCOVERY_PACKET_SIZE];
+        
+        // Type: 1
+        discoveryBuffer[0] = 0x00;
+        discoveryBuffer[1] = 0x01;
+        
+        // Length: 70
+        discoveryBuffer[2] = 0x00;
+        discoveryBuffer[3] = 0x46;
+        
+        // SSRC (Big Endian)
+        var ssrcBytes = BitConverter.GetBytes(_ourSSRC);
+        if (BitConverter.IsLittleEndian) {
+            Array.Reverse(ssrcBytes);
+        }
+        Array.Copy(ssrcBytes, 0, discoveryBuffer, 4, 4);
+        
+        return discoveryBuffer;
+    }
+
+    /// <summary>
+    /// 発見パケットを送信
+    /// </summary>
+    private async Task SendDiscoveryPacket(byte[] packet) {
+        await _voiceUdpClient.SendAsync(packet, packet.Length, _voiceServerEndpoint);
+        LogMessage("Discovery packet sent");
+    }
+
+    /// <summary>
+    /// 発見応答を待機
+    /// </summary>
+    private async Task<bool> WaitForDiscoveryResponse() {
+        var receiveTask = _voiceUdpClient.ReceiveAsync();
+        var timeoutTask = Task.Delay(DiscordConstants.UDP_DISCOVERY_TIMEOUT);
+        
+        var completedTask = await Task.WhenAny(receiveTask, timeoutTask);
+        
+        if (completedTask == receiveTask) {
+            return await ProcessDiscoveryResponse(await receiveTask);
+        } else {
+            LogMessage($"❌ Discovery timeout after {DiscordConstants.UDP_DISCOVERY_TIMEOUT}ms");
+            return await UseDiscordJsFallback();
+        }
+    }
+
+    /// <summary>
+    /// 発見応答を処理
+    /// </summary>
+    private async Task<bool> ProcessDiscoveryResponse(UdpReceiveResult result) {
+        var message = result.Buffer;
+        
+        if (message.Length >= DiscordConstants.UDP_DISCOVERY_PACKET_SIZE) {
+            var localConfig = ParseLocalPacket(message);
+            if (localConfig != null) {
+                return await CompleteUdpDiscovery(localConfig.ip, localConfig.port);
+            }
+        } else {
+            LogMessage($"❌ Discovery response too short: {message.Length} bytes");
+        }
+        
+        return await UseDiscordJsFallback();
+    }
+
+    /// <summary>
+    /// 受信したRTPパケットを処理します。
+    /// SSRCからユーザーを特定し、暗号化された音声データを復号してOpusパケットキューに追加します。
+    /// </summary>
+    /// <param name="packet">受信したRTPパケットのバイト配列。</param>
+    private async Task ProcessRtpPacket(byte[] packet) {
+        try {
+            var ssrc = ExtractSsrcFromPacket(packet);
+            
+            if (ssrc == _ourSSRC) {
+                return; // BOT自身のパケットは静かに無視
+            }
+            
+            if (_ssrcToUserMap.TryGetValue(ssrc, out string userId)) {
+                await ProcessUserAudioPacket(packet, userId);
+            } else {
+                LogMessage($"⚠️ No user found for SSRC {ssrc}");
+            }
+        } catch (Exception ex) {
+            LogMessage($"❌ RTP processing error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// パケットからSSRCを抽出
+    /// </summary>
+    private uint ExtractSsrcFromPacket(byte[] packet) {
+        var ssrcBytes = new byte[4];
+        Array.Copy(packet, 8, ssrcBytes, 0, 4);
+        
+        if (BitConverter.IsLittleEndian) {
+            Array.Reverse(ssrcBytes);
+        }
+        return BitConverter.ToUInt32(ssrcBytes, 0);
+    }
+
+    /// <summary>
+    /// ユーザーの音声パケットを処理
+    /// </summary>
+    private async Task ProcessUserAudioPacket(byte[] packet, string userId) {
+        var rtpHeader = ExtractRtpHeader(packet);
+        var encryptedData = ExtractEncryptedData(packet);
+        
+        if (IsValidEncryptedData(encryptedData)) {
+            await DecryptAndQueueAudio(encryptedData, rtpHeader, userId);
+        } else {
+            LogMessage($"⚠️ Skipping packet - encrypted data too small ({encryptedData.Length}) or no secret key");
+        }
+    }
+
+    /// <summary>
+    /// RTPヘッダーを抽出
+    /// </summary>
+    private byte[] ExtractRtpHeader(byte[] packet) {
+        var rtpHeader = new byte[DiscordConstants.RTP_HEADER_SIZE];
+        Array.Copy(packet, 0, rtpHeader, 0, DiscordConstants.RTP_HEADER_SIZE);
+        return rtpHeader;
+    }
+
+    /// <summary>
+    /// 暗号化されたデータを抽出
+    /// </summary>
+    private byte[] ExtractEncryptedData(byte[] packet) {
+        var encryptedData = new byte[packet.Length - DiscordConstants.RTP_HEADER_SIZE];
+        Array.Copy(packet, DiscordConstants.RTP_HEADER_SIZE, encryptedData, 0, encryptedData.Length);
+        return encryptedData;
+    }
+
+    /// <summary>
+    /// 暗号化されたデータが有効かチェック
+    /// </summary>
+    private bool IsValidEncryptedData(byte[] encryptedData) {
+        return encryptedData.Length >= DiscordConstants.MIN_ENCRYPTED_DATA_SIZE && _secretKey != null;
+    }
+
+    /// <summary>
+    /// 音声データを復号してキューに追加
+    /// </summary>
+    private async Task DecryptAndQueueAudio(byte[] encryptedData, byte[] rtpHeader, string userId) {
+        try {
+            byte[] decryptedOpusData = DiscordCrypto.DecryptVoicePacket(encryptedData, rtpHeader, _secretKey, _encryptionMode);
+            
+            if (decryptedOpusData != null) {
+                _successfulDecryptions++;
+                await QueueOpusData(decryptedOpusData, userId);
+            } else {
+                _failedDecryptions++;
+                LogMessage($"❌ Decryption failed ({_failedDecryptions} total failures)");
+            }
+        } catch (Exception decryptEx) {
+            _failedDecryptions++;
+            LogMessage($"❌ Decryption error: {decryptEx.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Opusデータをキューに追加
+    /// </summary>
+    private async Task QueueOpusData(byte[] decryptedOpusData, string userId) {
+        byte[] actualOpusData = ExtractOpusFromDiscordPacket(decryptedOpusData);
+        if (actualOpusData == null) {
+            LogMessage($"⚠️ Failed to extract Opus data from Discord packet");
+            return;
+        }
+        
+        var opusDataCopy = new byte[actualOpusData.Length];
+        Array.Copy(actualOpusData, opusDataCopy, actualOpusData.Length);
+
+        lock (_opusPacketQueue) {
+            _opusPacketQueue.Enqueue(new OpusPacket { 
+                data = opusDataCopy, 
+                userId = userId 
+            });
+        }
+    }
+
+    /// <summary>
+    /// 音声シーケンスを更新
+    /// </summary>
+    private void UpdateVoiceSequence(string message) {
+        var jsonPayload = JObject.Parse(message);
+        if (jsonPayload["seq"] != null) {
+            _voiceSequence = jsonPayload["seq"].ToObject<int>();
+        }
+    }
+
+    /// <summary>
+    /// 未知のVoiceメッセージをログ出力
+    /// </summary>
+    private void LogUnknownVoiceMessage(int opCode, object data) {
+        LogMessage($"Unknown voice OP code: {opCode}");
+        LogMessage($"Voice message data: {data?.ToString() ?? "null"}");
     }
 
     /// <summary>
@@ -573,30 +824,49 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private async Task HandleDispatchEvent(string eventType, string data) {
         switch (eventType) {
             case "READY":
-                var readyData = JsonConvert.DeserializeObject<ReadyData>(data);
-                _sessionId = readyData.session_id;
-                botUserId = readyData.user.id;
-                LogMessage($"Bot logged in: {readyData.user.username}");
-                
-                if (!string.IsNullOrEmpty(voiceChannelId)) {
-                    await JoinVoiceChannel();
-                }
+                await HandleReadyEvent(data);
                 break;
-                
             case "VOICE_STATE_UPDATE":
-                var voiceStateData = JsonConvert.DeserializeObject<VoiceStateData>(data);
-                _voiceSessionId = voiceStateData.session_id;
+                await HandleVoiceStateUpdateEvent(data);
                 break;
-                
             case "VOICE_SERVER_UPDATE":
-                var voiceServerData = JsonConvert.DeserializeObject<VoiceServerData>(data);
-                _voiceToken = voiceServerData.token;
-                _voiceEndpoint = voiceServerData.endpoint;
-                
-                if (!string.IsNullOrEmpty(_voiceToken) && !string.IsNullOrEmpty(_voiceEndpoint) && !string.IsNullOrEmpty(_voiceSessionId)) {
-                    _ = Task.Run(ConnectToVoiceGateway);
-                }
+                await HandleVoiceServerUpdateEvent(data);
                 break;
+        }
+    }
+
+    /// <summary>
+    /// READYイベントを処理
+    /// </summary>
+    private async Task HandleReadyEvent(string data) {
+        var readyData = JsonConvert.DeserializeObject<ReadyData>(data);
+        _sessionId = readyData.session_id;
+        botUserId = readyData.user.id;
+        LogMessage($"Bot logged in: {readyData.user.username}");
+        
+        if (!string.IsNullOrEmpty(voiceChannelId)) {
+            await JoinVoiceChannel();
+        }
+    }
+
+    /// <summary>
+    /// VOICE_STATE_UPDATEイベントを処理
+    /// </summary>
+    private async Task HandleVoiceStateUpdateEvent(string data) {
+        var voiceStateData = JsonConvert.DeserializeObject<VoiceStateData>(data);
+        _voiceSessionId = voiceStateData.session_id;
+    }
+
+    /// <summary>
+    /// VOICE_SERVER_UPDATEイベントを処理
+    /// </summary>
+    private async Task HandleVoiceServerUpdateEvent(string data) {
+        var voiceServerData = JsonConvert.DeserializeObject<VoiceServerData>(data);
+        _voiceToken = voiceServerData.token;
+        _voiceEndpoint = voiceServerData.endpoint;
+        
+        if (!string.IsNullOrEmpty(_voiceToken) && !string.IsNullOrEmpty(_voiceEndpoint) && !string.IsNullOrEmpty(_voiceSessionId)) {
+            _ = Task.Run(ConnectToVoiceGateway);
         }
     }
 
@@ -606,31 +876,44 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// </summary>
     private async Task ConnectToVoiceGateway() {
         await ErrorHandler.SafeExecuteAsync(async () => {
-            _networkingState = NetworkingState.OpeningWs; // 初期状態を設定
+            _networkingState = NetworkingState.OpeningWs;
             
-            // 既存のVoice WebSocketがある場合はクローズ
-            if (_voiceWebSocket != null) {
-                if (_voiceWebSocket.State == WebSocketState.Open) {
-                    await _voiceWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Reconnecting", CancellationToken.None);
-                }
-                _voiceWebSocket?.Dispose();
-                _voiceWebSocket = null;
-            }
+            await CleanupExistingVoiceConnection();
+            await CreateNewVoiceConnection();
             
-            _voiceWebSocket = new ClientWebSocket();
-            var voiceGatewayUrl = $"wss://{_voiceEndpoint}/?v=4";
-            
-            await _voiceWebSocket.ConnectAsync(new Uri(voiceGatewayUrl), _cancellationTokenSource.Token);
-            _voiceConnected = true;
-            
-            LogMessage("✅ Voice WebSocket connected successfully");
-            
-            _ = Task.Run(ReceiveVoiceMessages, _cancellationTokenSource.Token);
         }, "Voice connection", LogMessage);
         
         if (!_voiceConnected) {
             _voiceConnected = false;
         }
+    }
+
+    /// <summary>
+    /// 既存のVoice接続をクリーンアップ
+    /// </summary>
+    private async Task CleanupExistingVoiceConnection() {
+        if (_voiceWebSocket != null) {
+            if (_voiceWebSocket.State == WebSocketState.Open) {
+                await _voiceWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Reconnecting", CancellationToken.None);
+            }
+            _voiceWebSocket?.Dispose();
+            _voiceWebSocket = null;
+        }
+    }
+
+    /// <summary>
+    /// 新しいVoice接続を作成
+    /// </summary>
+    private async Task CreateNewVoiceConnection() {
+        _voiceWebSocket = new ClientWebSocket();
+        var voiceGatewayUrl = $"wss://{_voiceEndpoint}/?v=4";
+        
+        await _voiceWebSocket.ConnectAsync(new Uri(voiceGatewayUrl), _cancellationTokenSource.Token);
+        _voiceConnected = true;
+        
+        LogMessage("✅ Voice WebSocket connected successfully");
+        
+        _ = Task.Run(ReceiveVoiceMessages, _cancellationTokenSource.Token);
     }
 
     /// <summary>
@@ -695,7 +978,16 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         lock (_audioBuffer) _audioBuffer.Clear();
         lock (_opusPacketQueue) _opusPacketQueue.Clear();
         DisposeResources();
+        
         // Discord.js準拠の状態リセット
+        ResetBotState();
+        LogMessage("✅ Bot shutdown completed - all resources cleaned up");
+    }
+
+    /// <summary>
+    /// ボットの状態をリセット
+    /// </summary>
+    private void ResetBotState() {
         _networkingState = NetworkingState.Closed;
         _lastHeartbeatAck = 0;
         _lastHeartbeatSend = 0;
@@ -707,7 +999,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _failedDecryptions = 0;
         _opusSuccesses = 0;
         _opusErrors = 0;
-        LogMessage("✅ Bot shutdown completed - all resources cleaned up");
     }
 
     /// <summary>
@@ -737,12 +1028,12 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                     _isConnected = false;
                     break;
                 }
-                    } catch (Exception ex) {
-            if (_isConnected) {
-                LogMessage($"❌ Message receive error: {ex.Message}");
+            } catch (Exception ex) {
+                if (_isConnected) {
+                    LogMessage($"❌ Message receive error: {ex.Message}");
+                }
+                break;
             }
-            break;
-        }
         }
     }
 
@@ -752,7 +1043,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <param name="message">受信したJSON形式のメッセージ文字列。</param>
     private async Task ProcessDiscordMessage(string message) {
         try {
-            
             var payload = JsonConvert.DeserializeObject<DiscordGatewayPayload>(message);
             if (payload == null) return;
             
@@ -761,23 +1051,29 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             }
 
             switch (payload.op) {
-                case 10: // Hello
-                    var helloData = JsonConvert.DeserializeObject<HelloData>(payload.d.ToString());
-                    await StartHeartbeat(helloData.heartbeat_interval);
-                    await SendIdentify();
-                    break;
-                    
-                case 11: // Heartbeat ACK
-                    _heartbeatAcknowledged = true;
-                    break;
-                    
-                case 0: // Dispatch
-                    await HandleDispatchEvent(payload.t, payload.d.ToString());
-                    break;
+                case 10: await HandleMainHello(payload); break;
+                case 11: HandleMainHeartbeatAck(); break;
+                case 0: await HandleDispatchEvent(payload.t, payload.d.ToString()); break;
             }
         } catch (Exception ex) {
             LogMessage($"❌ Message processing error: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// メインGatewayのHelloメッセージを処理
+    /// </summary>
+    private async Task HandleMainHello(DiscordGatewayPayload payload) {
+        var helloData = JsonConvert.DeserializeObject<HelloData>(payload.d.ToString());
+        await StartHeartbeat(helloData.heartbeat_interval);
+        await SendIdentify();
+    }
+
+    /// <summary>
+    /// メインGatewayのHeartbeat ACKを処理
+    /// </summary>
+    private void HandleMainHeartbeatAck() {
+        _heartbeatAcknowledged = true;
     }
 
     /// <summary>
@@ -838,14 +1134,12 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             _voiceUdpClient?.Close();
             _voiceUdpClient?.Dispose();
             
-            // Discord.jsの実装を参考に、UDPクライアントを作成（バインドは後で行う）
             _voiceUdpClient = new UdpClient();
             _voiceUdpClient.Client.ReceiveBufferSize = DiscordConstants.UDP_BUFFER_SIZE;
             _voiceUdpClient.Client.SendBufferSize = DiscordConstants.UDP_BUFFER_SIZE;
             
-            // UDPソケットの設定を最適化
             _voiceUdpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-            _voiceUdpClient.Client.ReceiveTimeout = 0; // ノンブロッキング
+            _voiceUdpClient.Client.ReceiveTimeout = 0;
             _voiceUdpClient.Client.SendTimeout = DiscordConstants.UDP_SEND_TIMEOUT;
             
             LogMessage("UDP client set up successfully");
@@ -864,7 +1158,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
                 string ip = endPoint?.Address.ToString() ?? "192.168.1.1";
                 
-                // VPN環境の診断情報を追加
                 if (ip.StartsWith("172.") || ip.StartsWith("10.") || ip.StartsWith("192.168.")) {
                     LogMessage($"Detected private IP address: {ip} (may be behind NAT/VPN)");
                 } else {
@@ -874,7 +1167,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 return ip;
             }
         }, "Primary IP detection", LogMessage) ?? ErrorHandler.SafeExecute(() => {
-            // フォールバック: ネットワークインターフェースから取得
             var host = Dns.GetHostEntry(Dns.GetHostName());
             foreach (var ip in host.AddressList) {
                 if (ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip)) {
@@ -884,145 +1176,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             }
             return null;
         }, "Fallback IP detection", LogMessage) ?? "192.168.1.1";
-    }
-
-    /// <summary>
-    /// DiscordのVoice Serverに対してUDP IP Discoveryを実行し、
-    /// 外部から見た自身のIPアドレスとポートを取得します。
-    /// </summary>
-    /// <returns>IP Discoveryが成功した場合はtrue、それ以外はfalse。</returns>
-    private async Task<bool> PerformUdpIpDiscovery() {
-        try {
-            _networkingState = NetworkingState.UdpHandshaking; // 状態遷移を記録
-            
-            // UDPクライアントを任意のポートにバインド
-            _voiceUdpClient.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
-            var boundEndpoint = (IPEndPoint)_voiceUdpClient.Client.LocalEndPoint;
-            
-            // Discord.js VoiceUDPSocket.ts完全準拠の74バイトパケット
-            var discoveryBuffer = new byte[DiscordConstants.UDP_DISCOVERY_PACKET_SIZE];
-            
-            // writeUInt16BE(1, 0) - Type: 1
-            discoveryBuffer[0] = 0x00;
-            discoveryBuffer[1] = 0x01;
-            
-            // writeUInt16BE(70, 2) - Length: 70
-            discoveryBuffer[2] = 0x00;
-            discoveryBuffer[3] = 0x46;
-            
-            // writeUInt32BE(ssrc, 4) - SSRC (Big Endian)
-            var ssrcBytes = BitConverter.GetBytes(_ourSSRC);
-            if (BitConverter.IsLittleEndian) {
-                Array.Reverse(ssrcBytes);
-            }
-            Array.Copy(ssrcBytes, 0, discoveryBuffer, 4, 4);
-            
-            // パケット送信
-            await _voiceUdpClient.SendAsync(discoveryBuffer, discoveryBuffer.Length, _voiceServerEndpoint);
-            
-            // Discord.js VoiceUDPSocket.ts準拠の応答待機
-            var receiveTask = _voiceUdpClient.ReceiveAsync();
-            var timeoutTask = Task.Delay(DiscordConstants.UDP_DISCOVERY_TIMEOUT);
-            
-            var completedTask = await Task.WhenAny(receiveTask, timeoutTask);
-            
-            if (completedTask == receiveTask) {
-                var result = await receiveTask;
-                var message = result.Buffer;
-                
-                if (message.Length >= DiscordConstants.UDP_DISCOVERY_PACKET_SIZE) {
-                    // Discord.js VoiceUDPSocket.ts準拠の応答解析
-                    var localConfig = ParseLocalPacket(message);
-                    
-                    if (localConfig != null) {
-                        return await CompleteUdpDiscovery(localConfig.ip, localConfig.port);
-                    }
-                } else {
-                    LogMessage($"❌ Discovery response too short: {message.Length} bytes (expected {DiscordConstants.UDP_DISCOVERY_PACKET_SIZE})");
-                }
-            } else {
-                LogMessage($"❌ Discovery timeout after {DiscordConstants.UDP_DISCOVERY_TIMEOUT}ms");
-            }
-            
-            // Discord.js フォールバック実装
-            LogMessage("🔄 Using Discord.js fallback approach");
-            return await UseDiscordJsFallback();
-            
-        } catch (Exception ex) {
-            LogMessage($"❌ UDP discovery error: {ex.Message}");
-            LogMessage($"Stack trace: {ex.StackTrace}");
-            
-            return await UseDiscordJsFallback();
-        }
-    }
-
-    /// <summary>
-    /// 受信したRTPパケットを処理します。
-    /// SSRCからユーザーを特定し、暗号化された音声データを復号してOpusパケットキューに追加します。
-    /// </summary>
-    /// <param name="packet">受信したRTPパケットのバイト配列。</param>
-    private async Task ProcessRtpPacket(byte[] packet) {
-        try {
-            var ssrcBytes = new byte[4];
-            Array.Copy(packet, 8, ssrcBytes, 0, 4);
-            
-            if (BitConverter.IsLittleEndian) {
-                Array.Reverse(ssrcBytes);
-            }
-            var ssrc = BitConverter.ToUInt32(ssrcBytes, 0);
-            
-            // BOT自身のSSRCかチェック
-            if (ssrc == _ourSSRC) {
-                return; // BOT自身のパケットは静かに無視
-            }
-            
-            if (_ssrcToUserMap.TryGetValue(ssrc, out string userId)) {
-                var rtpHeader = new byte[DiscordConstants.RTP_HEADER_SIZE];
-                Array.Copy(packet, 0, rtpHeader, 0, DiscordConstants.RTP_HEADER_SIZE);
-                
-                var encryptedData = new byte[packet.Length - DiscordConstants.RTP_HEADER_SIZE];
-                Array.Copy(packet, DiscordConstants.RTP_HEADER_SIZE, encryptedData, 0, encryptedData.Length);
-                
-                if (encryptedData.Length >= DiscordConstants.MIN_ENCRYPTED_DATA_SIZE && _secretKey != null) {
-                    try {
-                        byte[] decryptedOpusData = DiscordCrypto.DecryptVoicePacket(encryptedData, rtpHeader, _secretKey, _encryptionMode);
-                
-                        if (decryptedOpusData != null) {
-                            _successfulDecryptions++;
-                            
-                            // Discordヘッダーをスキップして純粋なOpusデータを抽出
-                            byte[] actualOpusData = ExtractOpusFromDiscordPacket(decryptedOpusData);
-                            if (actualOpusData == null) {
-                                LogMessage($"⚠️ Failed to extract Opus data from Discord packet");
-                                return;
-                            }
-                            
-                            var opusDataCopy = new byte[actualOpusData.Length];
-                            Array.Copy(actualOpusData, opusDataCopy, actualOpusData.Length);
-                
-                            lock (_opusPacketQueue) {
-                                _opusPacketQueue.Enqueue(new OpusPacket { 
-                                    data = opusDataCopy, 
-                                    userId = userId 
-                                });
-                            }
-                        } else {
-                            _failedDecryptions++;
-                            LogMessage($"❌ Decryption failed ({_failedDecryptions} total failures)");
-                        }
-                    } catch (Exception decryptEx) {
-                        _failedDecryptions++;
-                        LogMessage($"❌ Decryption error: {decryptEx.Message}");
-                    }
-                } else {
-                    LogMessage($"⚠️ Skipping packet - encrypted data too small ({encryptedData.Length}) or no secret key");
-                }
-            } else {
-                LogMessage($"⚠️ No user found for SSRC {ssrc} (available: {string.Join(", ", _ssrcToUserMap.Keys)})");
-            }
-        } catch (Exception ex) {
-            LogMessage($"❌ RTP processing error: {ex.Message}");
-        }
     }
 
     /// <summary>
