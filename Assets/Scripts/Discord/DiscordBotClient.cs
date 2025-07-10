@@ -51,6 +51,13 @@ public static class DiscordConstants
     public const int WITA_API_SAMPLE_RATE = 16000;
     public const int WITA_API_CHANNELS = 1;
     
+    // Discord Gateway関連
+    public const int DISCORD_INTENTS = 32509;
+    public const string DISCORD_OS = "unity";
+    public const string DISCORD_BROWSER = "unity-bot";
+    public const string DISCORD_DEVICE = "unity-bot";
+    public const string DISCORD_PROTOCOL = "udp";
+    
     // Discord.js準拠の暗号化モード
     public static readonly string[] SUPPORTED_ENCRYPTION_MODES = { 
         "xsalsa20_poly1305", 
@@ -60,6 +67,88 @@ public static class DiscordConstants
     };
     
     public const string DEFAULT_ENCRYPTION_MODE = "xsalsa20_poly1305";
+}
+
+/// <summary>
+/// Discord Gateway用のJSONオブジェクト作成ヘルパー
+/// </summary>
+public static class DiscordPayloadHelper
+{
+    /// <summary>
+    /// Identifyペイロードを作成
+    /// </summary>
+    public static object CreateIdentifyPayload(string token) => new {
+        op = 2,
+        d = new {
+            token = token,
+            intents = DiscordConstants.DISCORD_INTENTS,
+            properties = new {
+                os = DiscordConstants.DISCORD_OS,
+                browser = DiscordConstants.DISCORD_BROWSER,
+                device = DiscordConstants.DISCORD_DEVICE
+            }
+        }
+    };
+
+    /// <summary>
+    /// ハートビートペイロードを作成
+    /// </summary>
+    public static object CreateHeartbeatPayload(int? sequence) => new {
+        op = 1,
+        d = sequence
+    };
+
+    /// <summary>
+    /// ボイスチャンネル参加ペイロードを作成
+    /// </summary>
+    public static object CreateVoiceStateUpdatePayload(string guildId, string channelId) => new {
+        op = 4,
+        d = new {
+            guild_id = guildId,
+            channel_id = channelId,
+            self_mute = true,
+            self_deaf = false
+        }
+    };
+
+    /// <summary>
+    /// Voice Gateway用Identifyペイロードを作成
+    /// </summary>
+    public static object CreateVoiceIdentifyPayload(string guildId, string userId, string sessionId, string token) => new {
+        op = 0,
+        d = new {
+            server_id = guildId,
+            user_id = userId,
+            session_id = sessionId,
+            token = token
+        }
+    };
+
+    /// <summary>
+    /// プロトコル選択ペイロードを作成
+    /// </summary>
+    public static object CreateSelectProtocolPayload(string ip, int port, string mode) => new {
+        op = 1,
+        d = new {
+            protocol = DiscordConstants.DISCORD_PROTOCOL,
+            data = new {
+                address = ip,
+                port = port,
+                mode = mode
+            }
+        }
+    };
+
+    /// <summary>
+    /// Voice Gateway用ハートビートペイロードを作成
+    /// </summary>
+    public static object CreateVoiceHeartbeatPayload(long nonce, int? sequence) => new {
+        op = 3,
+        d = new {
+            t = nonce,
+            seq_ack = sequence
+        }
+    };
 }
 
 public class DiscordBotClient : MonoBehaviour {
@@ -713,19 +802,7 @@ public class DiscordBotClient : MonoBehaviour {
     /// メインGatewayにIdentifyペイロードを送信し、セッションを確立します。
     /// </summary>
     private async Task SendIdentify() {
-        var identify = new {
-            op = 2,
-            d = new {
-                token = discordToken,
-                intents = 32509,
-                properties = new {
-                    os = "unity",
-                    browser = "unity-bot",
-                    device = "unity-bot"
-                }
-            }
-        };
-
+        var identify = DiscordPayloadHelper.CreateIdentifyPayload(discordToken);
         await SendMessage(JsonConvert.SerializeObject(identify));
     }
 
@@ -733,10 +810,7 @@ public class DiscordBotClient : MonoBehaviour {
     /// メインGatewayにハートビートを送信します。
     /// </summary>
     private async Task SendHeartbeat() {
-        var heartbeat = new {
-            op = 1,
-            d = _mainSequence
-        };
+        var heartbeat = DiscordPayloadHelper.CreateHeartbeatPayload(_mainSequence);
         await SendMessage(JsonConvert.SerializeObject(heartbeat));
     }
 
@@ -744,15 +818,7 @@ public class DiscordBotClient : MonoBehaviour {
     /// 指定されたボイスチャンネルに参加するためのリクエストを送信します。
     /// </summary>
     private async Task JoinVoiceChannel() {
-        var voiceStateUpdate = new {
-            op = 4,
-            d = new {
-                guild_id = guildId,
-                channel_id = voiceChannelId,
-                self_mute = true,
-                self_deaf = false
-            }
-        };
+        var voiceStateUpdate = DiscordPayloadHelper.CreateVoiceStateUpdatePayload(guildId, voiceChannelId);
         await SendMessage(JsonConvert.SerializeObject(voiceStateUpdate));
     }
 
@@ -760,15 +826,7 @@ public class DiscordBotClient : MonoBehaviour {
     /// Voice GatewayにIdentifyペイロードを送信し、音声セッションを確立します。
     /// </summary>
     private async Task SendVoiceIdentify() {
-        var identify = new {
-            op = 0,
-            d = new {
-                server_id = guildId,
-                user_id = botUserId,
-                session_id = _voiceSessionId,
-                token = _voiceToken
-            }
-        };
+        var identify = DiscordPayloadHelper.CreateVoiceIdentifyPayload(guildId, botUserId, _voiceSessionId, _voiceToken);
         await SendVoiceMessage(JsonConvert.SerializeObject(identify));
     }
 
@@ -1307,7 +1365,7 @@ public class DiscordBotClient : MonoBehaviour {
         }
     }
 
-    // Data structures
+    // Data structures - 統合版
     [Serializable]
     public class DiscordGatewayPayload {
         public int op;
@@ -1317,14 +1375,9 @@ public class DiscordBotClient : MonoBehaviour {
     }
 
     [Serializable]
-    public class HelloData {
-        public int heartbeat_interval;
-    }
-
-    [Serializable]
-    public class ReadyData {
-        public string session_id;
-        public DiscordUser user;
+    public class VoiceGatewayPayload {
+        public int op;
+        public object d;
     }
 
     [Serializable]
@@ -1334,59 +1387,23 @@ public class DiscordBotClient : MonoBehaviour {
         public string discriminator;
     }
 
-    [Serializable]
-    public class VoiceServerData {
-        public string endpoint;
-        public string token;
-    }
+    // Discord Gateway Data Structures
+    [Serializable] public class HelloData { public int heartbeat_interval; }
+    [Serializable] public class ReadyData { public string session_id; public DiscordUser user; }
+    [Serializable] public class VoiceServerData { public string endpoint; public string token; }
+    [Serializable] public class VoiceStateData { public string user_id; public string session_id; }
 
-    [Serializable]
-    public class VoiceStateData {
-        public string user_id;
-        public string session_id;
-    }
+    // Voice Gateway Data Structures
+    [Serializable] public class VoiceReadyData { public uint ssrc; public string ip; public int port; public string[] modes; }
+    [Serializable] public class VoiceSpeakingData { public bool speaking; public uint ssrc; public string user_id; }
+    [Serializable] public class VoiceHelloData { public double heartbeat_interval; }
+    [Serializable] public class VoiceSessionDescriptionData { public byte[] secret_key; public string mode; }
 
-    [Serializable]
-    public class VoiceGatewayPayload {
-        public int op;
-        public object d;
-    }
-
-    [Serializable]
-    public class VoiceReadyData {
-        public uint ssrc;
-        public string ip;
-        public int port;
-        public string[] modes;
-    }
-
-    [Serializable]
-    public class VoiceSpeakingData {
-        public bool speaking;
-        public uint ssrc;
-        public string user_id;
-    }
-
-    [Serializable]
-    public class VoiceHelloData {
-        public double heartbeat_interval;
-    }
-
-    [Serializable]
-    public class VoiceSessionDescriptionData {
-        public byte[] secret_key;
-        public string mode;
-    }
-
-    [Serializable]
-    public class WitAIResponse {
-        public string text;
-        public string type; // Node.js準拠: FINAL_UNDERSTANDINGフィルタリング用
-    }
+    // External API Data Structures
+    [Serializable] public class WitAIResponse { public string text; public string type; }
 
     // Discord.js準拠の暗号化モード（XSalsa20対応のため古いモードを優先）
-    // Discord.js準拠の暗号化モード（XSalsa20対応のため古いモードを優先）
-    // 定数はDiscordConstantsクラスに移動済み
+    // 暗号化モードはDiscordConstantsクラスで管理
 
     /// <summary>
     /// IP Discoveryに失敗した場合のフォールバック処理。
@@ -1425,18 +1442,7 @@ public class DiscordBotClient : MonoBehaviour {
             // Discord.js実装通りの暗号化モード選択
             string selectedMode = ChooseEncryptionMode(_availableModes);
             
-            var selectProtocolData = new {
-                op = 1,
-                d = new {
-                    protocol = "udp",
-                    data = new {
-                        address = detectedIP,
-                        port = detectedPort,
-                        mode = selectedMode
-                    }
-                }
-            };
-                
+            var selectProtocolData = DiscordPayloadHelper.CreateSelectProtocolPayload(detectedIP, detectedPort, selectedMode);
             var jsonData = JsonConvert.SerializeObject(selectProtocolData);
             
             if (_voiceWebSocket == null) {
@@ -1653,15 +1659,7 @@ public class DiscordBotClient : MonoBehaviour {
             _missedHeartbeats++;
             
             var nonce = _lastHeartbeatSend;
-            
-            var heartbeat = new {
-                op = 3, // VoiceOpcodes.Heartbeat
-                d = new {
-                    t = nonce,
-                    seq_ack = _voiceSequence
-                }
-            };
-            
+            var heartbeat = DiscordPayloadHelper.CreateVoiceHeartbeatPayload(nonce, _voiceSequence);
             await SendVoiceMessage(JsonConvert.SerializeObject(heartbeat));
             
         } catch (Exception ex) {
