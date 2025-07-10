@@ -219,7 +219,7 @@ public static class ErrorHandler
     }
 }
 
-public class DiscordBotClient : MonoBehaviour {
+public class DiscordBotClient : MonoBehaviour, IDisposable {
     [Header("Debug Settings")]
     public bool enableDebugLogging = true;
     
@@ -690,72 +690,11 @@ public class DiscordBotClient : MonoBehaviour {
     /// </summary>
     public void StopBot() {
         LogMessage("🛑 Starting bot shutdown process...");
-        
-        // フラグを先に設定して、新しい処理を開始しないようにする
         _isConnected = false;
         _voiceConnected = false;
-
-        // 音声バッファをクリア
-        lock (_audioBuffer) {
-            _audioBuffer.Clear();
-        }
-        
-        // Opusパケットキューをクリア
-        lock (_opusPacketQueue) {
-            _opusPacketQueue.Clear();
-        }
-
-        // Discord.js VoiceWebSocket.ts準拠のクリーンアップ
-        _heartbeatTimer?.Dispose();
-        _heartbeatTimer = null;
-        _voiceHeartbeatTimer?.Dispose();
-        _voiceHeartbeatTimer = null;
-        
-        // Discord.js VoiceUDPSocket.ts準拠のクリーンアップ
-        _keepAliveTimer?.Dispose();
-        _keepAliveTimer = null;
-
-        // CancellationTokenSourceをキャンセル（これによりすべての非同期処理が停止する）
-        if (_cancellationTokenSource != null && !_cancellationTokenSource.Token.IsCancellationRequested) {
-            LogMessage("🔄 Cancelling all async operations...");
-            _cancellationTokenSource.Cancel();
-        }
-
-        // WebSocket接続を閉じる（非同期だが待機しない）
-        if (_webSocket != null && _webSocket.State == WebSocketState.Open) {
-            LogMessage("🔄 Closing main WebSocket...");
-            _ = _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Stopping", CancellationToken.None);
-        }
-        _webSocket?.Dispose();
-        _webSocket = null;
-
-        if (_voiceWebSocket != null && _voiceWebSocket.State == WebSocketState.Open) {
-            LogMessage("🔄 Closing voice WebSocket...");
-            _ = _voiceWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Stopping", CancellationToken.None);
-        }
-        _voiceWebSocket?.Dispose();
-        _voiceWebSocket = null;
-
-        // UDPクライアントを閉じる
-        if (_voiceUdpClient != null) {
-            LogMessage("🔄 Closing UDP client...");
-            _voiceUdpClient.Close();
-            _voiceUdpClient.Dispose();
-            _voiceUdpClient = null;
-        }
-
-        // HttpClientを破棄
-        _httpClient?.Dispose();
-        _httpClient = null;
-
-        // CancellationTokenSourceを破棄
-        _cancellationTokenSource?.Dispose();
-        _cancellationTokenSource = null;
-
-        // Opusデコーダーを破棄
-        _opusDecoder?.Dispose();
-        _opusDecoder = null;
-        
+        lock (_audioBuffer) _audioBuffer.Clear();
+        lock (_opusPacketQueue) _opusPacketQueue.Clear();
+        DisposeResources();
         // Discord.js準拠の状態リセット
         _networkingState = NetworkingState.Closed;
         _lastHeartbeatAck = 0;
@@ -764,13 +703,10 @@ public class DiscordBotClient : MonoBehaviour {
         _voiceSequence = -1;
         _ping = null;
         _keepAliveCounter = 0;
-        
-        // 音声処理関連のカウンターをリセット
         _successfulDecryptions = 0;
         _failedDecryptions = 0;
         _opusSuccesses = 0;
         _opusErrors = 0;
-        
         LogMessage("✅ Bot shutdown completed - all resources cleaned up");
     }
 
@@ -1766,5 +1702,59 @@ public class DiscordBotClient : MonoBehaviour {
             LogMessage($"❌ parseLocalPacket error: {ex.Message}");
             return null;
         }
+    }
+
+    public void Dispose()
+    {
+        DisposeResources();
+    }
+
+    private void DisposeResources()
+    {
+        // Discord.js VoiceWebSocket.ts準拠のクリーンアップ
+        _heartbeatTimer?.Dispose();
+        _heartbeatTimer = null;
+        _voiceHeartbeatTimer?.Dispose();
+        _voiceHeartbeatTimer = null;
+        _keepAliveTimer?.Dispose();
+        _keepAliveTimer = null;
+
+        // WebSocket接続を閉じる
+        if (_webSocket != null && _webSocket.State == WebSocketState.Open)
+        {
+            LogMessage("🔄 Closing main WebSocket...");
+            _ = _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Stopping", CancellationToken.None);
+        }
+        _webSocket?.Dispose();
+        _webSocket = null;
+
+        if (_voiceWebSocket != null && _voiceWebSocket.State == WebSocketState.Open)
+        {
+            LogMessage("🔄 Closing voice WebSocket...");
+            _ = _voiceWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Stopping", CancellationToken.None);
+        }
+        _voiceWebSocket?.Dispose();
+        _voiceWebSocket = null;
+
+        // UDPクライアントを閉じる
+        if (_voiceUdpClient != null)
+        {
+            LogMessage("🔄 Closing UDP client...");
+            _voiceUdpClient.Close();
+            _voiceUdpClient.Dispose();
+            _voiceUdpClient = null;
+        }
+
+        // HttpClientを破棄
+        _httpClient?.Dispose();
+        _httpClient = null;
+
+        // CancellationTokenSourceを破棄
+        _cancellationTokenSource?.Dispose();
+        _cancellationTokenSource = null;
+
+        // Opusデコーダーを破棄
+        _opusDecoder?.Dispose();
+        _opusDecoder = null;
     }
 }
