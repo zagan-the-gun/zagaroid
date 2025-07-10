@@ -15,6 +15,53 @@ using System.Net.Http;
 using Concentus;
 using Newtonsoft.Json.Linq;
 
+/// <summary>
+/// Discord Bot関連の定数定義
+/// </summary>
+public static class DiscordConstants
+{
+    // ネットワーク関連
+    public const int WEBSOCKET_BUFFER_SIZE = 4096;
+    public const int UDP_BUFFER_SIZE = 65536;
+    public const int UDP_SEND_TIMEOUT = 5000;
+    public const int UDP_DISCOVERY_TIMEOUT = 3000;
+    public const int UDP_RECEIVE_TIMEOUT = 1000;
+    public const int UDP_DISCOVERY_PACKET_SIZE = 74;
+    public const int RTP_HEADER_SIZE = 12;
+    public const int MIN_ENCRYPTED_DATA_SIZE = 40;
+    public const int MIN_AUDIO_PACKET_SIZE = 60;
+    public const int DISCORD_HEADER_SIZE = 12;
+    
+    // 音声処理関連
+    public const int OPUS_FRAME_SIZE = 960;
+    public const int SAMPLE_RATE_48K = 48000;
+    public const int SAMPLE_RATE_16K = 16000;
+    public const int CHANNELS_STEREO = 2;
+    public const int CHANNELS_MONO = 1;
+    public const float PCM_SCALE_FACTOR = 32768.0f;
+    public const int AUDIO_BUFFER_THRESHOLD = 16000 * 2; // 2秒分
+    public const int AUDIO_BUFFER_MIN_SIZE = 1600; // 0.1秒分
+    
+    // タイムアウト関連
+    public const int RECONNECT_DELAY = 5000;
+    public const int UDP_PACKET_TIMEOUT = 30;
+    public const int UDP_IDLE_TIMEOUT = 60;
+    
+    // 音声認識関連
+    public const int WITA_API_SAMPLE_RATE = 16000;
+    public const int WITA_API_CHANNELS = 1;
+    
+    // Discord.js準拠の暗号化モード
+    public static readonly string[] SUPPORTED_ENCRYPTION_MODES = { 
+        "xsalsa20_poly1305", 
+        "xsalsa20_poly1305_suffix", 
+        "aead_xchacha20_poly1305_rtpsize", 
+        "aead_aes256_gcm_rtpsize" 
+    };
+    
+    public const string DEFAULT_ENCRYPTION_MODE = "xsalsa20_poly1305";
+}
+
 public class DiscordBotClient : MonoBehaviour {
     [Header("Debug Settings")]
     public bool enableDebugLogging = true;
@@ -86,7 +133,7 @@ public class DiscordBotClient : MonoBehaviour {
     // Discord.js VoiceUDPSocket.ts準拠のKeep Alive
     private System.Timers.Timer _keepAliveTimer;
     private uint _keepAliveCounter = 0;
-    private const int KEEP_ALIVE_INTERVAL = 5000; // 5秒
+    private const int KEEP_ALIVE_INTERVAL = DiscordConstants.UDP_SEND_TIMEOUT; // 5秒
     private const uint MAX_COUNTER_VALUE = uint.MaxValue;
 
     // 音声処理統計
@@ -114,7 +161,7 @@ public class DiscordBotClient : MonoBehaviour {
     private async Task ReconnectAsync() {
         LogMessage("Attempting to reconnect...");
         StopBot();
-        await Task.Delay(5000);
+        await Task.Delay(DiscordConstants.RECONNECT_DELAY);
         StartBot();
     }
 
@@ -158,7 +205,7 @@ public class DiscordBotClient : MonoBehaviour {
     /// </summary>
     private void InitializeOpusDecoder() {
         try {
-            _opusDecoder = OpusCodecFactory.CreateDecoder(48000, 2);
+            _opusDecoder = OpusCodecFactory.CreateDecoder(DiscordConstants.SAMPLE_RATE_48K, DiscordConstants.CHANNELS_STEREO);
             LogMessage("Opus decoder initialized");
         } catch (Exception ex) {
             LogMessage($"Opus decoder initialization failed: {ex.Message}");
@@ -224,7 +271,7 @@ public class DiscordBotClient : MonoBehaviour {
     /// Discord Voice Gatewayからのメッセージを受信し続けます。
     /// </summary>
     private async Task ReceiveVoiceMessages() {
-        var buffer = new byte[4096];
+        var buffer = new byte[DiscordConstants.WEBSOCKET_BUFFER_SIZE];
         var messageBuffer = new List<byte>();
         
         while (_voiceConnected && !_cancellationTokenSource.Token.IsCancellationRequested) {
@@ -579,7 +626,7 @@ public class DiscordBotClient : MonoBehaviour {
     /// メインGatewayからのメッセージを受信し続けます。
     /// </summary>
     private async Task ReceiveMessages() {
-        var buffer = new byte[4096];
+        var buffer = new byte[DiscordConstants.WEBSOCKET_BUFFER_SIZE];
         var messageBuilder = new StringBuilder();
         
         while (_isConnected && !_cancellationTokenSource.Token.IsCancellationRequested) {
@@ -736,13 +783,13 @@ public class DiscordBotClient : MonoBehaviour {
             
             // Discord.jsの実装を参考に、UDPクライアントを作成（バインドは後で行う）
             _voiceUdpClient = new UdpClient();
-            _voiceUdpClient.Client.ReceiveBufferSize = 65536;
-            _voiceUdpClient.Client.SendBufferSize = 65536;
+            _voiceUdpClient.Client.ReceiveBufferSize = DiscordConstants.UDP_BUFFER_SIZE;
+            _voiceUdpClient.Client.SendBufferSize = DiscordConstants.UDP_BUFFER_SIZE;
             
             // UDPソケットの設定を最適化
             _voiceUdpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             _voiceUdpClient.Client.ReceiveTimeout = 0; // ノンブロッキング
-            _voiceUdpClient.Client.SendTimeout = 5000;
+            _voiceUdpClient.Client.SendTimeout = DiscordConstants.UDP_SEND_TIMEOUT;
             
             LogMessage("UDP client set up successfully");
         } catch (Exception ex) {
@@ -807,7 +854,7 @@ public class DiscordBotClient : MonoBehaviour {
             var boundEndpoint = (IPEndPoint)_voiceUdpClient.Client.LocalEndPoint;
             
             // Discord.js VoiceUDPSocket.ts完全準拠の74バイトパケット
-            var discoveryBuffer = new byte[74];
+            var discoveryBuffer = new byte[DiscordConstants.UDP_DISCOVERY_PACKET_SIZE];
             
             // writeUInt16BE(1, 0) - Type: 1
             discoveryBuffer[0] = 0x00;
@@ -829,7 +876,7 @@ public class DiscordBotClient : MonoBehaviour {
             
             // Discord.js VoiceUDPSocket.ts準拠の応答待機
             var receiveTask = _voiceUdpClient.ReceiveAsync();
-            var timeoutTask = Task.Delay(3000);
+            var timeoutTask = Task.Delay(DiscordConstants.UDP_DISCOVERY_TIMEOUT);
             
             var completedTask = await Task.WhenAny(receiveTask, timeoutTask);
             
@@ -837,7 +884,7 @@ public class DiscordBotClient : MonoBehaviour {
                 var result = await receiveTask;
                 var message = result.Buffer;
                 
-                if (message.Length >= 74) {
+                if (message.Length >= DiscordConstants.UDP_DISCOVERY_PACKET_SIZE) {
                     // Discord.js VoiceUDPSocket.ts準拠の応答解析
                     var localConfig = ParseLocalPacket(message);
                     
@@ -845,10 +892,10 @@ public class DiscordBotClient : MonoBehaviour {
                         return await CompleteUdpDiscovery(localConfig.ip, localConfig.port);
                     }
                 } else {
-                    LogMessage($"❌ Discovery response too short: {message.Length} bytes (expected 74)");
+                    LogMessage($"❌ Discovery response too short: {message.Length} bytes (expected {DiscordConstants.UDP_DISCOVERY_PACKET_SIZE})");
                 }
             } else {
-                LogMessage("❌ Discovery timeout after 3000ms");
+                LogMessage($"❌ Discovery timeout after {DiscordConstants.UDP_DISCOVERY_TIMEOUT}ms");
             }
             
             // Discord.js フォールバック実装
@@ -884,13 +931,13 @@ public class DiscordBotClient : MonoBehaviour {
             }
             
             if (_ssrcToUserMap.TryGetValue(ssrc, out string userId)) {
-                var rtpHeader = new byte[12];
-                Array.Copy(packet, 0, rtpHeader, 0, 12);
+                var rtpHeader = new byte[DiscordConstants.RTP_HEADER_SIZE];
+                Array.Copy(packet, 0, rtpHeader, 0, DiscordConstants.RTP_HEADER_SIZE);
                 
-                var encryptedData = new byte[packet.Length - 12];
-                Array.Copy(packet, 12, encryptedData, 0, encryptedData.Length);
+                var encryptedData = new byte[packet.Length - DiscordConstants.RTP_HEADER_SIZE];
+                Array.Copy(packet, DiscordConstants.RTP_HEADER_SIZE, encryptedData, 0, encryptedData.Length);
                 
-                if (encryptedData.Length >= 40 && _secretKey != null) {
+                if (encryptedData.Length >= DiscordConstants.MIN_ENCRYPTED_DATA_SIZE && _secretKey != null) {
                     try {
                         byte[] decryptedOpusData = DiscordCrypto.DecryptVoicePacket(encryptedData, rtpHeader, _secretKey, _encryptionMode);
                 
@@ -940,7 +987,7 @@ public class DiscordBotClient : MonoBehaviour {
     /// <returns>抽出されたOpusデータ。抽出に失敗した場合はnull。</returns>
     private byte[] ExtractOpusFromDiscordPacket(byte[] discordPacket) {
         try {
-            if (discordPacket == null || discordPacket.Length < 12) {
+            if (discordPacket == null || discordPacket.Length < DiscordConstants.DISCORD_HEADER_SIZE) {
                 return null;
             }
             
@@ -948,17 +995,16 @@ public class DiscordBotClient : MonoBehaviour {
             // BE-DE で始まるDiscord独自ヘッダーをスキップ
             if (discordPacket.Length >= 2 && discordPacket[0] == 0xBE && discordPacket[1] == 0xDE) {
                 // Discord拡張ヘッダーは12バイト固定
-                const int DISCORD_HEADER_SIZE = 12;
                 
-                if (discordPacket.Length <= DISCORD_HEADER_SIZE) {
+                if (discordPacket.Length <= DiscordConstants.DISCORD_HEADER_SIZE) {
                     LogMessage($"⚠️ Discord packet too small: {discordPacket.Length} bytes");
                     return null;
                 }
                 
                 // Opusデータ部分を抽出（12バイト後から）
-                int opusDataSize = discordPacket.Length - DISCORD_HEADER_SIZE;
+                int opusDataSize = discordPacket.Length - DiscordConstants.DISCORD_HEADER_SIZE;
                 byte[] opusData = new byte[opusDataSize];
-                Array.Copy(discordPacket, DISCORD_HEADER_SIZE, opusData, 0, opusDataSize);
+                Array.Copy(discordPacket, DiscordConstants.DISCORD_HEADER_SIZE, opusData, 0, opusDataSize);
                 
                 return opusData;
             }
@@ -998,17 +1044,17 @@ public class DiscordBotClient : MonoBehaviour {
                 return;
             }
             
-            short[] pcmData = new short[960 * 2];
-            int decodedSamples = _opusDecoder.Decode(opusData, pcmData, 960, false);
+            short[] pcmData = new short[DiscordConstants.OPUS_FRAME_SIZE * DiscordConstants.CHANNELS_STEREO];
+            int decodedSamples = _opusDecoder.Decode(opusData, pcmData, DiscordConstants.OPUS_FRAME_SIZE, false);
             
             if (decodedSamples > 0) {
                 _opusSuccesses++;
                 
-                short[] actualPcmData = new short[decodedSamples * 2];
-                Array.Copy(pcmData, actualPcmData, decodedSamples * 2);
+                short[] actualPcmData = new short[decodedSamples * DiscordConstants.CHANNELS_STEREO];
+                Array.Copy(pcmData, actualPcmData, decodedSamples * DiscordConstants.CHANNELS_STEREO);
                 
-                short[] monoData = ConvertStereoToMono(actualPcmData, decodedSamples * 2);
-                float[] resampledData = ConvertToFloatAndResample(monoData, 48000, 16000);
+                short[] monoData = ConvertStereoToMono(actualPcmData, decodedSamples * DiscordConstants.CHANNELS_STEREO);
+                float[] resampledData = ConvertToFloatAndResample(monoData, DiscordConstants.SAMPLE_RATE_48K, DiscordConstants.SAMPLE_RATE_16K);
                 
                 lock (_audioBuffer) {
                     _audioBuffer.AddRange(resampledData);
@@ -1064,16 +1110,16 @@ public class DiscordBotClient : MonoBehaviour {
     /// <param name="toSampleRate">変換先のサンプルレート。</param>
     /// <returns>変換後のfloat配列。</returns>
     private float[] ConvertToFloatAndResample(short[] shortData, int fromSampleRate, int toSampleRate) {
-        if (fromSampleRate == 48000 && toSampleRate == 16000) {
+        if (fromSampleRate == DiscordConstants.SAMPLE_RATE_48K && toSampleRate == DiscordConstants.SAMPLE_RATE_16K) {
             float[] resampledData = new float[shortData.Length / 3];
             for (int i = 0; i < resampledData.Length; i++) {
-                resampledData[i] = shortData[i * 3] / 32768.0f;
+                resampledData[i] = shortData[i * 3] / DiscordConstants.PCM_SCALE_FACTOR;
             }
             return resampledData;
         } else {
             float[] floatData = new float[shortData.Length];
             for (int i = 0; i < shortData.Length; i++) {
-                floatData[i] = shortData[i] / 32768.0f;
+                floatData[i] = shortData[i] / DiscordConstants.PCM_SCALE_FACTOR;
             }
             return floatData;
         }
@@ -1153,7 +1199,7 @@ public class DiscordBotClient : MonoBehaviour {
             }
 
             // Node.js準拠: 生のPCMデータに変換（48kHz → 16kHz）
-            byte[] rawPcmData = ConvertToRawPcm(audioData, 16000, 1);
+            byte[] rawPcmData = ConvertToRawPcm(audioData, DiscordConstants.WITA_API_SAMPLE_RATE, DiscordConstants.WITA_API_CHANNELS);
             
             using (var content = new ByteArrayContent(rawPcmData))
             {
@@ -1243,7 +1289,7 @@ public class DiscordBotClient : MonoBehaviour {
         lock (_audioBuffer)
         {
             // 2秒以上のデータがある場合、または強制的に処理する場合（かつデータが少しでもある場合）
-            if (_audioBuffer.Count >= 16000 * 2 || (force && _audioBuffer.Count > 1600)) // 0.1秒以上
+            if (_audioBuffer.Count >= DiscordConstants.AUDIO_BUFFER_THRESHOLD || (force && _audioBuffer.Count > DiscordConstants.AUDIO_BUFFER_MIN_SIZE)) // 0.1秒以上
             {
                 float[] audioData = _audioBuffer.ToArray();
                 _audioBuffer.Clear();
@@ -1339,7 +1385,8 @@ public class DiscordBotClient : MonoBehaviour {
     }
 
     // Discord.js準拠の暗号化モード（XSalsa20対応のため古いモードを優先）
-    private readonly string[] SUPPORTED_ENCRYPTION_MODES = { "xsalsa20_poly1305", "xsalsa20_poly1305_suffix", "aead_xchacha20_poly1305_rtpsize", "aead_aes256_gcm_rtpsize" };
+    // Discord.js準拠の暗号化モード（XSalsa20対応のため古いモードを優先）
+    // 定数はDiscordConstantsクラスに移動済み
 
     /// <summary>
     /// IP Discoveryに失敗した場合のフォールバック処理。
@@ -1425,7 +1472,7 @@ public class DiscordBotClient : MonoBehaviour {
             return "xsalsa20_poly1305";
         }
         
-        foreach (var supportedMode in SUPPORTED_ENCRYPTION_MODES) {
+        foreach (var supportedMode in DiscordConstants.SUPPORTED_ENCRYPTION_MODES) {
             if (availableModes.Contains(supportedMode)) {
                 LogMessage($"🔐 Selected encryption mode: {supportedMode} (Discord.js preferred)");
                 return supportedMode;
@@ -1433,7 +1480,7 @@ public class DiscordBotClient : MonoBehaviour {
         }
         
         // フォールバック：利用可能なモードの最初のもの
-        var fallbackMode = availableModes.Length > 0 ? availableModes[0] : "xsalsa20_poly1305";
+        var fallbackMode = availableModes.Length > 0 ? availableModes[0] : DiscordConstants.DEFAULT_ENCRYPTION_MODE;
         LogMessage($"⚠️ Using fallback encryption mode: {fallbackMode}");
         return fallbackMode;
     }
@@ -1509,13 +1556,13 @@ public class DiscordBotClient : MonoBehaviour {
             
             // 新しいUDPクライアントを作成（Discord.jsパターンを参考）
             _voiceUdpClient = new UdpClient();
-            _voiceUdpClient.Client.ReceiveBufferSize = 65536;
-            _voiceUdpClient.Client.SendBufferSize = 65536;
+            _voiceUdpClient.Client.ReceiveBufferSize = DiscordConstants.UDP_BUFFER_SIZE;
+            _voiceUdpClient.Client.SendBufferSize = DiscordConstants.UDP_BUFFER_SIZE;
             
             // Discord.jsの推奨設定を適用
             _voiceUdpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             _voiceUdpClient.Client.ReceiveTimeout = 0; // ノンブロッキング
-            _voiceUdpClient.Client.SendTimeout = 5000;
+            _voiceUdpClient.Client.SendTimeout = DiscordConstants.UDP_SEND_TIMEOUT;
         } catch (Exception ex) {
             LogMessage($"UDP audio client setup error: {ex.Message}");
         }
@@ -1531,7 +1578,7 @@ public class DiscordBotClient : MonoBehaviour {
         while (_voiceConnected && _voiceUdpClient != null && !_cancellationTokenSource.Token.IsCancellationRequested) {
             try {
                 var receiveTask = _voiceUdpClient.ReceiveAsync();
-                var timeoutTask = Task.Delay(1000);
+                var timeoutTask = Task.Delay(DiscordConstants.UDP_RECEIVE_TIMEOUT);
                 
                 var completedTask = await Task.WhenAny(receiveTask, timeoutTask);
                 
@@ -1541,9 +1588,9 @@ public class DiscordBotClient : MonoBehaviour {
                     packetCount++;
                     timeoutCount = 0; // リセット
                     
-                    if (packet.Length >= 12) {
+                    if (packet.Length >= DiscordConstants.RTP_HEADER_SIZE) {
                         // 音声パケットは通常60バイト以上
-                        if (packet.Length >= 60) {
+                        if (packet.Length >= DiscordConstants.MIN_AUDIO_PACKET_SIZE) {
                             await ProcessRtpPacket(packet);
                         }
                     } else {
@@ -1553,13 +1600,13 @@ public class DiscordBotClient : MonoBehaviour {
                     timeoutCount++;
                     
                     // 30秒経過してもパケットが受信されない場合、再接続を試行
-                    if (packetCount == 0 && timeoutCount >= 30) {
-                        LogMessage("⚠️ No packets received for 30 seconds, attempting reconnection...");
+                    if (packetCount == 0 && timeoutCount >= DiscordConstants.UDP_PACKET_TIMEOUT) {
+                        LogMessage($"⚠️ No packets received for {DiscordConstants.UDP_PACKET_TIMEOUT} seconds, attempting reconnection...");
                         break;
                     }
                     
                     // 長時間アイドル状態でも接続を維持
-                    if (packetCount > 0 && timeoutCount >= 60) {
+                    if (packetCount > 0 && timeoutCount >= DiscordConstants.UDP_IDLE_TIMEOUT) {
                         timeoutCount = 0; // リセットして継続
                     }
                 }
@@ -1567,7 +1614,7 @@ public class DiscordBotClient : MonoBehaviour {
                 if (_voiceConnected) {
                     LogMessage($"UDP receive error: {ex.Message}");
                 }
-                await Task.Delay(1000);
+                await Task.Delay(DiscordConstants.UDP_RECEIVE_TIMEOUT);
             }
         }
         
@@ -1639,10 +1686,10 @@ public class DiscordBotClient : MonoBehaviour {
             var packet = message;
             
             // Discord.js VoiceUDPSocket.ts準拠の応答検証
-            if (packet.Length < 74) {
-                LogMessage($"❌ Invalid packet length: {packet.Length} (expected 74)");
-                return null;
-            }
+                    if (packet.Length < DiscordConstants.UDP_DISCOVERY_PACKET_SIZE) {
+            LogMessage($"❌ Invalid packet length: {packet.Length} (expected {DiscordConstants.UDP_DISCOVERY_PACKET_SIZE})");
+            return null;
+        }
             
             // Discord.js実装: if (message.readUInt16BE(0) !== 2) return;
             var responseType = (packet[0] << 8) | packet[1];
