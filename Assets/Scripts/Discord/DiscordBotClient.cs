@@ -151,6 +151,74 @@ public static class DiscordPayloadHelper
     };
 }
 
+/// <summary>
+/// エラーハンドリング用のヘルパークラス
+/// </summary>
+public static class ErrorHandler
+{
+    /// <summary>
+    /// 非同期操作を安全に実行し、エラーをログに記録
+    /// </summary>
+    public static async Task<T> SafeExecuteAsync<T>(Func<Task<T>> operation, string context, Action<string> logCallback)
+    {
+        try
+        {
+            return await operation();
+        }
+        catch (Exception ex)
+        {
+            logCallback($"❌ {context} error: {ex.Message}");
+            return default(T);
+        }
+    }
+
+    /// <summary>
+    /// 非同期操作を安全に実行（戻り値なし）
+    /// </summary>
+    public static async Task SafeExecuteAsync(Func<Task> operation, string context, Action<string> logCallback)
+    {
+        try
+        {
+            await operation();
+        }
+        catch (Exception ex)
+        {
+            logCallback($"❌ {context} error: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 同期操作を安全に実行
+    /// </summary>
+    public static T SafeExecute<T>(Func<T> operation, string context, Action<string> logCallback)
+    {
+        try
+        {
+            return operation();
+        }
+        catch (Exception ex)
+        {
+            logCallback($"❌ {context} error: {ex.Message}");
+            return default(T);
+        }
+    }
+
+    /// <summary>
+    /// 同期操作を安全に実行（戻り値なし）
+    /// </summary>
+    public static void SafeExecute(Action operation, string context, Action<string> logCallback)
+    {
+        try
+        {
+            operation();
+        }
+        catch (Exception ex)
+        {
+            logCallback($"❌ {context} error: {ex.Message}");
+        }
+    }
+}
+
 public class DiscordBotClient : MonoBehaviour {
     [Header("Debug Settings")]
     public bool enableDebugLogging = true;
@@ -293,12 +361,10 @@ public class DiscordBotClient : MonoBehaviour {
     /// 48kHz、ステレオの音声をデコードするように設定されます。
     /// </summary>
     private void InitializeOpusDecoder() {
-        try {
+        ErrorHandler.SafeExecute(() => {
             _opusDecoder = OpusCodecFactory.CreateDecoder(DiscordConstants.SAMPLE_RATE_48K, DiscordConstants.CHANNELS_STEREO);
             LogMessage("Opus decoder initialized");
-        } catch (Exception ex) {
-            LogMessage($"Opus decoder initialization failed: {ex.Message}");
-        }
+        }, "Opus decoder initialization", LogMessage);
     }
 
     /// <summary>
@@ -319,7 +385,7 @@ public class DiscordBotClient : MonoBehaviour {
     /// 設定を読み込み、Discord Gatewayへの接続を開始します。
     /// </summary>
     public async void StartBot() {
-        try {
+        await ErrorHandler.SafeExecuteAsync(async () => {
             LoadSettingsFromCentralManager();
             
             if (string.IsNullOrEmpty(discordToken)) {
@@ -334,16 +400,14 @@ public class DiscordBotClient : MonoBehaviour {
             InitializeOpusDecoder();
             
             await ConnectToDiscord();
-        } catch (Exception ex) {
-            LogMessage($"❌ StartBot error: {ex.Message}");
-        }
+        }, "StartBot", LogMessage);
     }
 
     /// <summary>
     /// DiscordのメインGatewayにWebSocketで接続します。
     /// </summary>
     private async Task ConnectToDiscord() {
-        try {
+        await ErrorHandler.SafeExecuteAsync(async () => {
             _webSocket = new ClientWebSocket();
             await _webSocket.ConnectAsync(new Uri("wss://gateway.discord.gg/?v=10&encoding=json"), _cancellationTokenSource.Token);
             _isConnected = true;
@@ -351,9 +415,7 @@ public class DiscordBotClient : MonoBehaviour {
             LogMessage("✅ Connected to Discord Gateway");
             
             _ = Task.Run(ReceiveMessages, _cancellationTokenSource.Token);
-        } catch (Exception ex) {
-            LogMessage($"❌ Discord connection error: {ex.Message}");
-        }
+        }, "Discord connection", LogMessage);
     }
 
     /// <summary>
@@ -379,12 +441,12 @@ public class DiscordBotClient : MonoBehaviour {
                     _voiceConnected = false;
                     break;
                 }
-            } catch (Exception ex) {
-                if (_voiceConnected) {
-                    LogMessage($"Voice message error: {ex.Message}");
-                }
-                break;
+                    } catch (Exception ex) {
+            if (_voiceConnected) {
+                LogMessage($"❌ Voice message error: {ex.Message}");
             }
+            break;
+        }
         }
     }
 
@@ -543,7 +605,7 @@ public class DiscordBotClient : MonoBehaviour {
     /// 既存の接続がある場合は一旦切断し、再接続します。
     /// </summary>
     private async Task ConnectToVoiceGateway() {
-        try {
+        await ErrorHandler.SafeExecuteAsync(async () => {
             _networkingState = NetworkingState.OpeningWs; // 初期状態を設定
             
             // 既存のVoice WebSocketがある場合はクローズ
@@ -564,8 +626,9 @@ public class DiscordBotClient : MonoBehaviour {
             LogMessage("✅ Voice WebSocket connected successfully");
             
             _ = Task.Run(ReceiveVoiceMessages, _cancellationTokenSource.Token);
-        } catch (Exception ex) {
-            LogMessage($"❌ Voice connection error: {ex.Message}");
+        }, "Voice connection", LogMessage);
+        
+        if (!_voiceConnected) {
             _voiceConnected = false;
         }
     }
@@ -738,12 +801,12 @@ public class DiscordBotClient : MonoBehaviour {
                     _isConnected = false;
                     break;
                 }
-            } catch (Exception ex) {
-                if (_isConnected) {
-                    LogMessage($"Message receive error: {ex.Message}");
-                }
-                break;
+                    } catch (Exception ex) {
+            if (_isConnected) {
+                LogMessage($"❌ Message receive error: {ex.Message}");
             }
+            break;
+        }
         }
     }
 
@@ -777,7 +840,7 @@ public class DiscordBotClient : MonoBehaviour {
                     break;
             }
         } catch (Exception ex) {
-            LogMessage($"Message processing error: {ex.Message}");
+            LogMessage($"❌ Message processing error: {ex.Message}");
         }
     }
 
@@ -835,7 +898,7 @@ public class DiscordBotClient : MonoBehaviour {
     /// バッファサイズやタイムアウトなどのソケットオプションを設定します。
     /// </summary>
     private async Task SetupUdpClient() {
-        try {
+        await ErrorHandler.SafeExecuteAsync(async () => {
             _voiceUdpClient?.Close();
             _voiceUdpClient?.Dispose();
             
@@ -850,9 +913,7 @@ public class DiscordBotClient : MonoBehaviour {
             _voiceUdpClient.Client.SendTimeout = DiscordConstants.UDP_SEND_TIMEOUT;
             
             LogMessage("UDP client set up successfully");
-        } catch (Exception ex) {
-            LogMessage($"UDP setup error: {ex.Message}");
-        }
+        }, "UDP setup", LogMessage);
     }
 
     /// <summary>
@@ -861,7 +922,7 @@ public class DiscordBotClient : MonoBehaviour {
     /// </summary>
     /// <returns>検出されたローカルIPアドレスの文字列。</returns>
     private string GetLocalIPAddress() {
-        try {
+        return ErrorHandler.SafeExecute(() => {
             using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0)) {
                 socket.Connect("8.8.8.8", 65530);
                 IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
@@ -876,26 +937,17 @@ public class DiscordBotClient : MonoBehaviour {
                 
                 return ip;
             }
-        } catch (Exception ex) {
-            LogMessage($"Primary IP detection failed: {ex.Message}");
-            
+        }, "Primary IP detection", LogMessage) ?? ErrorHandler.SafeExecute(() => {
             // フォールバック: ネットワークインターフェースから取得
-            try {
-                var host = Dns.GetHostEntry(Dns.GetHostName());
-                foreach (var ip in host.AddressList) {
-                    if (ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip)) {
-                        LogMessage($"Fallback IP detected: {ip}");
-                        return ip.ToString();
-                    }
+            var host = Dns.GetHostEntry(Dns.GetHostName());
+            foreach (var ip in host.AddressList) {
+                if (ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip)) {
+                    LogMessage($"Fallback IP detected: {ip}");
+                    return ip.ToString();
                 }
-            } catch (Exception ex2) {
-                LogMessage($"Fallback IP detection failed: {ex2.Message}");
             }
-            
-            // 最後のフォールバック
-            LogMessage("Using default fallback IP: 192.168.1.1");
-            return "192.168.1.1";
-        }
+            return null;
+        }, "Fallback IP detection", LogMessage) ?? "192.168.1.1";
     }
 
     /// <summary>
@@ -1410,7 +1462,7 @@ public class DiscordBotClient : MonoBehaviour {
     /// ローカルIPアドレスを使用してUDP接続を試みます。
     /// </summary>
     private async Task<bool> UseDiscordJsFallback() {
-        try {
+        var result = await ErrorHandler.SafeExecuteAsync(async () => {
             LogMessage("📋 Using Discord.js fallback approach...");
             
             // Discord.js フォールバック: ローカルエンドポイントを使用
@@ -1420,10 +1472,9 @@ public class DiscordBotClient : MonoBehaviour {
             LogMessage($"⚠️ Using bound endpoint: {fallbackIP}:{localEndpoint.Port}");
             
             return await CompleteUdpDiscovery(fallbackIP, localEndpoint.Port);
-        } catch (Exception ex) {
-            LogMessage($"Discord.js fallback error: {ex.Message}");
-            return false;
-        }
+        }, "Discord.js fallback", LogMessage);
+        
+        return result;
     }
 
     /// <summary>
@@ -1433,7 +1484,7 @@ public class DiscordBotClient : MonoBehaviour {
     /// <param name="detectedPort">検出されたポート番号。</param>
     /// <returns>成功した場合はtrue、それ以外はfalse。</returns>
     private async Task<bool> CompleteUdpDiscovery(string detectedIP, int detectedPort) {
-        try {
+        var result = await ErrorHandler.SafeExecuteAsync(async () => {
             LogMessage($"🔄 Completing UDP discovery with IP: {detectedIP}, Port: {detectedPort}");
             
             // Discord.js Networking.ts準拠の状態遷移
@@ -1460,11 +1511,9 @@ public class DiscordBotClient : MonoBehaviour {
                 WebSocketMessageType.Text, true, CancellationToken.None);
             
             return true;
-        } catch (Exception ex) {
-            LogMessage($"❌ UDP discovery completion error: {ex.Message}");
-            LogMessage($"Error details: {ex.StackTrace}");
-            return false;
-        }
+        }, "UDP discovery completion", LogMessage);
+        
+        return result;
     }
     
     /// <summary>
@@ -1554,7 +1603,7 @@ public class DiscordBotClient : MonoBehaviour {
     /// 音声受信用にUDPクライアントをセットアップします。
     /// </summary>
     private async Task SetupUdpClientForAudio() {
-        try {
+        await ErrorHandler.SafeExecuteAsync(async () => {
             // 既存のUDPクライアントがある場合は適切に処理
             if (_voiceUdpClient != null) {
                 return;
@@ -1569,9 +1618,7 @@ public class DiscordBotClient : MonoBehaviour {
             _voiceUdpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             _voiceUdpClient.Client.ReceiveTimeout = 0; // ノンブロッキング
             _voiceUdpClient.Client.SendTimeout = DiscordConstants.UDP_SEND_TIMEOUT;
-        } catch (Exception ex) {
-            LogMessage($"UDP audio client setup error: {ex.Message}");
-        }
+        }, "UDP audio client setup", LogMessage);
     }
 
     /// <summary>
