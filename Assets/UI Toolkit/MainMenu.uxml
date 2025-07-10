@@ -66,6 +66,26 @@
                             <ui:TextField label="MenzTranslation URL" value="ws://127.0.0.1:55001" name="MenZTranslationServerUrlInput" style="margin-bottom: 5px; flex-grow: 1;" />
                         </ui:VisualElement>
                     </ui:VisualElement>
+                    <ui:VisualElement name="4" style="flex-grow: 1; flex-direction: row;">
+                        <ui:VisualElement name="PanelDiscordBot" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Toggle label="Auto launch" name="AutoStartDiscordBotToggle" style="margin-bottom: 5px;" />
+                            <ui:TextField label="Discord Bot Token" name="DiscordTokenInput" password="true" style="margin-bottom: 5px;" />
+                            <ui:TextField label="Guild ID" name="DiscordGuildIdInput" style="margin-bottom: 5px;" />
+                            <ui:TextField label="Voice Channel ID" name="DiscordVoiceChannelIdInput" style="margin-bottom: 5px;" />
+                            <ui:TextField label="Text Channel ID" name="DiscordTextChannelIdInput" style="margin-bottom: 5px;" />
+                            <ui:TextField label="Target User ID" name="DiscordTargetUserIdInput" style="margin-bottom: 5px;" />
+                            <ui:TextField label="Input Name" value="Discord" name="DiscordInputNameInput" style="margin-bottom: 5px;" />
+                            <ui:DropdownField label="Subtitle Method" name="DiscordSubtitleMethodDropdown" style="margin-bottom: 5px;" />
+                            <ui:TextField label="Wit.ai Token" name="DiscordWitaiTokenInput" style="margin-bottom: 5px;" />
+
+                            <ui:Button text="Launch" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartDiscordBotButton" style="margin-bottom: 5px;" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="PanelTwitch" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:IntegerField label="Char Per Sec(char)" name="CharactersPerSecondInput" />
+                            <ui:FloatField label="Min Display Time(sec)" value="4" name="MinDisplayTimeInput" />
+                            <ui:FloatField label="Max Display Time(sec)" value="8" name="MaxDisplayTimeInput" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
                     <ui:Button text="Save" name="SaveSettingsButton" style="margin-top: 10px;" />
                 </ui:ScrollView>
             </ui:VisualElement>

@@ -38,6 +38,7 @@ public class CentralManager : MonoBehaviour {
     private VoiceVoxApiClient _voiceVoxApiClient;
     private DeepLApiClient _deepLApiClient;
     private MultiPortWebSocketServer _webSocketServer;
+    private DiscordBotClient _discordBotClient;
     // ... 他のグローバル設定
 
     // private const int CHARS_PER_SECOND = 4; // 1秒あたりの文字数 (例: 4文字で1秒)
@@ -60,6 +61,7 @@ public class CentralManager : MonoBehaviour {
             _voiceVoxApiClient = new VoiceVoxApiClient();
             _deepLApiClient = new DeepLApiClient();
             _webSocketServer = MultiPortWebSocketServer.Instance;
+            _discordBotClient = FindObjectOfType<DiscordBotClient>();
 
             // 他のマネージャーのインスタンスを検索してキャッシュ
             // _translationManager = FindObjectOfType<TranslationManager>();
@@ -84,6 +86,9 @@ public class CentralManager : MonoBehaviour {
     void Start() {
         // Twitchからコメントを受信するイベントを登録
         UnityTwitchChatController.OnTwitchMessageReceived += HandleTwitchMessageReceived;
+        // DiscordBotからの音声認識結果を受信するイベントを登録
+        DiscordBotClient.OnVoiceRecognized += HandleDiscordVoiceRecognized;
+        DiscordBotClient.OnDiscordLog += HandleDiscordLog;
         // MultiPortWebSocketServerの情報を受信するイベントを登録
         if (MultiPortWebSocketServer.Instance != null) {
             MultiPortWebSocketServer.OnMessageReceivedFromPort50001 += HandleWebSocketMessageFromPort50001;
@@ -91,6 +96,9 @@ public class CentralManager : MonoBehaviour {
         } else {
             Debug.LogError("MultiPortWebSocketServer のインスタンスが見つかりません。");
         }
+
+        // アプリケーション終了時のイベントを登録
+        Application.quitting += OnApplicationQuitting;
 
         // 字幕AIの自動起動
         if (GetAutoStartSubtitleAI()) {
@@ -108,6 +116,19 @@ public class CentralManager : MonoBehaviour {
         if (GetAutoStartMenzTranslation()) {
             // 少し遅延させてから起動（他のコンポーネントの初期化を待つ）
             StartCoroutine(DelayedMenzTranslationStart());
+        }
+
+        // DiscordBotの自動起動
+        if (GetAutoStartDiscordBot()) {
+            // 少し遅延させてから起動（他のコンポーネントの初期化を待つ）
+            StartCoroutine(DelayedDiscordBotStart());
+        }
+    }
+
+    private void OnApplicationQuitting() {
+        Debug.Log("Application quitting - stopping DiscordBot");
+        if (_discordBotClient != null) {
+            _discordBotClient.StopBot();
         }
     }
 
@@ -127,6 +148,12 @@ public class CentralManager : MonoBehaviour {
         yield return new WaitForSeconds(4f); // 4秒待機（他と少しずらす）
         UnityEngine.Debug.Log("MenzTranslationの自動起動を開始します");
         StartMenzTranslation();
+    }
+
+    private IEnumerator DelayedDiscordBotStart() {
+        yield return new WaitForSeconds(5f); // 5秒待機（他と少しずらす）
+        UnityEngine.Debug.Log("DiscordBotの自動起動を開始します");
+        StartDiscordBot();
     }
 
     private void Update() {
@@ -291,6 +318,72 @@ public class CentralManager : MonoBehaviour {
         PlayerPrefs.SetString("MenzTranslationExecutionPath", value);
     }
 
+    // Discord Bot 設定
+    public bool GetAutoStartDiscordBot() {
+        return PlayerPrefs.GetInt("AutoStartDiscordBot", 0) == 1;
+    }
+    public void SetAutoStartDiscordBot(bool value) {
+        PlayerPrefs.SetInt("AutoStartDiscordBot", value ? 1 : 0);
+    }
+
+    public string GetDiscordToken() {
+        return PlayerPrefs.GetString("DiscordToken", "");
+    }
+    public void SetDiscordToken(string value) {
+        PlayerPrefs.SetString("DiscordToken", value);
+    }
+
+    public string GetDiscordGuildId() {
+        return PlayerPrefs.GetString("DiscordGuildId", "");
+    }
+    public void SetDiscordGuildId(string value) {
+        PlayerPrefs.SetString("DiscordGuildId", value);
+    }
+
+    public string GetDiscordVoiceChannelId() {
+        return PlayerPrefs.GetString("DiscordVoiceChannelId", "");
+    }
+    public void SetDiscordVoiceChannelId(string value) {
+        PlayerPrefs.SetString("DiscordVoiceChannelId", value);
+    }
+
+    public string GetDiscordTextChannelId() {
+        return PlayerPrefs.GetString("DiscordTextChannelId", "");
+    }
+    public void SetDiscordTextChannelId(string value) {
+        PlayerPrefs.SetString("DiscordTextChannelId", value);
+    }
+
+    public string GetDiscordTargetUserId() {
+        return PlayerPrefs.GetString("DiscordTargetUserId", "");
+    }
+    public void SetDiscordTargetUserId(string value) {
+        PlayerPrefs.SetString("DiscordTargetUserId", value);
+    }
+
+    public string GetDiscordInputName() {
+        return PlayerPrefs.GetString("DiscordInputName", "Discord");
+    }
+    public void SetDiscordInputName(string value) {
+        PlayerPrefs.SetString("DiscordInputName", value);
+    }
+
+    public int GetDiscordSubtitleMethod() {
+        return PlayerPrefs.GetInt("DiscordSubtitleMethod", 0); // 0 = WitAI
+    }
+    public void SetDiscordSubtitleMethod(int value) {
+        PlayerPrefs.SetInt("DiscordSubtitleMethod", value);
+    }
+
+    public string GetDiscordWitaiToken() {
+        return PlayerPrefs.GetString("DiscordWitaiToken", "");
+    }
+    public void SetDiscordWitaiToken(string value) {
+        PlayerPrefs.SetString("DiscordWitaiToken", value);
+    }
+
+
+
     // 汎用的な外部プログラム起動メソッド
     private void StartExternalProgram(string execPath, string programName) {
         if (string.IsNullOrEmpty(execPath)) {
@@ -366,6 +459,25 @@ public class CentralManager : MonoBehaviour {
         StartExternalProgram(GetMenzTranslationExecutionPath(), "MenzTranslation");
     }
 
+    // DiscordBotの起動メソッド
+    public void StartDiscordBot() {
+        if (_discordBotClient == null) {
+            Debug.LogError("DiscordBotClient が見つかりません。シーンにDiscordBotClientコンポーネントを追加してください。");
+            return;
+        }
+
+        Debug.Log("DiscordBot を開始します");
+        _discordBotClient.StartBot();
+    }
+
+    // DiscordBotの停止メソッド
+    public void StopDiscordBot() {
+        if (_discordBotClient != null) {
+            Debug.Log("DiscordBot を停止します");
+            _discordBotClient.StopBot();
+        }
+    }
+
     // すべての PlayerPrefs の変更をディスクに書き込む
     public void SaveAllPlayerPrefs() {
         PlayerPrefs.Save();
@@ -420,20 +532,38 @@ public class CentralManager : MonoBehaviour {
 
     void OnDisable() {
         UnityTwitchChatController.OnTwitchMessageReceived -= HandleTwitchMessageReceived;
+        DiscordBotClient.OnVoiceRecognized -= HandleDiscordVoiceRecognized;
+        DiscordBotClient.OnDiscordLog -= HandleDiscordLog;
         if (MultiPortWebSocketServer.Instance != null) {
             MultiPortWebSocketServer.OnMessageReceivedFromPort50001 -= HandleWebSocketMessageFromPort50001;
             MultiPortWebSocketServer.OnMessageReceivedFromPort50002 -= HandleWebSocketMessageFromPort50002;
         }
+        
+        // DiscordBotの停止処理を追加
+        if (_discordBotClient != null) {
+            Debug.Log("CentralManager being disabled - stopping DiscordBot");
+            _discordBotClient.StopBot();
+        }
+        
         // アプリケーションが終了する際や、CentralManagerが無効になる際に保存
         SaveAllPlayerPrefs(); 
     }
 
     void OnDestroy() {
         UnityTwitchChatController.OnTwitchMessageReceived -= HandleTwitchMessageReceived;
+        DiscordBotClient.OnVoiceRecognized -= HandleDiscordVoiceRecognized;
+        DiscordBotClient.OnDiscordLog -= HandleDiscordLog;
         if (MultiPortWebSocketServer.Instance != null) {
             MultiPortWebSocketServer.OnMessageReceivedFromPort50001 -= HandleWebSocketMessageFromPort50001;
             MultiPortWebSocketServer.OnMessageReceivedFromPort50002 -= HandleWebSocketMessageFromPort50002;
         }
+        
+        // DiscordBotの停止処理を追加
+        if (_discordBotClient != null) {
+            Debug.Log("CentralManager being destroyed - stopping DiscordBot");
+            _discordBotClient.StopBot();
+        }
+        
         // アプリケーションが終了する際や、CentralManagerが無効になる際に保存
         SaveAllPlayerPrefs(); 
     }
@@ -456,6 +586,46 @@ public class CentralManager : MonoBehaviour {
             // コメントスクロールを開始
             SendCanvasMessage(chatMessage);
         }
+    }
+
+    // DiscordBotから音声認識結果を受け取る
+    private void HandleDiscordVoiceRecognized(string inputName, string recognizedText) {
+        Debug.Log($"DiscordBot音声認識結果を受信しました！ [{inputName}]: {recognizedText}");
+
+        // 字幕用チャンネル名を取得
+        string subtitleChannel = GetMySubtitle();
+        if (string.IsNullOrEmpty(subtitleChannel)) {
+            subtitleChannel = "zagan_subtitle"; // デフォルト値
+        }
+
+        // 字幕として送信（HandleWebSocketMessageFromPort50001と同じ処理）
+        float calculatedDuration = calculateDisplayDuration(recognizedText.Length);
+        string myEnglishSubtitle = GetMyEnglishSubtitle();
+        if (string.IsNullOrEmpty(myEnglishSubtitle)) {
+            myEnglishSubtitle = "zagan_subtitle_en"; // デフォルト値
+        }
+
+        CurrentDisplaySubtitle newEntry = new CurrentDisplaySubtitle(
+            recognizedText,
+            subtitleChannel,
+            myEnglishSubtitle,
+            calculatedDuration
+        );
+
+        manageJapaneseSubtitleDisplay(newEntry);
+
+        // コメント読み上げを開始
+        // StartCoroutine(speakComment(inputName, recognizedText));
+
+        // コメントスクロールを開始
+        // SendCanvasMessage(recognizedText);
+    }
+
+    // DiscordBotからログメッセージを受け取る
+    private void HandleDiscordLog(string logMessage) {
+        Debug.Log(logMessage);
+        // 必要に応じてUIに表示したり、ファイルに保存したりする
+        SendGlobalMessage($"[Discord] {logMessage}");
     }
 
     // コメントをVoiceVoxで喋らせる

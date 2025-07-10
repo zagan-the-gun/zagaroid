@@ -39,6 +39,19 @@ public class SettingUIController : MonoBehaviour {
     private TextField deepLApiClientKeyInput;
     private DropdownField translationModeDropdown;
     private TextField menZTranslationServerUrlInput;
+    
+    private Toggle autoStartDiscordBotToggle;
+    private TextField discordTokenInput;
+    private TextField discordGuildIdInput;
+    private TextField discordVoiceChannelIdInput;
+    private TextField discordTextChannelIdInput;
+    private TextField discordTargetUserIdInput;
+    private TextField discordInputNameInput;
+    private DropdownField discordSubtitleMethodDropdown;
+    private TextField discordWitaiTokenInput;
+
+    private Button startDiscordBotButton; // Discord BOT手動起動ボタン
+    
     private Button saveSettingsButton;
 
 
@@ -84,6 +97,17 @@ public class SettingUIController : MonoBehaviour {
         deepLApiClientKeyInput = settingContentRoot.Q<TextField>("DeepLApiClientKeyInput"); // DeepL APIキー
         translationModeDropdown = settingContentRoot.Q<DropdownField>("TranslationModeDropdown"); // 翻訳方式選択
         menZTranslationServerUrlInput = settingContentRoot.Q<TextField>("MenZTranslationServerUrlInput"); // MenZ翻訳サーバーURL
+        autoStartDiscordBotToggle = settingContentRoot.Q<Toggle>("AutoStartDiscordBotToggle");
+        discordTokenInput = settingContentRoot.Q<TextField>("DiscordTokenInput");
+        discordGuildIdInput = settingContentRoot.Q<TextField>("DiscordGuildIdInput");
+        discordVoiceChannelIdInput = settingContentRoot.Q<TextField>("DiscordVoiceChannelIdInput");
+        discordTextChannelIdInput = settingContentRoot.Q<TextField>("DiscordTextChannelIdInput");
+        discordTargetUserIdInput = settingContentRoot.Q<TextField>("DiscordTargetUserIdInput");
+        discordInputNameInput = settingContentRoot.Q<TextField>("DiscordInputNameInput");
+        discordSubtitleMethodDropdown = settingContentRoot.Q<DropdownField>("DiscordSubtitleMethodDropdown");
+        discordWitaiTokenInput = settingContentRoot.Q<TextField>("DiscordWitaiTokenInput");
+        
+        startDiscordBotButton = settingContentRoot.Q<Button>("StartDiscordBotButton"); // Discord BOT手動起動ボタン
         saveSettingsButton = settingContentRoot.Q<Button>("SaveSettingsButton"); // 設定を保存ボタン
 
         // UI要素が見つからない場合のエラーチェック
@@ -123,6 +147,10 @@ public class SettingUIController : MonoBehaviour {
             startMenzTranslationButton.clicked += OnStartMenzTranslationClicked;
         }
 
+        if (startDiscordBotButton != null) {
+            startDiscordBotButton.clicked += OnStartDiscordBotClicked;
+        }
+
         if (saveSettingsButton != null) {
             saveSettingsButton.clicked += SaveSettingsFromUI;
         }
@@ -152,6 +180,10 @@ public class SettingUIController : MonoBehaviour {
 
         if (startMenzTranslationButton != null) {
             startMenzTranslationButton.clicked -= OnStartMenzTranslationClicked;
+        }
+
+        if (startDiscordBotButton != null) {
+            startDiscordBotButton.clicked -= OnStartDiscordBotClicked;
         }
 
         if (saveSettingsButton != null) {
@@ -247,6 +279,51 @@ public class SettingUIController : MonoBehaviour {
             menZTranslationServerUrlInput.value = CentralManager.Instance.GetMenZTranslationServerUrl();
         }
 
+        if (autoStartDiscordBotToggle != null) {
+            autoStartDiscordBotToggle.value = CentralManager.Instance.GetAutoStartDiscordBot();
+        }
+
+        // Discord設定の読み込み
+        if (discordTokenInput != null) {
+            discordTokenInput.value = CentralManager.Instance.GetDiscordToken();
+        }
+        if (discordGuildIdInput != null) {
+            discordGuildIdInput.value = CentralManager.Instance.GetDiscordGuildId();
+        }
+        if (discordVoiceChannelIdInput != null) {
+            discordVoiceChannelIdInput.value = CentralManager.Instance.GetDiscordVoiceChannelId();
+        }
+        if (discordTextChannelIdInput != null) {
+            discordTextChannelIdInput.value = CentralManager.Instance.GetDiscordTextChannelId();
+        }
+        if (discordTargetUserIdInput != null) {
+            discordTargetUserIdInput.value = CentralManager.Instance.GetDiscordTargetUserId();
+        }
+        if (discordInputNameInput != null) {
+            discordInputNameInput.value = CentralManager.Instance.GetDiscordInputName();
+        }
+        if (discordSubtitleMethodDropdown != null) {
+            Debug.Log("Discord字幕方式ドロップダウンの初期化を開始");
+            
+            // ドロップダウンの選択肢を設定（DiscordBotClient.SubtitleMethodに基づく）
+            var discordChoices = new List<string> { "WitAI", "FasterWhisper" };
+            discordSubtitleMethodDropdown.choices = discordChoices;
+            Debug.Log($"Discord字幕方式ドロップダウンの選択肢を設定しました: {string.Join(", ", discordChoices)}");
+            
+            // 現在の設定値を取得（整数値を文字列に変換）
+            int currentMethodIndex = CentralManager.Instance.GetDiscordSubtitleMethod();
+            string currentMethodName = discordChoices[Mathf.Clamp(currentMethodIndex, 0, discordChoices.Count - 1)];
+            Debug.Log($"現在のDiscord字幕方式: {currentMethodIndex} ({currentMethodName})");
+            
+            // 値を設定
+            discordSubtitleMethodDropdown.value = currentMethodName;
+            Debug.Log($"Discord字幕方式ドロップダウンの値を設定しました: '{discordSubtitleMethodDropdown.value}'");
+        }
+        if (discordWitaiTokenInput != null) {
+            discordWitaiTokenInput.value = CentralManager.Instance.GetDiscordWitaiToken();
+        }
+        
+
         Debug.Log("設定UIに値をロードしました。");
     }
 
@@ -310,6 +387,42 @@ public class SettingUIController : MonoBehaviour {
         if (menZTranslationServerUrlInput != null) {
             CentralManager.Instance.SetMenZTranslationServerUrl(menZTranslationServerUrlInput.value);
         }
+
+        if (autoStartDiscordBotToggle != null) {
+            CentralManager.Instance.SetAutoStartDiscordBot(autoStartDiscordBotToggle.value);
+        }
+
+        // Discord設定の保存
+        if (discordTokenInput != null) {
+            CentralManager.Instance.SetDiscordToken(discordTokenInput.value);
+        }
+        if (discordGuildIdInput != null) {
+            CentralManager.Instance.SetDiscordGuildId(discordGuildIdInput.value);
+        }
+        if (discordVoiceChannelIdInput != null) {
+            CentralManager.Instance.SetDiscordVoiceChannelId(discordVoiceChannelIdInput.value);
+        }
+        if (discordTextChannelIdInput != null) {
+            CentralManager.Instance.SetDiscordTextChannelId(discordTextChannelIdInput.value);
+        }
+        if (discordTargetUserIdInput != null) {
+            CentralManager.Instance.SetDiscordTargetUserId(discordTargetUserIdInput.value);
+        }
+        if (discordInputNameInput != null) {
+            CentralManager.Instance.SetDiscordInputName(discordInputNameInput.value);
+        }
+        if (discordSubtitleMethodDropdown != null) {
+            // 文字列を整数値に変換して保存
+            var choices = new List<string> { "WitAI", "FasterWhisper" };
+            int methodIndex = choices.IndexOf(discordSubtitleMethodDropdown.value);
+            if (methodIndex >= 0) {
+                CentralManager.Instance.SetDiscordSubtitleMethod(methodIndex);
+            }
+        }
+        if (discordWitaiTokenInput != null) {
+            CentralManager.Instance.SetDiscordWitaiToken(discordWitaiTokenInput.value);
+        }
+        
 
         // PlayerPrefsの変更をディスクに書き込む
         // CentralManager の OnDisable/OnDestroy で自動的に保存されるため、
@@ -448,5 +561,11 @@ public class SettingUIController : MonoBehaviour {
     private void OnStartMenzTranslationClicked() {
         Debug.Log("MenzTranslation手動起動ボタンがクリックされました");
         CentralManager.Instance.StartMenzTranslation();
+    }
+
+    // --- Discord BOT手動起動ボタンのクリックハンドラ ---
+    private void OnStartDiscordBotClicked() {
+        Debug.Log("Discord BOT手動起動ボタンがクリックされました");
+        CentralManager.Instance.StartDiscordBot();
     }
 }
