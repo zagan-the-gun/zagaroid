@@ -1065,70 +1065,180 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     }
     
     /// <summary>
-    /// Opus音声データをデコードし、処理可能なPCM形式に変換します。
-    /// 対象ユーザーの音声のみを処理し、オーディオバッファに追加します。
+    /// 音声処理の最適化された統合メソッド
+    /// Opusデータのデコードから音声認識までの一連の処理を効率化
     /// </summary>
-    /// <param name="opusData">デコードするOpusデータのバイト配列。</param>
-    /// <param name="userId">音声の送信元ユーザーID。</param>
+    /// <param name="opusData">デコードするOpusデータ</param>
+    /// <param name="userId">音声の送信元ユーザーID</param>
     private void ProcessOpusData(byte[] opusData, string userId) {
         try {
-            if (_opusDecoder == null) {
-                LogMessage("❌ Opus decoder is null");
-                return;
+            if (_opusDecoder == null || userId != targetUserId) {
+                return; // 早期リターンで効率化
             }
             
-            if (userId != targetUserId) {
-                return; // 対象外ユーザーは静かにスキップ
-            }
-            
-            // Opusデータの最小サイズチェック
             if (opusData.Length < 1) {
-                _opusErrors++;
-                if (_opusErrors <= 3 || _opusErrors % 10 == 0) {
-                    LogMessage($"❌ Opus data too small: {opusData.Length} bytes ({_opusErrors} errors)");
-                }
+                LogOpusError("Opus data too small", opusData.Length);
                 return;
             }
             
+            // 統合された音声処理パイプライン
+            var processedAudio = ProcessAudioPipeline(opusData);
+            if (processedAudio != null) {
+                AddToAudioBuffer(processedAudio);
+                ProcessAudioBuffer(false);
+            }
+            
+        } catch (Exception ex) {
+            LogOpusError($"Opus processing error: {ex.Message}");
+            HandleOpusDecoderReset(ex);
+        }
+    }
+
+    /// <summary>
+    /// 統合された音声処理パイプライン
+    /// Opusデコードからリサンプリングまでを一括処理
+    /// </summary>
+    /// <param name="opusData">Opusデータ</param>
+    /// <returns>処理済みのfloat音声データ</returns>
+    private float[] ProcessAudioPipeline(byte[] opusData) {
+        try {
+            // Opusデコード
             short[] pcmData = new short[DiscordConstants.OPUS_FRAME_SIZE * DiscordConstants.CHANNELS_STEREO];
             int decodedSamples = _opusDecoder.Decode(opusData, pcmData, DiscordConstants.OPUS_FRAME_SIZE, false);
             
-            if (decodedSamples > 0) {
-                _opusSuccesses++;
-                
-                short[] actualPcmData = new short[decodedSamples * DiscordConstants.CHANNELS_STEREO];
-                Array.Copy(pcmData, actualPcmData, decodedSamples * DiscordConstants.CHANNELS_STEREO);
-                
-                short[] monoData = ConvertStereoToMono(actualPcmData, decodedSamples * DiscordConstants.CHANNELS_STEREO);
-                float[] resampledData = ConvertToFloatAndResample(monoData, DiscordConstants.SAMPLE_RATE_48K, DiscordConstants.SAMPLE_RATE_16K);
-                
-                lock (_audioBuffer) {
-                    _audioBuffer.AddRange(resampledData);
-                }
-                ProcessAudioBuffer(false);
-
-            } else {
-                _opusErrors++;
-                if (_opusErrors <= 3 || _opusErrors % 10 == 0) {
-                    LogMessage($"❌ Opus decode failed: {decodedSamples} samples ({_opusErrors} errors)");
-                }
-            }
-        } catch (Exception ex) {
-            _opusErrors++;
-            // "corrupted stream" や "buffer too small" エラーは最初の3回と10回に1回だけログ出力
-            if (_opusErrors <= 3 || _opusErrors % 10 == 0) {
-                LogMessage($"❌ Opus error: {ex.Message} ({_opusErrors} total errors)");
+            if (decodedSamples <= 0) {
+                LogOpusError("Opus decode failed", decodedSamples);
+                return null;
             }
             
-            // 深刻なエラーの場合はOpusデコーダーをリセット
-            if (ex.Message.Contains("corrupted") && _opusErrors % 50 == 0) {
-                try {
-                    _opusDecoder?.Dispose();
-                    InitializeOpusDecoder();
-                    LogMessage("🔄 Opus decoder reset due to persistent errors");
-                } catch (Exception resetEx) {
-                    LogMessage($"❌ Opus decoder reset failed: {resetEx.Message}");
+            _opusSuccesses++;
+            
+            // 統合された音声変換処理
+            return ConvertAudioData(pcmData, decodedSamples);
+            
+        } catch (Exception ex) {
+            LogOpusError($"Audio pipeline error: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 統合された音声データ変換処理
+    /// ステレオ→モノラル→リサンプリングを一括で実行
+    /// </summary>
+    /// <param name="pcmData">PCMデータ</param>
+    /// <param name="decodedSamples">デコードされたサンプル数</param>
+    /// <returns>変換済みのfloat音声データ</returns>
+    private float[] ConvertAudioData(short[] pcmData, int decodedSamples) {
+        try {
+            // 実際のPCMデータを抽出
+            short[] actualPcmData = new short[decodedSamples * DiscordConstants.CHANNELS_STEREO];
+            Array.Copy(pcmData, actualPcmData, decodedSamples * DiscordConstants.CHANNELS_STEREO);
+            
+            // ステレオ→モノラル変換
+            short[] monoData = ConvertStereoToMono(actualPcmData, decodedSamples * DiscordConstants.CHANNELS_STEREO);
+            
+            // リサンプリング（48kHz→16kHz）
+            return ResampleAudioData(monoData, DiscordConstants.SAMPLE_RATE_48K, DiscordConstants.SAMPLE_RATE_16K);
+            
+        } catch (Exception ex) {
+            LogOpusError($"Audio conversion error: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 音声データのリサンプリング処理
+    /// 48kHzから16kHzへの簡易リサンプリング
+    /// </summary>
+    /// <param name="audioData">変換元の音声データ</param>
+    /// <param name="fromSampleRate">変換元サンプルレート</param>
+    /// <param name="toSampleRate">変換先サンプルレート</param>
+    /// <returns>リサンプリングされたfloat音声データ</returns>
+    private float[] ResampleAudioData(short[] audioData, int fromSampleRate, int toSampleRate) {
+        if (fromSampleRate == DiscordConstants.SAMPLE_RATE_48K && toSampleRate == DiscordConstants.SAMPLE_RATE_16K) {
+            // 3:1の比率でリサンプリング（48kHz→16kHz）
+            float[] resampledData = new float[audioData.Length / 3];
+            for (int i = 0; i < resampledData.Length; i++) {
+                resampledData[i] = audioData[i * 3] / DiscordConstants.PCM_SCALE_FACTOR;
+            }
+            return resampledData;
+        } else {
+            // その他のサンプルレート変換
+            float[] floatData = new float[audioData.Length];
+            for (int i = 0; i < audioData.Length; i++) {
+                floatData[i] = audioData[i] / DiscordConstants.PCM_SCALE_FACTOR;
+            }
+            return floatData;
+        }
+    }
+
+    /// <summary>
+    /// 音声バッファへの安全な追加処理
+    /// </summary>
+    /// <param name="audioData">追加する音声データ</param>
+    private void AddToAudioBuffer(float[] audioData) {
+        if (audioData == null || audioData.Length == 0) return;
+        
+        lock (_audioBuffer) {
+            _audioBuffer.AddRange(audioData);
+        }
+    }
+
+    /// <summary>
+    /// 統合された音声認識処理
+    /// 非同期処理とエラーハンドリングを最適化
+    /// </summary>
+    /// <param name="audioData">処理対象の音声データ</param>
+    private IEnumerator ProcessAudioCoroutine(float[] audioData) {
+        if (audioData == null || audioData.Length == 0) {
+            yield break;
+        }
+
+        var recognitionTask = new TaskCompletionSource<(string text, Exception error)>();
+        
+        // 音声認識を非同期で実行
+        Task.Run(async () => {
+            try {
+                if (_cancellationTokenSource?.Token.IsCancellationRequested == true) {
+                    recognitionTask.SetResult(("", null));
+                    return;
                 }
+                
+                string recognizedText = await TranscribeWithWitAI(audioData);
+                recognitionTask.SetResult((recognizedText, null));
+                
+            } catch (OperationCanceledException) {
+                recognitionTask.SetResult(("", null));
+            } catch (Exception ex) {
+                recognitionTask.SetResult(("", ex));
+            }
+        });
+
+        // 結果を待機
+        while (!recognitionTask.Task.IsCompleted) {
+            if (_cancellationTokenSource?.Token.IsCancellationRequested == true) {
+                yield break;
+            }
+            yield return new WaitForSeconds(0.1f);
+        }
+
+        // 結果を処理（awaitを使用しない方法に変更）
+        if (recognitionTask.Task.IsCompletedSuccessfully) {
+            var result = recognitionTask.Task.Result;
+            var (recognizedText, error) = result;
+            
+            if (_cancellationTokenSource?.Token.IsCancellationRequested == true) {
+                yield break;
+            }
+
+            if (error != null) {
+                LogMessage($"❌ Speech recognition error: {error.Message}");
+            } else if (!string.IsNullOrEmpty(recognizedText)) {
+                LogMessage($"🎯 Recognized: {recognizedText}");
+                OnVoiceRecognized?.Invoke(inputName, recognizedText);
+            } else {
+                LogMessage("🤔 No speech recognized");
             }
         }
     }
@@ -1136,9 +1246,9 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <summary>
     /// ステレオPCMデータをモノラルに変換します。
     /// </summary>
-    /// <param name="stereoData">ステレオPCMデータ。</param>
-    /// <param name="totalSamples">合計サンプル数。</param>
-    /// <returns>モノラルに変換されたPCMデータ。</returns>
+    /// <param name="stereoData">ステレオPCMデータ</param>
+    /// <param name="totalSamples">合計サンプル数</param>
+    /// <returns>モノラルに変換されたPCMデータ</returns>
     private short[] ConvertStereoToMono(short[] stereoData, int totalSamples) {
         short[] monoData = new short[totalSamples / 2];
         for (int i = 0; i < monoData.Length; i++) {
@@ -1148,81 +1258,31 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     }
 
     /// <summary>
-    /// short形式のPCMデータをfloat形式に変換し、リサンプリングします。
-    /// 48kHzから16kHzへのリサンプリングを簡易的に行います。
+    /// 統合されたOpusエラーログ処理
     /// </summary>
-    /// <param name="shortData">変換元のshort配列。</param>
-    /// <param name="fromSampleRate">変換元のサンプルレート。</param>
-    /// <param name="toSampleRate">変換先のサンプルレート。</param>
-    /// <returns>変換後のfloat配列。</returns>
-    private float[] ConvertToFloatAndResample(short[] shortData, int fromSampleRate, int toSampleRate) {
-        if (fromSampleRate == DiscordConstants.SAMPLE_RATE_48K && toSampleRate == DiscordConstants.SAMPLE_RATE_16K) {
-            float[] resampledData = new float[shortData.Length / 3];
-            for (int i = 0; i < resampledData.Length; i++) {
-                resampledData[i] = shortData[i * 3] / DiscordConstants.PCM_SCALE_FACTOR;
-            }
-            return resampledData;
-        } else {
-            float[] floatData = new float[shortData.Length];
-            for (int i = 0; i < shortData.Length; i++) {
-                floatData[i] = shortData[i] / DiscordConstants.PCM_SCALE_FACTOR;
-            }
-            return floatData;
+    /// <param name="message">エラーメッセージ</param>
+    /// <param name="value">関連する値（オプション）</param>
+    private void LogOpusError(string message, object value = null) {
+        _opusErrors++;
+        if (_opusErrors <= 3 || _opusErrors % 10 == 0) {
+            string logMessage = value != null ? $"{message}: {value}" : message;
+            LogMessage($"❌ {logMessage} ({_opusErrors} total errors)");
         }
     }
 
     /// <summary>
-    /// 音声データを非同期で処理するためのコルーチン。
-    /// バックグラウンドで文字起こしを実行し、結果をメインスレッドで処理します。
+    /// Opusデコーダーのリセット処理
     /// </summary>
-    /// <param name="audioData">処理対象の音声データ。</param>
-    private IEnumerator ProcessAudioCoroutine(float[] audioData) {
-        string recognizedText = "";
-        bool completed = false;
-        Exception error = null;
-
-        Task.Run(async () => {
+    /// <param name="ex">発生した例外</param>
+    private void HandleOpusDecoderReset(Exception ex) {
+        if (ex.Message.Contains("corrupted") && _opusErrors % 50 == 0) {
             try {
-                // CancellationTokenをチェック
-                if (_cancellationTokenSource?.Token.IsCancellationRequested == true) {
-                    LogMessage("🛑 Audio processing cancelled before start");
-                    return;
-                }
-                recognizedText = await TranscribeWithWitAI(audioData);
-            } catch (OperationCanceledException) {
-                // キャンセルされた場合は静かに終了
-                LogMessage("🛑 Audio processing cancelled during transcription");
-                return;
-            } catch (Exception ex) {
-                error = ex;
-                LogMessage($"❌ Audio processing error: {ex.Message}");
-            } finally {
-                completed = true;
+                _opusDecoder?.Dispose();
+                InitializeOpusDecoder();
+                LogMessage("🔄 Opus decoder reset due to persistent errors");
+            } catch (Exception resetEx) {
+                LogMessage($"❌ Opus decoder reset failed: {resetEx.Message}");
             }
-        });
-
-        while (!completed) {
-            // CancellationTokenをチェック
-            if (_cancellationTokenSource?.Token.IsCancellationRequested == true) {
-                LogMessage("🛑 Audio processing cancelled during wait");
-                yield break;
-            }
-            yield return new WaitForSeconds(0.1f);
-        }
-
-        // キャンセルされた場合は処理をスキップ
-        if (_cancellationTokenSource?.Token.IsCancellationRequested == true) {
-            LogMessage("🛑 Audio processing cancelled before final processing");
-            yield break;
-        }
-
-        if (error != null) {
-            LogMessage($"❌ Speech recognition error: {error.Message}");
-        } else if (!string.IsNullOrEmpty(recognizedText)) {
-            LogMessage($"🎯 Recognized: {recognizedText}");
-            OnVoiceRecognized?.Invoke(inputName, recognizedText);
-        } else {
-            LogMessage("🤔 No speech recognized");
         }
     }
 
