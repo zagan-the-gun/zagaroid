@@ -67,6 +67,10 @@ public static class DiscordConstants
     };
     
     public const string DEFAULT_ENCRYPTION_MODE = "xsalsa20_poly1305";
+    
+    // 無音検出関連
+    public const float SILENCE_THRESHOLD = 0.005f; // 無音判定の閾値（音量レベル）
+    public const int SILENCE_DURATION_MS = 1000; // 無音継続時間（ミリ秒）
 }
 
 /// <summary>
@@ -270,11 +274,23 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private static int _opusErrors = 0;
 
     // 音声処理関連
-    private List<float> _audioBuffer = new List<float>();
     private IOpusDecoder _opusDecoder;
     private Queue<OpusPacket> _opusPacketQueue = new Queue<OpusPacket>();
     private HttpClient _httpClient;
     private bool _isTargetUserSpeaking = false;
+
+    // リアルタイムPCM処理関連
+    private List<float> _realtimePcmBuffer = new List<float>();
+    private DateTime _lastAudioActivity = DateTime.MinValue;
+    private bool _isSilent = false;
+    
+    // 音声認識状態管理
+    private bool _isProcessingSpeech = false;
+    private DateTime _lastSpeechProcessingTime = DateTime.MinValue;
+    
+    // デバッグカウンター
+    private int _debugCount = 0;
+    private int _silenceDebugCount = 0;
 
     private struct OpusPacket {
         public byte[] data;
@@ -530,8 +546,21 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             LogMessage($"🎯 Target user {(speakingData.speaking ? "started" : "stopped")} speaking (SSRC: {speakingData.ssrc})");
             _isTargetUserSpeaking = speakingData.speaking;
 
-            if (!_isTargetUserSpeaking) {
-                ProcessAudioBuffer(true);
+            if (speakingData.speaking) {
+                // 話し始めた時：リアルタイムPCMバッファをクリアして新しい認識セッションを開始
+                lock (_realtimePcmBuffer) {
+                    _realtimePcmBuffer.Clear();
+                }
+                // 無音検出状態と音声認識状態をリセット
+                _lastAudioActivity = DateTime.Now;
+                _isSilent = false;
+                _isProcessingSpeech = false;
+                LogMessage("🎤 Started new realtime speech recognition session");
+            } else {
+                // 話終わった時：蓄積されたPCMデータで音声認識を実行
+                if (!_isProcessingSpeech) {
+                    ProcessRealtimePcmBuffer();
+                }
             }
         }
     }
@@ -1023,41 +1052,19 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <param name="discordPacket">Discordから受信した音声パケット。</param>
     /// <returns>抽出されたOpusデータ。抽出に失敗した場合はnull。</returns>
     private byte[] ExtractOpusFromDiscordPacket(byte[] discordPacket) {
-        try {
-            if (discordPacket == null || discordPacket.Length < DiscordConstants.DISCORD_HEADER_SIZE) {
-                return null;
-            }
-            
-            // Discord音声パケットの構造解析
-            // BE-DE で始まるDiscord独自ヘッダーをスキップ
-            if (discordPacket.Length >= 2 && discordPacket[0] == 0xBE && discordPacket[1] == 0xDE) {
-                // Discord拡張ヘッダーは12バイト固定
-                
-                if (discordPacket.Length <= DiscordConstants.DISCORD_HEADER_SIZE) {
-                    LogMessage($"⚠️ Discord packet too small: {discordPacket.Length} bytes");
-                    return null;
-                }
-                
-                // Opusデータ部分を抽出（12バイト後から）
-                int opusDataSize = discordPacket.Length - DiscordConstants.DISCORD_HEADER_SIZE;
-                byte[] opusData = new byte[opusDataSize];
-                Array.Copy(discordPacket, DiscordConstants.DISCORD_HEADER_SIZE, opusData, 0, opusDataSize);
-                
-                return opusData;
-            }
-            
-            // BE-DEヘッダーがない場合、そのままOpusデータとして扱う
-            return discordPacket;
-            
-        } catch (Exception ex) {
-            LogMessage($"❌ Discord packet extraction error: {ex.Message}");
+        if (discordPacket?.Length <= DiscordConstants.DISCORD_HEADER_SIZE) {
             return null;
         }
+        
+        // Opusデータ部分を抽出（12バイト後から）
+        var opusData = new byte[discordPacket.Length - DiscordConstants.DISCORD_HEADER_SIZE];
+        Array.Copy(discordPacket, DiscordConstants.DISCORD_HEADER_SIZE, opusData, 0, opusData.Length);
+        return opusData;
     }
     
     /// <summary>
-    /// 音声処理の最適化された統合メソッド
-    /// Opusデータのデコードから音声認識までの一連の処理を効率化
+    /// リアルタイムPCM処理による音声認識
+    /// OpusデータをリアルタイムでPCM変換し、無音検出で字幕AIに送信
     /// </summary>
     /// <param name="opusData">デコードするOpusデータ</param>
     /// <param name="userId">音声の送信元ユーザーID</param>
@@ -1072,11 +1079,32 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 return;
             }
             
-            // 統合された音声処理パイプライン
-            var processedAudio = ProcessAudioPipeline(opusData);
-            if (processedAudio != null) {
-                AddToAudioBuffer(processedAudio);
-                ProcessAudioBuffer(false);
+            // OpusデコードしてPCMデータを取得
+            var pcmData = DecodeOpusToPcm(opusData);
+            if (pcmData == null) {
+                return;
+            }
+            
+            // リアルタイムPCMバッファに追加
+            AddToRealtimePcmBuffer(pcmData);
+            
+            // 音量レベルを計算して無音検出
+            float audioLevel = CalculateAudioLevel(pcmData);
+            bool isSilent = audioLevel <= DiscordConstants.SILENCE_THRESHOLD;
+            
+            // デバッグログ（最初の10回のみ）
+            if (_debugCount < 10) {
+                LogMessage($"🔍 Audio level: {audioLevel:F4}, threshold: {DiscordConstants.SILENCE_THRESHOLD}, silent: {isSilent}");
+                _debugCount++;
+            }
+            
+            // 無音検出処理
+            if (isSilent) {
+                HandleRealtimeSilenceDetection();
+            } else {
+                // 音声活動を検出
+                _lastAudioActivity = DateTime.Now;
+                _isSilent = false;
             }
             
         } catch (Exception ex) {
@@ -1086,32 +1114,136 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     }
 
     /// <summary>
-    /// 統合された音声処理パイプライン
-    /// Opusデコードからリサンプリングまでを一括処理
+    /// OpusデータをPCMデータにデコード
     /// </summary>
     /// <param name="opusData">Opusデータ</param>
-    /// <returns>処理済みのfloat音声データ</returns>
-    private float[] ProcessAudioPipeline(byte[] opusData) {
+    /// <returns>デコードされたPCMデータ（float配列）</returns>
+    private float[] DecodeOpusToPcm(byte[] opusData) {
         try {
             // Opusデコード
             short[] pcmData = new short[DiscordConstants.OPUS_FRAME_SIZE * DiscordConstants.CHANNELS_STEREO];
             int decodedSamples = _opusDecoder.Decode(opusData, pcmData, DiscordConstants.OPUS_FRAME_SIZE, false);
             
             if (decodedSamples <= 0) {
-                LogOpusError("Opus decode failed", decodedSamples);
-                return null;
+                return null; // デコード失敗
             }
             
-            _opusSuccesses++;
+            // ステレオ→モノラル変換
+            short[] monoData = ConvertStereoToMono(pcmData, decodedSamples * DiscordConstants.CHANNELS_STEREO);
             
-            // 統合された音声変換処理
-            return ConvertAudioData(pcmData, decodedSamples);
+            // リサンプリング（48kHz→16kHz）
+            return ResampleAudioData(monoData, DiscordConstants.SAMPLE_RATE_48K, DiscordConstants.SAMPLE_RATE_16K);
             
         } catch (Exception ex) {
-            LogOpusError($"Audio pipeline error: {ex.Message}");
+            LogMessage($"❌ Opus decode error: {ex.Message}");
             return null;
         }
     }
+
+    /// <summary>
+    /// PCMデータの音量レベルを計算
+    /// </summary>
+    /// <param name="pcmData">PCMデータ</param>
+    /// <returns>音量レベル（RMS）</returns>
+    private float CalculateAudioLevel(float[] pcmData) {
+        if (pcmData == null || pcmData.Length == 0) return 0f;
+        
+        float sum = 0f;
+        for (int i = 0; i < pcmData.Length; i++) {
+            sum += pcmData[i] * pcmData[i];
+        }
+        
+        return (float)Math.Sqrt(sum / pcmData.Length);
+    }
+
+    /// <summary>
+    /// リアルタイムPCMバッファにデータを追加
+    /// </summary>
+    /// <param name="pcmData">追加するPCMデータ</param>
+    private void AddToRealtimePcmBuffer(float[] pcmData) {
+        if (pcmData == null || pcmData.Length == 0) return;
+        
+        lock (_realtimePcmBuffer) {
+            _realtimePcmBuffer.AddRange(pcmData);
+        }
+    }
+
+
+
+    /// <summary>
+    /// リアルタイム無音検出処理
+    /// </summary>
+    private void HandleRealtimeSilenceDetection() {
+        var now = DateTime.Now;
+        
+        // 音声認識処理中は無音検出を無視
+        if (_isProcessingSpeech) {
+            return;
+        }
+        
+        // 最後の音声活動から1秒以上経過しているかチェック
+        if (_lastAudioActivity != DateTime.MinValue && 
+            (now - _lastAudioActivity).TotalMilliseconds >= DiscordConstants.SILENCE_DURATION_MS) {
+            
+            if (!_isSilent) {
+                _isSilent = true;
+                LogMessage("🔇 Silence detected - processing accumulated PCM data");
+                
+                // 蓄積されたPCMデータで音声認識を実行
+                ProcessRealtimePcmBuffer();
+            }
+        } else {
+            // デバッグログ：無音検出の進行状況
+            if (_lastAudioActivity != DateTime.MinValue) {
+                var elapsedMs = (now - _lastAudioActivity).TotalMilliseconds;
+                if (_silenceDebugCount < 5) {
+                    LogMessage($"⏱️ Silence progress: {elapsedMs:F0}ms / {DiscordConstants.SILENCE_DURATION_MS}ms");
+                    _silenceDebugCount++;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 蓄積されたリアルタイムPCMバッファを処理
+    /// </summary>
+    private void ProcessRealtimePcmBuffer() {
+        if (_isProcessingSpeech) {
+            LogMessage("⚠️ Speech recognition already in progress, skipping");
+            return;
+        }
+        
+        _isProcessingSpeech = true;
+        _lastSpeechProcessingTime = DateTime.Now;
+        
+        lock (_realtimePcmBuffer) {
+            if (_realtimePcmBuffer.Count > 0) {
+                float[] audioData = _realtimePcmBuffer.ToArray();
+                _realtimePcmBuffer.Clear();
+                
+                LogMessage($"🎯 Processing realtime PCM buffer - size: {audioData.Length} samples");
+                
+                // 音声認識を非同期で実行
+                StartCoroutine(ProcessAudioCoroutine(audioData));
+                
+                // すぐに音声待機状態に戻る
+                _isProcessingSpeech = false;
+                _isSilent = false;
+                _lastAudioActivity = DateTime.Now;
+                
+                LogMessage("🎯 Realtime PCM processing started - returning to audio monitoring");
+            } else {
+                LogMessage("⚠️ Realtime PCM buffer is empty");
+                _isProcessingSpeech = false;
+            }
+        }
+    }
+
+
+
+
+
+
 
     /// <summary>
     /// 統合された音声データ変換処理
@@ -1164,17 +1296,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         }
     }
 
-    /// <summary>
-    /// 音声バッファへの安全な追加処理
-    /// </summary>
-    /// <param name="audioData">追加する音声データ</param>
-    private void AddToAudioBuffer(float[] audioData) {
-        if (audioData == null || audioData.Length == 0) return;
-        
-        lock (_audioBuffer) {
-            _audioBuffer.AddRange(audioData);
-        }
-    }
+
 
     /// <summary>
     /// 統合された音声認識処理
@@ -1377,32 +1499,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         return rawData.ToArray();
     }
 
-    /// <summary>
-    /// オーディオバッファを処理し、十分なデータが溜まった場合や強制フラグが立った場合に音声認識を開始します。
-    /// </summary>
-    /// <param name="force">trueの場合、バッファサイズに関わらず処理を強制します。</param>
-    private void ProcessAudioBuffer(bool force)
-    {
-        lock (_audioBuffer)
-        {
-            // 2秒以上のデータがある場合、または強制的に処理する場合（かつデータが少しでもある場合）
-            if (_audioBuffer.Count >= DiscordConstants.AUDIO_BUFFER_THRESHOLD || (force && _audioBuffer.Count > DiscordConstants.AUDIO_BUFFER_MIN_SIZE)) // 0.1秒以上
-            {
-                float[] audioData = _audioBuffer.ToArray();
-                _audioBuffer.Clear();
-                
-                StartCoroutine(ProcessAudioCoroutine(audioData));
-            }
-            else if (force && _audioBuffer.Count > 0)
-            {
-                // 強制処理の場合、少量のデータでも処理
-                float[] audioData = _audioBuffer.ToArray();
-                _audioBuffer.Clear();
-                
-                StartCoroutine(ProcessAudioCoroutine(audioData));
-            }
-        }
-    }
+
 
     // Data structures - 統合版
     [Serializable]
@@ -1757,14 +1854,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _webSocket?.Dispose();
         _webSocket = null;
 
-        if (_voiceWebSocket != null && _voiceWebSocket.State == WebSocketState.Open)
-        {
-            LogMessage("🔄 Closing voice WebSocket...");
-            _ = _voiceWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Stopping", CancellationToken.None);
-        }
-        _voiceWebSocket?.Dispose();
-        _voiceWebSocket = null;
-
         // UDPクライアントを閉じる
         if (_voiceUdpClient != null)
         {
@@ -1848,7 +1937,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         LogMessage("🛑 Starting bot shutdown process...");
         _isConnected = false;
         _voiceConnected = false;
-        lock (_audioBuffer) _audioBuffer.Clear();
+        lock (_realtimePcmBuffer) _realtimePcmBuffer.Clear();
         lock (_opusPacketQueue) _opusPacketQueue.Clear();
         DisposeResources();
         
@@ -1872,6 +1961,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _failedDecryptions = 0;
         _opusSuccesses = 0;
         _opusErrors = 0;
+        _debugCount = 0;
+        _silenceDebugCount = 0;
     }
 
     /// <summary>
