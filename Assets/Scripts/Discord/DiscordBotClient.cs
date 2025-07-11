@@ -173,22 +173,7 @@ public static class ErrorHandler
     }
 
     /// <summary>
-    /// 非同期操作を安全に実行（戻り値なし）
-    /// </summary>
-    public static async Task SafeExecuteAsync(Func<Task> operation, string context, Action<string> logCallback)
-    {
-        try
-        {
-            await operation();
-        }
-        catch (Exception ex)
-        {
-            logCallback($"❌ {context} error: {ex.Message}");
-        }
-    }
-
-    /// <summary>
-    /// 同期操作を安全に実行
+    /// 同期操作を安全に実行し、エラーをログに記録
     /// </summary>
     public static T SafeExecute<T>(Func<T> operation, string context, Action<string> logCallback)
     {
@@ -200,21 +185,6 @@ public static class ErrorHandler
         {
             logCallback($"❌ {context} error: {ex.Message}");
             return default(T);
-        }
-    }
-
-    /// <summary>
-    /// 同期操作を安全に実行（戻り値なし）
-    /// </summary>
-    public static void SafeExecute(Action operation, string context, Action<string> logCallback)
-    {
-        try
-        {
-            operation();
-        }
-        catch (Exception ex)
-        {
-            logCallback($"❌ {context} error: {ex.Message}");
         }
     }
 }
@@ -361,9 +331,10 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// 48kHz、ステレオの音声をデコードするように設定されます。
     /// </summary>
     private void InitializeOpusDecoder() {
-        ErrorHandler.SafeExecute(() => {
+        ErrorHandler.SafeExecute<bool>(() => {
             _opusDecoder = OpusCodecFactory.CreateDecoder(DiscordConstants.SAMPLE_RATE_48K, DiscordConstants.CHANNELS_STEREO);
             LogMessage("Opus decoder initialized");
+            return true;
         }, "Opus decoder initialization", LogMessage);
     }
 
@@ -385,12 +356,12 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// 設定を読み込み、Discord Gatewayへの接続を開始します。
     /// </summary>
     public async void StartBot() {
-        await ErrorHandler.SafeExecuteAsync(async () => {
+        await ErrorHandler.SafeExecuteAsync<bool>(async () => {
             LoadSettingsFromCentralManager();
             
             if (string.IsNullOrEmpty(discordToken)) {
                 LogMessage("❌ Discord token is not set");
-                return;
+                return false;
             }
             
             _cancellationTokenSource = new CancellationTokenSource();
@@ -400,6 +371,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             InitializeOpusDecoder();
             
             await ConnectToDiscord();
+            return true;
         }, "StartBot", LogMessage);
     }
 
@@ -896,7 +868,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// 既存の接続がある場合は一旦切断し、再接続します。
     /// </summary>
     private async Task ConnectToVoiceGateway() {
-        await ErrorHandler.SafeExecuteAsync(async () => {
+        await ErrorHandler.SafeExecuteAsync<bool>(async () => {
             _networkingState = NetworkingState.OpeningWs;
             
             await CleanupExistingVoiceConnection();
@@ -909,6 +881,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             
             _ = Task.Run(ReceiveVoiceMessages, _cancellationTokenSource.Token);
             
+            return true;
         }, "Voice connection", LogMessage);
         
         if (!_voiceConnected) {
@@ -982,10 +955,10 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// </summary>
     /// <param name="forAudio">音声受信用かどうか</param>
     private async Task SetupUdpClient(bool forAudio = false) {
-        await ErrorHandler.SafeExecuteAsync(async () => {
+        await ErrorHandler.SafeExecuteAsync<bool>(async () => {
             // 音声受信用の場合は既存クライアントをチェック
             if (forAudio && _voiceUdpClient != null) {
-                return;
+                return true;
             }
             
             _voiceUdpClient?.Close();
@@ -1000,6 +973,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             _voiceUdpClient.Client.SendTimeout = DiscordConstants.UDP_SEND_TIMEOUT;
             
             LogMessage($"UDP client set up successfully (forAudio: {forAudio})");
+            return true;
         }, "UDP setup", LogMessage);
     }
 
@@ -1837,7 +1811,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// DiscordのメインGatewayにWebSocketで接続します。
     /// </summary>
     private async Task ConnectToDiscord() {
-        await ErrorHandler.SafeExecuteAsync(async () => {
+        await ErrorHandler.SafeExecuteAsync<bool>(async () => {
             _webSocket = await CreateWebSocketConnection(
                 "wss://gateway.discord.gg/?v=10&encoding=json",
                 false,
@@ -1845,6 +1819,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             );
             
             _ = Task.Run(ReceiveMessages, _cancellationTokenSource.Token);
+            return true;
         }, "Discord connection", LogMessage);
     }
 
