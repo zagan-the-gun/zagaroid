@@ -14,12 +14,10 @@ using Newtonsoft.Json;
 using System.Net.Http;
 using Concentus;
 using Newtonsoft.Json.Linq;
-
 /// <summary>
 /// Discord Bot関連の定数定義
 /// </summary>
-public static class DiscordConstants
-{
+public static class DiscordConstants {
     // ネットワーク関連
     public const int WEBSOCKET_BUFFER_SIZE = 4096;
     public const int UDP_BUFFER_SIZE = 65536;
@@ -31,7 +29,6 @@ public static class DiscordConstants
     public const int MIN_ENCRYPTED_DATA_SIZE = 40;
     public const int MIN_AUDIO_PACKET_SIZE = 60;
     public const int DISCORD_HEADER_SIZE = 12;
-    
     // 音声処理関連
     public const int OPUS_FRAME_SIZE = 960;
     public const int SAMPLE_RATE_48K = 48000;
@@ -41,23 +38,19 @@ public static class DiscordConstants
     public const float PCM_SCALE_FACTOR = 32768.0f;
     public const int AUDIO_BUFFER_THRESHOLD = 16000 * 2; // 2秒分
     public const int AUDIO_BUFFER_MIN_SIZE = 1600; // 0.1秒分
-    
     // タイムアウト関連
     public const int RECONNECT_DELAY = 5000;
     public const int UDP_PACKET_TIMEOUT = 30;
     public const int UDP_IDLE_TIMEOUT = 60;
-    
     // 音声認識関連
     public const int WITA_API_SAMPLE_RATE = 16000;
     public const int WITA_API_CHANNELS = 1;
-    
     // Discord Gateway関連
     public const int DISCORD_INTENTS = 32509;
     public const string DISCORD_OS = "unity";
     public const string DISCORD_BROWSER = "unity-bot";
     public const string DISCORD_DEVICE = "unity-bot";
     public const string DISCORD_PROTOCOL = "udp";
-    
     // Discord.js準拠の暗号化モード
     public static readonly string[] SUPPORTED_ENCRYPTION_MODES = { 
         "xsalsa20_poly1305", 
@@ -65,19 +58,15 @@ public static class DiscordConstants
         "aead_xchacha20_poly1305_rtpsize", 
         "aead_aes256_gcm_rtpsize" 
     };
-    
     public const string DEFAULT_ENCRYPTION_MODE = "xsalsa20_poly1305";
-    
     // 無音検出関連
     public const float SILENCE_THRESHOLD = 0.005f; // 無音判定の閾値（音量レベル）
     public const int SILENCE_DURATION_MS = 1000; // 無音継続時間（ミリ秒）
 }
-
 /// <summary>
 /// Discord Gateway用のJSONオブジェクト作成ヘルパー
 /// </summary>
-public static class DiscordPayloadHelper
-{
+public static class DiscordPayloadHelper {
     /// <summary>
     /// Identifyペイロードを作成
     /// </summary>
@@ -93,7 +82,6 @@ public static class DiscordPayloadHelper
             }
         }
     };
-
     /// <summary>
     /// ハートビートペイロードを作成
     /// </summary>
@@ -101,7 +89,6 @@ public static class DiscordPayloadHelper
         op = 1,
         d = sequence
     };
-
     /// <summary>
     /// ボイスチャンネル参加ペイロードを作成
     /// </summary>
@@ -114,7 +101,6 @@ public static class DiscordPayloadHelper
             self_deaf = false
         }
     };
-
     /// <summary>
     /// Voice Gateway用Identifyペイロードを作成
     /// </summary>
@@ -127,7 +113,6 @@ public static class DiscordPayloadHelper
             token = token
         }
     };
-
     /// <summary>
     /// プロトコル選択ペイロードを作成
     /// </summary>
@@ -142,61 +127,44 @@ public static class DiscordPayloadHelper
             }
         }
     };
-
     /// <summary>
-    /// Voice Gateway用ハートビートペイロードを作成
+    /// Voice Gateway用ハートビートペイロードを作成（正しい実装）
     /// </summary>
     public static object CreateVoiceHeartbeatPayload(long nonce, int? sequence) => new {
         op = 3,
-        d = new {
-            t = nonce,
-            seq_ack = sequence
-        }
+        d = nonce // Voice Gatewayではnonceのみを使用、seq_ackは不要
     };
 }
-
 /// <summary>
 /// エラーハンドリング用のヘルパークラス
 /// </summary>
-public static class ErrorHandler
-{
+public static class ErrorHandler {
     /// <summary>
     /// 非同期操作を安全に実行し、エラーをログに記録
     /// </summary>
-    public static async Task<T> SafeExecuteAsync<T>(Func<Task<T>> operation, string context, Action<string> logCallback)
-    {
-        try
-        {
+    public static async Task<T> SafeExecuteAsync<T>(Func<Task<T>> operation, string context, Action<string> logCallback) {
+        try {
             return await operation();
-        }
-        catch (Exception ex)
-        {
+        } catch (Exception ex) {
             logCallback($"❌ {context} error: {ex.Message}");
             return default(T);
         }
     }
-
     /// <summary>
     /// 同期操作を安全に実行し、エラーをログに記録
     /// </summary>
-    public static T SafeExecute<T>(Func<T> operation, string context, Action<string> logCallback)
-    {
-        try
-        {
+    public static T SafeExecute<T>(Func<T> operation, string context, Action<string> logCallback) {
+        try {
             return operation();
-        }
-        catch (Exception ex)
-        {
+        } catch (Exception ex) {
             logCallback($"❌ {context} error: {ex.Message}");
             return default(T);
         }
     }
 }
-
 public class DiscordBotClient : MonoBehaviour, IDisposable {
     [Header("Debug Settings")]
     public bool enableDebugLogging = true;
-    
     [Header("Discord Settings")]
     private string discordToken;
     private string guildId;
@@ -204,17 +172,13 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private string targetUserId;
     private string inputName = "Discord";
     private string witaiToken;
-    
     // Bot自身の情報
     private string botUserId;
-
     // イベント
     public delegate void VoiceRecognizedDelegate(string inputName, string recognizedText);
     public static event VoiceRecognizedDelegate OnVoiceRecognized;
-
     public delegate void DiscordLogDelegate(string logMessage);
     public static event DiscordLogDelegate OnDiscordLog;
-
     // 接続関連
     private ClientWebSocket _webSocket;
     private CancellationTokenSource _cancellationTokenSource;
@@ -223,7 +187,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private int _mainSequence = 0;
     private System.Timers.Timer _heartbeatTimer;
     private bool _heartbeatAcknowledged = true;
-
     // Voice Gateway関連
     private ClientWebSocket _voiceWebSocket;
     private UdpClient _voiceUdpClient;
@@ -236,7 +199,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private Dictionary<uint, string> _ssrcToUserMap = new Dictionary<uint, string>();
     private uint _ourSSRC;
     private byte[] _secretKey;
-    
     // Discord.js状態管理
     private enum NetworkingState {
         OpeningWs,
@@ -246,57 +208,46 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         Ready,
         Closed
     }
-    
     // Discord.js状態管理
     private NetworkingState _networkingState = NetworkingState.OpeningWs;
-    
     // Discord.js準拠の接続データ
     private string _encryptionMode;
     private string[] _availableModes;
-    
     // Discord.js VoiceWebSocket.ts準拠のハートビート管理
     private long _lastHeartbeatAck = 0;
     private long _lastHeartbeatSend = 0;
     private int _missedHeartbeats = 0;
-    private int _voiceSequence = -1;
+    private int _voiceSequence = 1; // Discord.js準拠：1から開始
     private int? _ping = null;
-    
     // Discord.js VoiceUDPSocket.ts準拠のKeep Alive
     private System.Timers.Timer _keepAliveTimer;
     private uint _keepAliveCounter = 0;
     private const int KEEP_ALIVE_INTERVAL = DiscordConstants.UDP_SEND_TIMEOUT; // 5秒
     private const uint MAX_COUNTER_VALUE = uint.MaxValue;
-
     // 音声処理統計
     private static int _successfulDecryptions = 0;
     private static int _failedDecryptions = 0;
     private static int _opusSuccesses = 0;
     private static int _opusErrors = 0;
-
     // 音声処理関連
     private IOpusDecoder _opusDecoder;
     private Queue<OpusPacket> _opusPacketQueue = new Queue<OpusPacket>();
     private HttpClient _httpClient;
-    private bool _isTargetUserSpeaking = false;
-
+    // _isTargetUserSpeaking変数を削除 - 無音検出のみで音声ストリームを管理
     // リアルタイムPCM処理関連
     private List<float> _realtimePcmBuffer = new List<float>();
     private DateTime _lastAudioActivity = DateTime.MinValue;
     private bool _isSilent = false;
-    
     // 音声認識状態管理
     private bool _isProcessingSpeech = false;
     private DateTime _lastSpeechProcessingTime = DateTime.MinValue;
-    
     // デバッグカウンター
     private int _debugCount = 0;
     private int _silenceDebugCount = 0;
-
     private struct OpusPacket {
         public byte[] data;
         public string userId;
     }
-
     /// <summary>
     /// Discord Gatewayへの再接続を試みます。
     /// 接続が失われた場合に呼び出されます。
@@ -307,7 +258,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         await Task.Delay(DiscordConstants.RECONNECT_DELAY);
         StartBot();
     }
-
     /// <summary>
     /// ログメッセージを生成し、イベントを発行します。
     /// Unityのメインスレッドで実行されるように保証されます。
@@ -315,7 +265,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <param name="message">ログに記録するメッセージ。</param>
     private void LogMessage(string message) {
         string logMessage = $"[DiscordBot] {DateTime.Now:HH:mm:ss} :: {message}";
-        
         if (UnityMainThreadDispatcher.Instance() != null) {
             UnityMainThreadDispatcher.Instance().Enqueue(() => {
                 OnDiscordLog?.Invoke(logMessage);
@@ -324,7 +273,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             OnDiscordLog?.Invoke(logMessage);
         }
     }
-
     /// <summary>
     /// Unityのライフサイクルメソッド。
     /// オブジェクトの初期化時に呼び出され、Opusデコーダーを準備します。
@@ -332,7 +280,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private void Awake() {
         InitializeOpusDecoder();
     }
-
     /// <summary>
     /// Unityのライフサイクルメソッド。
     /// オブジェクトが破棄される際に呼び出され、リソースをクリーンアップします。
@@ -341,7 +288,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         LogMessage("🗑️ DiscordBotClient being destroyed - performing cleanup");
         StopBot();
     }
-
     /// <summary>
     /// Opusデコーダーを初期化します。
     /// 48kHz、ステレオの音声をデコードするように設定されます。
@@ -353,7 +299,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             return true;
         }, "Opus decoder initialization", LogMessage);
     }
-
     /// <summary>
     /// Unityのライフサイクルメソッド。
     /// フレームごとに呼び出され、Opusパケットキューを処理します。
@@ -366,7 +311,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             }
         }
     }
-
     /// <summary>
     /// Discordボットを起動します。
     /// 設定を読み込み、Discord Gatewayへの接続を開始します。
@@ -374,23 +318,18 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     public async void StartBot() {
         await ErrorHandler.SafeExecuteAsync<bool>(async () => {
             LoadSettingsFromCentralManager();
-            
             if (string.IsNullOrEmpty(discordToken)) {
                 LogMessage("❌ Discord token is not set");
                 return false;
             }
-            
             _cancellationTokenSource = new CancellationTokenSource();
             _httpClient = new HttpClient();
             _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {witaiToken}");
-            
             InitializeOpusDecoder();
-            
             await ConnectToDiscord();
             return true;
         }, "StartBot", LogMessage);
     }
-
     /// <summary>
     /// WebSocketにメッセージを送信する統合メソッド
     /// </summary>
@@ -410,7 +349,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             LogMessage($"❌ Send {socketName.ToLower()} message error: {ex.Message}");
         }
     }
-
     /// <summary>
     /// メインGatewayにメッセージを送信します。
     /// </summary>
@@ -418,7 +356,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private async Task SendMessage(string message) {
         await SendWebSocketMessage(message, false);
     }
-
     /// <summary>
     /// Voice Gatewayにメッセージを送信します。
     /// </summary>
@@ -426,39 +363,44 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private async Task SendVoiceMessage(string message) {
         await SendWebSocketMessage(message, true);
     }
-
     /// <summary>
     /// Discord Voice Gatewayからのメッセージを受信し続けます。
     /// </summary>
     private async Task ReceiveVoiceMessages() {
         var buffer = new byte[DiscordConstants.WEBSOCKET_BUFFER_SIZE];
         var messageBuffer = new List<byte>();
-        
+        LogMessage($"🔌 Voice Gateway receive loop started at {DateTime.Now:HH:mm:ss.fff}");
         while (_voiceConnected && !_cancellationTokenSource.Token.IsCancellationRequested) {
             try {
                 var result = await _voiceWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), _cancellationTokenSource.Token);
-                
                 if (result.MessageType == WebSocketMessageType.Text) {
                     messageBuffer.AddRange(buffer.Take(result.Count));
-                    
                     if (result.EndOfMessage) {
                         var message = Encoding.UTF8.GetString(messageBuffer.ToArray());
                         messageBuffer.Clear();
                         await ProcessVoiceMessage(message);
                     }
                 } else if (result.MessageType == WebSocketMessageType.Close) {
+                    // Closeメッセージの詳細情報を取得
+                    var closeStatus = _voiceWebSocket.CloseStatus;
+                    var closeStatusDescription = _voiceWebSocket.CloseStatusDescription;
+                    LogMessage($"🔌 Voice Gateway received Close message at {DateTime.Now:HH:mm:ss.fff}");
+                    LogMessage($"🔌 Close Status: {closeStatus} ({closeStatusDescription})");
+                    // Close Codeの詳細説明
+                    string closeReason = GetCloseReasonDescription(closeStatus);
+                    LogMessage($"🔌 Close Reason: {closeReason}");
                     _voiceConnected = false;
                     break;
                 }
-                    } catch (Exception ex) {
-            if (_voiceConnected) {
-                LogMessage($"❌ Voice message error: {ex.Message}");
+            } catch (Exception ex) {
+                if (_voiceConnected) {
+                    LogMessage($"❌ Voice Gateway receive error: {ex.Message} at {DateTime.Now:HH:mm:ss.fff}");
+                }
+                break;
             }
-            break;
         }
-        }
+        LogMessage($"🔌 Voice Gateway receive loop ended at {DateTime.Now:HH:mm:ss.fff} (connected: {_voiceConnected})");
     }
-
     /// <summary>
     /// Voice Gatewayから受信した単一のメッセージペイロードを処理します。
     /// オペレーションコードに基づいて処理を分岐します。
@@ -468,14 +410,14 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         try {
             var payload = JsonConvert.DeserializeObject<VoiceGatewayPayload>(message);
             UpdateVoiceSequence(message);
-            
             switch (payload.op) {
                 case 8: await HandleVoiceHello(payload); break;
                 case 2: await HandleVoiceReady(payload); break;
                 case 4: await HandleVoiceSessionDescription(payload); break;
-                case 3: HandleVoiceHeartbeatAck(); break;
+                case 6: HandleVoiceHeartbeatAck(); break; // 正しいACK処理
                 case 5: HandleVoiceSpeaking(payload); break;
-                case 6: case 11: case 18: case 20: break; // 無視するメッセージ
+                case 3: LogMessage($"📤 Voice Gateway heartbeat echo received (ignored) at {DateTime.Now:HH:mm:ss.fff}"); break; // エコーをログ出力
+                case 11: case 18: case 20: break; // 無視するメッセージ
                 default: LogUnknownVoiceMessage(payload.op, payload.d); break;
             }
         } catch (Exception ex) {
@@ -483,69 +425,60 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             LogMessage($"Raw message: {message}");
         }
     }
-
     /// <summary>
     /// Voice GatewayのHelloメッセージを処理
     /// </summary>
     private async Task HandleVoiceHello(VoiceGatewayPayload payload) {
+        LogMessage($"🔌 Voice Gateway Hello received at {DateTime.Now:HH:mm:ss.fff}");
         _networkingState = NetworkingState.Identifying;
         var helloData = JsonConvert.DeserializeObject<VoiceHelloData>(payload.d.ToString());
         await StartVoiceHeartbeat(helloData.heartbeat_interval);
         await SendVoiceIdentify();
     }
-
     /// <summary>
     /// Voice GatewayのReadyメッセージを処理
     /// </summary>
     private async Task HandleVoiceReady(VoiceGatewayPayload payload) {
+        LogMessage($"🔌 Voice Gateway Ready received at {DateTime.Now:HH:mm:ss.fff}");
         _networkingState = NetworkingState.Identifying;
         var readyData = JsonConvert.DeserializeObject<VoiceReadyData>(payload.d.ToString());
-        
         await InitializeVoiceConnection(readyData);
         await PerformUdpDiscovery();
     }
-
     /// <summary>
     /// Voice GatewayのSession Descriptionメッセージを処理
     /// </summary>
     private async Task HandleVoiceSessionDescription(VoiceGatewayPayload payload) {
+        LogMessage($"🔌 Voice Gateway Session Description received at {DateTime.Now:HH:mm:ss.fff}");
         _networkingState = NetworkingState.Ready;
         var sessionData = JsonConvert.DeserializeObject<VoiceSessionDescriptionData>(payload.d.ToString());
-        
         _secretKey = sessionData.secret_key;
         _encryptionMode = sessionData.mode;
-        
-        LogMessage($"🔐 Encryption mode: {_encryptionMode}");
-        LogMessage($"🎯 Voice connection ready! (Discord.js style)");
-        
         await StartUdpAudioReceive();
     }
-
     /// <summary>
     /// Voice GatewayのHeartbeat ACKを処理
     /// </summary>
     private void HandleVoiceHeartbeatAck() {
-        _lastHeartbeatAck = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var currentTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        // 前回のACKから短時間で重複ACKが来た場合は無視
+        if (_lastHeartbeatAck != 0 && (currentTime - _lastHeartbeatAck) < 100) {
+            return;
+        }
+        _lastHeartbeatAck = currentTime;
         _missedHeartbeats = 0;
-        
         if (_lastHeartbeatSend != 0) {
             _ping = (int)(_lastHeartbeatAck - _lastHeartbeatSend);
         }
     }
-
     /// <summary>
     /// Voice GatewayのSpeakingメッセージを処理
     /// </summary>
     private void HandleVoiceSpeaking(VoiceGatewayPayload payload) {
         var speakingData = JsonConvert.DeserializeObject<VoiceSpeakingData>(payload.d.ToString());
         if (speakingData.user_id == null) return;
-        
         _ssrcToUserMap[speakingData.ssrc] = speakingData.user_id;
-        
         if (speakingData.user_id == targetUserId) {
-            LogMessage($"🎯 Target user {(speakingData.speaking ? "started" : "stopped")} speaking (SSRC: {speakingData.ssrc})");
-            _isTargetUserSpeaking = speakingData.speaking;
-
             if (speakingData.speaking) {
                 // 話し始めた時：リアルタイムPCMバッファをクリアして新しい認識セッションを開始
                 lock (_realtimePcmBuffer) {
@@ -555,16 +488,10 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 _lastAudioActivity = DateTime.Now;
                 _isSilent = false;
                 _isProcessingSpeech = false;
-                LogMessage("🎤 Started new realtime speech recognition session");
-            } else {
-                // 話終わった時：蓄積されたPCMデータで音声認識を実行
-                if (!_isProcessingSpeech) {
-                    ProcessRealtimePcmBuffer();
-                }
             }
+            // speaking.endは無視 - 無音検出に任せる
         }
     }
-
     /// <summary>
     /// 音声接続を初期化
     /// </summary>
@@ -572,40 +499,29 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _ourSSRC = readyData.ssrc;
         _voiceServerEndpoint = new IPEndPoint(IPAddress.Parse(readyData.ip), readyData.port);
         _availableModes = readyData.modes;
-        
-        LogMessage($"🎯 Voice Ready - BOT SSRC: {_ourSSRC}, Server: {readyData.ip}:{readyData.port}");
-        
         await SetupUdpClient();
     }
-
     /// <summary>
     /// UDP発見処理を実行
     /// </summary>
     private async Task<bool> PerformUdpDiscovery() {
         bool discoverySuccess = await PerformUdpIpDiscovery();
-        
         if (!discoverySuccess) {
-            LogMessage("⚠️ UDP IP Discovery failed, attempting fallback approach");
             await PerformUdpFallback();
         }
-        
         return discoverySuccess;
     }
-
     /// <summary>
     /// UDP発見のフォールバック処理
     /// </summary>
     private async Task PerformUdpFallback() {
         var localEndpoint = (IPEndPoint)_voiceUdpClient.Client.LocalEndPoint;
         string fallbackIP = GetLocalIPAddress();
-        
         bool fallbackSuccess = await CompleteUdpDiscovery(fallbackIP, localEndpoint.Port);
-        
         if (!fallbackSuccess) {
             LogMessage("❌ WARNING: Both IP discovery and fallback failed. Voice may not work.");
         }
     }
-
     /// <summary>
     /// DiscordのVoice Serverに対してUDP IP Discoveryを実行し、
     /// 外部から見た自身のIPアドレスとポートを取得します。
@@ -614,69 +530,54 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private async Task<bool> PerformUdpIpDiscovery() {
         try {
             _networkingState = NetworkingState.UdpHandshaking;
-            
             await SetupUdpClientForDiscovery();
             var discoveryPacket = CreateDiscoveryPacket();
             await SendDiscoveryPacket(discoveryPacket);
-            
             return await WaitForDiscoveryResponse();
-            
         } catch (Exception ex) {
             LogMessage($"❌ UDP discovery error: {ex.Message}");
             return await UseDiscordJsFallback();
         }
     }
-
     /// <summary>
     /// UDP発見用のクライアントをセットアップ
     /// </summary>
     private async Task SetupUdpClientForDiscovery() {
         _voiceUdpClient.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
         var boundEndpoint = (IPEndPoint)_voiceUdpClient.Client.LocalEndPoint;
-        LogMessage($"UDP client bound to: {boundEndpoint}");
     }
-
     /// <summary>
     /// 発見パケットを作成
     /// </summary>
     private byte[] CreateDiscoveryPacket() {
         var discoveryBuffer = new byte[DiscordConstants.UDP_DISCOVERY_PACKET_SIZE];
-        
         // Type: 1
         discoveryBuffer[0] = 0x00;
         discoveryBuffer[1] = 0x01;
-        
         // Length: 70
         discoveryBuffer[2] = 0x00;
         discoveryBuffer[3] = 0x46;
-        
         // SSRC (Big Endian)
         var ssrcBytes = BitConverter.GetBytes(_ourSSRC);
         if (BitConverter.IsLittleEndian) {
             Array.Reverse(ssrcBytes);
         }
         Array.Copy(ssrcBytes, 0, discoveryBuffer, 4, 4);
-        
         return discoveryBuffer;
     }
-
     /// <summary>
     /// 発見パケットを送信
     /// </summary>
     private async Task SendDiscoveryPacket(byte[] packet) {
         await _voiceUdpClient.SendAsync(packet, packet.Length, _voiceServerEndpoint);
-        LogMessage("Discovery packet sent");
     }
-
     /// <summary>
     /// 発見応答を待機
     /// </summary>
     private async Task<bool> WaitForDiscoveryResponse() {
         var receiveTask = _voiceUdpClient.ReceiveAsync();
         var timeoutTask = Task.Delay(DiscordConstants.UDP_DISCOVERY_TIMEOUT);
-        
         var completedTask = await Task.WhenAny(receiveTask, timeoutTask);
-        
         if (completedTask == receiveTask) {
             return await ProcessDiscoveryResponse(await receiveTask);
         } else {
@@ -684,13 +585,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             return await UseDiscordJsFallback();
         }
     }
-
     /// <summary>
     /// 発見応答を処理
     /// </summary>
     private async Task<bool> ProcessDiscoveryResponse(UdpReceiveResult result) {
         var message = result.Buffer;
-        
         if (message.Length >= DiscordConstants.UDP_DISCOVERY_PACKET_SIZE) {
             var localConfig = ParseLocalPacket(message);
             if (localConfig != null) {
@@ -699,10 +598,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         } else {
             LogMessage($"❌ Discovery response too short: {message.Length} bytes");
         }
-        
         return await UseDiscordJsFallback();
     }
-
     /// <summary>
     /// 受信したRTPパケットを処理します。
     /// SSRCからユーザーを特定し、暗号化された音声データを復号してOpusパケットキューに追加します。
@@ -711,48 +608,39 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private async Task ProcessRtpPacket(byte[] packet) {
         try {
             var ssrc = ExtractSsrcFromPacket(packet);
-            
             if (ssrc == _ourSSRC) {
                 return; // BOT自身のパケットは静かに無視
             }
-            
             if (_ssrcToUserMap.TryGetValue(ssrc, out string userId)) {
                 await ProcessUserAudioPacket(packet, userId);
             } else {
-                LogMessage($"⚠️ No user found for SSRC {ssrc}");
             }
         } catch (Exception ex) {
             LogMessage($"❌ RTP processing error: {ex.Message}");
         }
     }
-
     /// <summary>
     /// パケットからSSRCを抽出
     /// </summary>
     private uint ExtractSsrcFromPacket(byte[] packet) {
         var ssrcBytes = new byte[4];
         Array.Copy(packet, 8, ssrcBytes, 0, 4);
-        
         if (BitConverter.IsLittleEndian) {
             Array.Reverse(ssrcBytes);
         }
         return BitConverter.ToUInt32(ssrcBytes, 0);
     }
-
     /// <summary>
     /// ユーザーの音声パケットを処理
     /// </summary>
     private async Task ProcessUserAudioPacket(byte[] packet, string userId) {
         var rtpHeader = ExtractRtpHeader(packet);
         var encryptedData = ExtractEncryptedData(packet);
-        
         if (IsValidEncryptedData(encryptedData)) {
             await DecryptAndQueueAudio(encryptedData, rtpHeader, userId);
         } else {
-            LogMessage($"⚠️ Skipping packet - encrypted data too small ({encryptedData.Length}) or no secret key");
         }
     }
-
     /// <summary>
     /// RTPヘッダーを抽出
     /// </summary>
@@ -761,7 +649,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         Array.Copy(packet, 0, rtpHeader, 0, DiscordConstants.RTP_HEADER_SIZE);
         return rtpHeader;
     }
-
     /// <summary>
     /// 暗号化されたデータを抽出
     /// </summary>
@@ -770,21 +657,18 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         Array.Copy(packet, DiscordConstants.RTP_HEADER_SIZE, encryptedData, 0, encryptedData.Length);
         return encryptedData;
     }
-
     /// <summary>
     /// 暗号化されたデータが有効かチェック
     /// </summary>
     private bool IsValidEncryptedData(byte[] encryptedData) {
         return encryptedData.Length >= DiscordConstants.MIN_ENCRYPTED_DATA_SIZE && _secretKey != null;
     }
-
     /// <summary>
     /// 音声データを復号してキューに追加
     /// </summary>
     private async Task DecryptAndQueueAudio(byte[] encryptedData, byte[] rtpHeader, string userId) {
         try {
             byte[] decryptedOpusData = DiscordCrypto.DecryptVoicePacket(encryptedData, rtpHeader, _secretKey, _encryptionMode);
-            
             if (decryptedOpusData != null) {
                 _successfulDecryptions++;
                 await QueueOpusData(decryptedOpusData, userId);
@@ -797,20 +681,16 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             LogMessage($"❌ Decryption error: {decryptEx.Message}");
         }
     }
-
     /// <summary>
     /// Opusデータをキューに追加
     /// </summary>
     private async Task QueueOpusData(byte[] decryptedOpusData, string userId) {
         byte[] actualOpusData = ExtractOpusFromDiscordPacket(decryptedOpusData);
         if (actualOpusData == null) {
-            LogMessage($"⚠️ Failed to extract Opus data from Discord packet");
             return;
         }
-        
         var opusDataCopy = new byte[actualOpusData.Length];
         Array.Copy(actualOpusData, opusDataCopy, actualOpusData.Length);
-
         lock (_opusPacketQueue) {
             _opusPacketQueue.Enqueue(new OpusPacket { 
                 data = opusDataCopy, 
@@ -818,17 +698,23 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             });
         }
     }
-
     /// <summary>
-    /// 音声シーケンスを更新
+    /// 音声シーケンスを更新（Voice Gatewayでは使用しない）
     /// </summary>
     private void UpdateVoiceSequence(string message) {
+        // Voice Gatewayではシーケンス管理は不要
+        // メインGatewayからのメッセージの場合のみ処理
         var jsonPayload = JObject.Parse(message);
         if (jsonPayload["seq"] != null) {
-            _voiceSequence = jsonPayload["seq"].ToObject<int>();
         }
     }
-
+    /// <summary>
+    /// ハートビートシーケンスをインクリメント（Voice Gatewayでは使用しない）
+    /// </summary>
+    private void IncrementHeartbeatSequence() {
+        // Voice Gatewayではシーケンス管理は不要
+        // このメソッドは将来の拡張のために残しておく
+    }
     /// <summary>
     /// 未知のVoiceメッセージをログ出力
     /// </summary>
@@ -836,7 +722,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         LogMessage($"Unknown voice OP code: {opCode}");
         LogMessage($"Voice message data: {data?.ToString() ?? "null"}");
     }
-
     /// <summary>
     /// メインGatewayからのDispatchイベントを処理します。
     /// イベントタイプに応じて、セッション情報やVoice Server情報を更新します。
@@ -856,7 +741,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 break;
         }
     }
-
     /// <summary>
     /// READYイベントを処理
     /// </summary>
@@ -865,12 +749,10 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _sessionId = readyData.session_id;
         botUserId = readyData.user.id;
         LogMessage($"Bot logged in: {readyData.user.username}");
-        
         if (!string.IsNullOrEmpty(voiceChannelId)) {
             await JoinVoiceChannel();
         }
     }
-
     /// <summary>
     /// VOICE_STATE_UPDATEイベントを処理
     /// </summary>
@@ -878,7 +760,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         var voiceStateData = JsonConvert.DeserializeObject<VoiceStateData>(data);
         _voiceSessionId = voiceStateData.session_id;
     }
-
     /// <summary>
     /// VOICE_SERVER_UPDATEイベントを処理
     /// </summary>
@@ -886,66 +767,65 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         var voiceServerData = JsonConvert.DeserializeObject<VoiceServerData>(data);
         _voiceToken = voiceServerData.token;
         _voiceEndpoint = voiceServerData.endpoint;
-        
         if (!string.IsNullOrEmpty(_voiceToken) && !string.IsNullOrEmpty(_voiceEndpoint) && !string.IsNullOrEmpty(_voiceSessionId)) {
             _ = Task.Run(ConnectToVoiceGateway);
         }
     }
-
     /// <summary>
     /// Discord Voice Gatewayに接続します。
     /// 既存の接続がある場合は一旦切断し、再接続します。
     /// </summary>
     private async Task ConnectToVoiceGateway() {
+        LogMessage($"🔌 Voice Gateway connection attempt started at {DateTime.Now:HH:mm:ss.fff}");
         await ErrorHandler.SafeExecuteAsync<bool>(async () => {
             _networkingState = NetworkingState.OpeningWs;
-            
             await CleanupExistingVoiceConnection();
-            
             _voiceWebSocket = await CreateWebSocketConnection(
                 $"wss://{_voiceEndpoint}/?v=4",
                 true,
                 "Voice WebSocket"
             );
-            
             _ = Task.Run(ReceiveVoiceMessages, _cancellationTokenSource.Token);
-            
             return true;
         }, "Voice connection", LogMessage);
-        
         if (!_voiceConnected) {
+            LogMessage($"❌ Voice Gateway connection failed at {DateTime.Now:HH:mm:ss.fff}");
             _voiceConnected = false;
+        } else {
+            LogMessage($"✅ Voice Gateway connection successful at {DateTime.Now:HH:mm:ss.fff}");
         }
     }
-
     /// <summary>
     /// 既存のVoice接続をクリーンアップ
     /// </summary>
     private async Task CleanupExistingVoiceConnection() {
+        // ハートビートタイマーを停止
+        _voiceHeartbeatTimer?.Stop();
+        _voiceHeartbeatTimer?.Dispose();
+        _voiceHeartbeatTimer = null;
+        LogMessage($"🛑 Voice Gateway heartbeat timer stopped at {DateTime.Now:HH:mm:ss.fff}");
         if (_voiceWebSocket != null) {
+            LogMessage($"🔌 Voice Gateway cleanup: WebSocket state = {_voiceWebSocket.State} at {DateTime.Now:HH:mm:ss.fff}");
             if (_voiceWebSocket.State == WebSocketState.Open) {
+                LogMessage($"🔌 Voice Gateway closing existing connection at {DateTime.Now:HH:mm:ss.fff}");
                 await _voiceWebSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Reconnecting", CancellationToken.None);
             }
             _voiceWebSocket?.Dispose();
             _voiceWebSocket = null;
         }
     }
-
     /// <summary>
     /// 新しいVoice接続を作成
     /// </summary>
     private async Task CreateNewVoiceConnection() {
+        LogMessage($"🔌 Voice Gateway creating new connection to {_voiceEndpoint} at {DateTime.Now:HH:mm:ss.fff}");
         _voiceWebSocket = new ClientWebSocket();
         var voiceGatewayUrl = $"wss://{_voiceEndpoint}/?v=4";
-        
         await _voiceWebSocket.ConnectAsync(new Uri(voiceGatewayUrl), _cancellationTokenSource.Token);
         _voiceConnected = true;
-        
-        LogMessage("✅ Voice WebSocket connected successfully");
-        
+        LogMessage($"✅ Voice Gateway WebSocket connected successfully at {DateTime.Now:HH:mm:ss.fff}");
         _ = Task.Run(ReceiveVoiceMessages, _cancellationTokenSource.Token);
     }
-
     /// <summary>
     /// メインGatewayにメッセージを送信します。
     /// </summary>
@@ -954,7 +834,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         var identify = DiscordPayloadHelper.CreateIdentifyPayload(discordToken);
         await SendMessage(JsonConvert.SerializeObject(identify));
     }
-
     /// <summary>
     /// メインGatewayにハートビートを送信します。
     /// </summary>
@@ -962,7 +841,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         var heartbeat = DiscordPayloadHelper.CreateHeartbeatPayload(_mainSequence);
         await SendMessage(JsonConvert.SerializeObject(heartbeat));
     }
-
     /// <summary>
     /// 指定されたボイスチャンネルに参加するためのリクエストを送信します。
     /// </summary>
@@ -970,15 +848,14 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         var voiceStateUpdate = DiscordPayloadHelper.CreateVoiceStateUpdatePayload(guildId, voiceChannelId);
         await SendMessage(JsonConvert.SerializeObject(voiceStateUpdate));
     }
-
     /// <summary>
     /// Voice GatewayにIdentifyペイロードを送信し、音声セッションを確立します。
     /// </summary>
     private async Task SendVoiceIdentify() {
+        LogMessage($"🔌 Voice Gateway sending Identify at {DateTime.Now:HH:mm:ss.fff}");
         var identify = DiscordPayloadHelper.CreateVoiceIdentifyPayload(guildId, botUserId, _voiceSessionId, _voiceToken);
         await SendVoiceMessage(JsonConvert.SerializeObject(identify));
     }
-
     /// <summary>
     /// UDPクライアントをセットアップする統合メソッド
     /// </summary>
@@ -989,30 +866,24 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             if (forAudio && _voiceUdpClient != null) {
                 return true;
             }
-            
             _voiceUdpClient?.Close();
             _voiceUdpClient?.Dispose();
-            
             _voiceUdpClient = new UdpClient();
             _voiceUdpClient.Client.ReceiveBufferSize = DiscordConstants.UDP_BUFFER_SIZE;
             _voiceUdpClient.Client.SendBufferSize = DiscordConstants.UDP_BUFFER_SIZE;
-            
             _voiceUdpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             _voiceUdpClient.Client.ReceiveTimeout = 0;
             _voiceUdpClient.Client.SendTimeout = DiscordConstants.UDP_SEND_TIMEOUT;
-            
             LogMessage($"UDP client set up successfully (forAudio: {forAudio})");
             return true;
         }, "UDP setup", LogMessage);
     }
-
     /// <summary>
     /// 音声受信用にUDPクライアントをセットアップします。
     /// </summary>
     private async Task SetupUdpClientForAudio() {
         await SetupUdpClient(true);
     }
-
     /// <summary>
     /// ローカルのIPアドレスを取得します。
     /// 外部への接続を試みる方法と、ネットワークインターフェースから取得する方法をフォールバックとして使用します。
@@ -1024,13 +895,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 socket.Connect("8.8.8.8", 65530);
                 IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
                 string ip = endPoint?.Address.ToString() ?? "192.168.1.1";
-                
                 if (ip.StartsWith("172.") || ip.StartsWith("10.") || ip.StartsWith("192.168.")) {
                     LogMessage($"Detected private IP address: {ip} (may be behind NAT/VPN)");
                 } else {
                     LogMessage($"Detected public IP address: {ip}");
                 }
-                
                 return ip;
             }
         }, "Primary IP detection", LogMessage) ?? ErrorHandler.SafeExecute(() => {
@@ -1044,7 +913,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             return null;
         }, "Fallback IP detection", LogMessage) ?? "192.168.1.1";
     }
-
     /// <summary>
     /// Discordの音声パケットから純粋なOpusデータを抽出します。
     /// Discord独自のヘッダーを取り除きます。
@@ -1055,13 +923,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         if (discordPacket?.Length <= DiscordConstants.DISCORD_HEADER_SIZE) {
             return null;
         }
-        
         // Opusデータ部分を抽出（12バイト後から）
         var opusData = new byte[discordPacket.Length - DiscordConstants.DISCORD_HEADER_SIZE];
         Array.Copy(discordPacket, DiscordConstants.DISCORD_HEADER_SIZE, opusData, 0, opusData.Length);
         return opusData;
     }
-    
     /// <summary>
     /// リアルタイムPCM処理による音声認識
     /// OpusデータをリアルタイムでPCM変換し、無音検出で字幕AIに送信
@@ -1073,31 +939,25 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             if (_opusDecoder == null || userId != targetUserId) {
                 return; // 早期リターンで効率化
             }
-            
             if (opusData.Length < 1) {
                 LogOpusError("Opus data too small", opusData.Length);
                 return;
             }
-            
             // OpusデコードしてPCMデータを取得
             var pcmData = DecodeOpusToPcm(opusData);
             if (pcmData == null) {
                 return;
             }
-            
             // リアルタイムPCMバッファに追加
             AddToRealtimePcmBuffer(pcmData);
-            
             // 音量レベルを計算して無音検出
             float audioLevel = CalculateAudioLevel(pcmData);
             bool isSilent = audioLevel <= DiscordConstants.SILENCE_THRESHOLD;
-            
             // デバッグログ（最初の10回のみ）
             if (_debugCount < 10) {
                 LogMessage($"🔍 Audio level: {audioLevel:F4}, threshold: {DiscordConstants.SILENCE_THRESHOLD}, silent: {isSilent}");
                 _debugCount++;
             }
-            
             // 無音検出処理
             if (isSilent) {
                 HandleRealtimeSilenceDetection();
@@ -1106,13 +966,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 _lastAudioActivity = DateTime.Now;
                 _isSilent = false;
             }
-            
         } catch (Exception ex) {
             LogOpusError($"Opus processing error: {ex.Message}");
             HandleOpusDecoderReset(ex);
         }
     }
-
     /// <summary>
     /// OpusデータをPCMデータにデコード
     /// </summary>
@@ -1123,23 +981,18 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             // Opusデコード
             short[] pcmData = new short[DiscordConstants.OPUS_FRAME_SIZE * DiscordConstants.CHANNELS_STEREO];
             int decodedSamples = _opusDecoder.Decode(opusData, pcmData, DiscordConstants.OPUS_FRAME_SIZE, false);
-            
             if (decodedSamples <= 0) {
                 return null; // デコード失敗
             }
-            
             // ステレオ→モノラル変換
             short[] monoData = ConvertStereoToMono(pcmData, decodedSamples * DiscordConstants.CHANNELS_STEREO);
-            
             // リサンプリング（48kHz→16kHz）
             return ResampleAudioData(monoData, DiscordConstants.SAMPLE_RATE_48K, DiscordConstants.SAMPLE_RATE_16K);
-            
         } catch (Exception ex) {
             LogMessage($"❌ Opus decode error: {ex.Message}");
             return null;
         }
     }
-
     /// <summary>
     /// PCMデータの音量レベルを計算
     /// </summary>
@@ -1147,48 +1000,37 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <returns>音量レベル（RMS）</returns>
     private float CalculateAudioLevel(float[] pcmData) {
         if (pcmData == null || pcmData.Length == 0) return 0f;
-        
         float sum = 0f;
         for (int i = 0; i < pcmData.Length; i++) {
             sum += pcmData[i] * pcmData[i];
         }
-        
         return (float)Math.Sqrt(sum / pcmData.Length);
     }
-
     /// <summary>
     /// リアルタイムPCMバッファにデータを追加
     /// </summary>
     /// <param name="pcmData">追加するPCMデータ</param>
     private void AddToRealtimePcmBuffer(float[] pcmData) {
         if (pcmData == null || pcmData.Length == 0) return;
-        
         lock (_realtimePcmBuffer) {
             _realtimePcmBuffer.AddRange(pcmData);
         }
     }
-
-
-
     /// <summary>
     /// リアルタイム無音検出処理
     /// </summary>
     private void HandleRealtimeSilenceDetection() {
         var now = DateTime.Now;
-        
         // 音声認識処理中は無音検出を無視
         if (_isProcessingSpeech) {
             return;
         }
-        
         // 最後の音声活動から1秒以上経過しているかチェック
         if (_lastAudioActivity != DateTime.MinValue && 
             (now - _lastAudioActivity).TotalMilliseconds >= DiscordConstants.SILENCE_DURATION_MS) {
-            
             if (!_isSilent) {
                 _isSilent = true;
                 LogMessage("🔇 Silence detected - processing accumulated PCM data");
-                
                 // 蓄積されたPCMデータで音声認識を実行
                 ProcessRealtimePcmBuffer();
             }
@@ -1197,54 +1039,35 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             if (_lastAudioActivity != DateTime.MinValue) {
                 var elapsedMs = (now - _lastAudioActivity).TotalMilliseconds;
                 if (_silenceDebugCount < 5) {
-                    LogMessage($"⏱️ Silence progress: {elapsedMs:F0}ms / {DiscordConstants.SILENCE_DURATION_MS}ms");
+                    // LogMessage($"⏱️ Silence progress: {elapsedMs:F0}ms / {DiscordConstants.SILENCE_DURATION_MS}ms");
                     _silenceDebugCount++;
                 }
             }
         }
     }
-
     /// <summary>
     /// 蓄積されたリアルタイムPCMバッファを処理
     /// </summary>
     private void ProcessRealtimePcmBuffer() {
         if (_isProcessingSpeech) {
-            LogMessage("⚠️ Speech recognition already in progress, skipping");
             return;
         }
-        
         _isProcessingSpeech = true;
         _lastSpeechProcessingTime = DateTime.Now;
-        
         lock (_realtimePcmBuffer) {
             if (_realtimePcmBuffer.Count > 0) {
                 float[] audioData = _realtimePcmBuffer.ToArray();
                 _realtimePcmBuffer.Clear();
-                
-                LogMessage($"🎯 Processing realtime PCM buffer - size: {audioData.Length} samples");
-                
                 // 音声認識を非同期で実行
                 StartCoroutine(ProcessAudioCoroutine(audioData));
-                
-                // すぐに音声待機状態に戻る
+                // 音声認識処理状態をリセット（_lastAudioActivityはリセットしない）
                 _isProcessingSpeech = false;
                 _isSilent = false;
-                _lastAudioActivity = DateTime.Now;
-                
-                LogMessage("🎯 Realtime PCM processing started - returning to audio monitoring");
             } else {
-                LogMessage("⚠️ Realtime PCM buffer is empty");
                 _isProcessingSpeech = false;
             }
         }
     }
-
-
-
-
-
-
-
     /// <summary>
     /// 統合された音声データ変換処理
     /// ステレオ→モノラル→リサンプリングを一括で実行
@@ -1257,19 +1080,15 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             // 実際のPCMデータを抽出
             short[] actualPcmData = new short[decodedSamples * DiscordConstants.CHANNELS_STEREO];
             Array.Copy(pcmData, actualPcmData, decodedSamples * DiscordConstants.CHANNELS_STEREO);
-            
             // ステレオ→モノラル変換
             short[] monoData = ConvertStereoToMono(actualPcmData, decodedSamples * DiscordConstants.CHANNELS_STEREO);
-            
             // リサンプリング（48kHz→16kHz）
             return ResampleAudioData(monoData, DiscordConstants.SAMPLE_RATE_48K, DiscordConstants.SAMPLE_RATE_16K);
-            
         } catch (Exception ex) {
             LogOpusError($"Audio conversion error: {ex.Message}");
             return null;
         }
     }
-
     /// <summary>
     /// 音声データのリサンプリング処理
     /// 48kHzから16kHzへの簡易リサンプリング
@@ -1295,9 +1114,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             return floatData;
         }
     }
-
-
-
     /// <summary>
     /// 統合された音声認識処理
     /// 非同期処理とエラーハンドリングを最適化
@@ -1307,9 +1123,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         if (audioData == null || audioData.Length == 0) {
             yield break;
         }
-
         var recognitionTask = new TaskCompletionSource<(string text, Exception error)>();
-        
         // 音声認識を非同期で実行
         Task.Run(async () => {
             try {
@@ -1317,17 +1131,14 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                     recognitionTask.SetResult(("", null));
                     return;
                 }
-                
                 string recognizedText = await TranscribeWithWitAI(audioData);
                 recognitionTask.SetResult((recognizedText, null));
-                
             } catch (OperationCanceledException) {
                 recognitionTask.SetResult(("", null));
             } catch (Exception ex) {
                 recognitionTask.SetResult(("", ex));
             }
         });
-
         // 結果を待機
         while (!recognitionTask.Task.IsCompleted) {
             if (_cancellationTokenSource?.Token.IsCancellationRequested == true) {
@@ -1335,27 +1146,23 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             }
             yield return new WaitForSeconds(0.1f);
         }
-
         // 結果を処理（awaitを使用しない方法に変更）
         if (recognitionTask.Task.IsCompletedSuccessfully) {
             var result = recognitionTask.Task.Result;
             var (recognizedText, error) = result;
-            
             if (_cancellationTokenSource?.Token.IsCancellationRequested == true) {
                 yield break;
             }
-
             if (error != null) {
                 LogMessage($"❌ Speech recognition error: {error.Message}");
             } else if (!string.IsNullOrEmpty(recognizedText)) {
                 LogMessage($"🎯 Recognized: {recognizedText}");
                 OnVoiceRecognized?.Invoke(inputName, recognizedText);
             } else {
-                LogMessage("🤔 No speech recognized");
+                // 音声認識結果なし
             }
         }
     }
-
     /// <summary>
     /// ステレオPCMデータをモノラルに変換します。
     /// </summary>
@@ -1369,7 +1176,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         }
         return monoData;
     }
-
     /// <summary>
     /// 統合されたOpusエラーログ処理
     /// </summary>
@@ -1382,7 +1188,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             LogMessage($"❌ {logMessage} ({_opusErrors} total errors)");
         }
     }
-
     /// <summary>
     /// Opusデコーダーのリセット処理
     /// </summary>
@@ -1392,13 +1197,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             try {
                 _opusDecoder?.Dispose();
                 InitializeOpusDecoder();
-                LogMessage("🔄 Opus decoder reset due to persistent errors");
             } catch (Exception resetEx) {
                 LogMessage($"❌ Opus decoder reset failed: {resetEx.Message}");
             }
         }
     }
-
     /// <summary>
     /// Wit.AI APIを使用して音声データを文字に変換します。
     /// </summary>
@@ -1410,46 +1213,37 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             if (_cancellationTokenSource?.Token.IsCancellationRequested == true) {
                 return "";
             }
-
             if (_httpClient == null || string.IsNullOrEmpty(witaiToken))
             {
                 LogMessage("❌ HttpClient is not initialized or witaiToken is missing.");
                 return "";
             }
-
             // Node.js準拠: 生のPCMデータに変換（48kHz → 16kHz）
             byte[] rawPcmData = ConvertToRawPcm(audioData, DiscordConstants.WITA_API_SAMPLE_RATE, DiscordConstants.WITA_API_CHANNELS);
-            
             using (var content = new ByteArrayContent(rawPcmData))
             {
                 // Node.js準拠のContent-Type
                 content.Headers.Add("Content-Type", "audio/raw;encoding=signed-integer;bits=16;rate=16k;endian=little");
-                
                 // CancellationTokenを使用してHTTPリクエストをキャンセル可能にする
                 var response = await _httpClient.PostAsync("https://api.wit.ai/speech", content, _cancellationTokenSource?.Token ?? CancellationToken.None);
-                
                 if (response.IsSuccessStatusCode) {
                     string jsonResponse = await response.Content.ReadAsStringAsync();
-                    
                     // Node.js準拠: 複数のJSONオブジェクトを配列化
                     if (!string.IsNullOrWhiteSpace(jsonResponse)) {
                         try {
                             // Node.js: output.replace(/}\s*{/g, '},{')}
                             string jsonArrayString = $"[{jsonResponse.Replace("}\r\n{", "},{").Replace("}\n{", "},{").Replace("} {", "},{")}]";
                             var dataArray = JsonConvert.DeserializeObject<WitAIResponse[]>(jsonArrayString);
-                            
                             // Node.js準拠: type === "FINAL_UNDERSTANDING"をフィルタリング
                             var finalUnderstanding = dataArray?.FirstOrDefault(item => item.type == "FINAL_UNDERSTANDING");
                             if (finalUnderstanding != null && !string.IsNullOrEmpty(finalUnderstanding.text)) {
                                 return finalUnderstanding.text;
                             }
-                            
                             // フォールバック: 最初のテキストを使用
                             var firstText = dataArray?.FirstOrDefault(item => !string.IsNullOrEmpty(item.text));
                             if (firstText != null) {
                                 return firstText.text;
                             }
-                            
                         } catch (JsonException) {
                             // 単一のJSONオブジェクトの場合のフォールバック
                             try {
@@ -1462,7 +1256,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                             }
                         }
                     }
-                    
                     LogMessage($"Wit.AI no text found. Response: {jsonResponse}");
                 } else {
                     LogMessage($"Wit.AI HTTP error: {response.StatusCode} - {response.ReasonPhrase}");
@@ -1476,7 +1269,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         }
         return "";
     }
-
     /// <summary>
     /// float形式の音声データを生のPCMデータ（16-bit little-endian）に変換します。
     /// </summary>
@@ -1490,17 +1282,12 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             float sample = Mathf.Clamp(audioData[i], -1.0f, 1.0f);
             pcmData[i] = (short)(sample * 32767);
         }
-
         List<byte> rawData = new List<byte>();
         foreach (short sample in pcmData) {
             rawData.AddRange(BitConverter.GetBytes(sample));
         }
-
         return rawData.ToArray();
     }
-
-
-
     // Data structures - 統合版
     [Serializable]
     public class DiscordGatewayPayload {
@@ -1509,38 +1296,31 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         public int? s;
         public string t;
     }
-
     [Serializable]
     public class VoiceGatewayPayload {
         public int op;
         public object d;
     }
-
     [Serializable]
     public class DiscordUser {
         public string id;
         public string username;
         public string discriminator;
     }
-
     // Discord Gateway Data Structures
     [Serializable] public class HelloData { public int heartbeat_interval; }
     [Serializable] public class ReadyData { public string session_id; public DiscordUser user; }
     [Serializable] public class VoiceServerData { public string endpoint; public string token; }
     [Serializable] public class VoiceStateData { public string user_id; public string session_id; }
-
     // Voice Gateway Data Structures
     [Serializable] public class VoiceReadyData { public uint ssrc; public string ip; public int port; public string[] modes; }
     [Serializable] public class VoiceSpeakingData { public bool speaking; public uint ssrc; public string user_id; }
     [Serializable] public class VoiceHelloData { public double heartbeat_interval; }
     [Serializable] public class VoiceSessionDescriptionData { public byte[] secret_key; public string mode; }
-
     // External API Data Structures
     [Serializable] public class WitAIResponse { public string text; public string type; }
-
     // Discord.js準拠の暗号化モード（XSalsa20対応のため古いモードを優先）
     // 暗号化モードはDiscordConstantsクラスで管理
-
     /// <summary>
     /// IP Discoveryに失敗した場合のフォールバック処理。
     /// ローカルIPアドレスを使用してUDP接続を試みます。
@@ -1548,19 +1328,13 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private async Task<bool> UseDiscordJsFallback() {
         var result = await ErrorHandler.SafeExecuteAsync(async () => {
             LogMessage("📋 Using Discord.js fallback approach...");
-            
             // Discord.js フォールバック: ローカルエンドポイントを使用
             var localEndpoint = (IPEndPoint)_voiceUdpClient.Client.LocalEndPoint;
             string fallbackIP = GetLocalIPAddress();
-            
-            LogMessage($"⚠️ Using bound endpoint: {fallbackIP}:{localEndpoint.Port}");
-            
             return await CompleteUdpDiscovery(fallbackIP, localEndpoint.Port);
         }, "Discord.js fallback", LogMessage);
-        
         return result;
     }
-
     /// <summary>
     /// UDPのIP Discoveryを完了し、選択した暗号化プロトコルをサーバーに通知します。
     /// </summary>
@@ -1569,37 +1343,27 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <returns>成功した場合はtrue、それ以外はfalse。</returns>
     private async Task<bool> CompleteUdpDiscovery(string detectedIP, int detectedPort) {
         var result = await ErrorHandler.SafeExecuteAsync(async () => {
-            LogMessage($"🔄 Completing UDP discovery with IP: {detectedIP}, Port: {detectedPort}");
-            
             // Discord.js Networking.ts準拠の状態遷移
             _networkingState = NetworkingState.SelectingProtocol;
-            
             // Discord.js実装通りの暗号化モード選択
             string selectedMode = ChooseEncryptionMode(_availableModes);
-            
             var selectProtocolData = DiscordPayloadHelper.CreateSelectProtocolPayload(detectedIP, detectedPort, selectedMode);
             var jsonData = JsonConvert.SerializeObject(selectProtocolData);
-            
             if (_voiceWebSocket == null) {
                 LogMessage("❌ Voice WebSocket is null!");
                 return false;
             }
-            
             if (_voiceWebSocket.State != WebSocketState.Open) {
                 LogMessage($"❌ Voice WebSocket state: {_voiceWebSocket.State}");
                 return false;
             }
-            
             await _voiceWebSocket.SendAsync(
                 Encoding.UTF8.GetBytes(jsonData), 
                 WebSocketMessageType.Text, true, CancellationToken.None);
-            
             return true;
         }, "UDP discovery completion", LogMessage);
-        
         return result;
     }
-    
     /// <summary>
     /// 利用可能な暗号化モードの中から、サポートされているものを選択します。
     /// </summary>
@@ -1607,23 +1371,17 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <returns>選択された暗号化モードの文字列。</returns>
     private string ChooseEncryptionMode(string[] availableModes) {
         if (availableModes == null) {
-            LogMessage("⚠️ No encryption modes available, using default");
             return "xsalsa20_poly1305";
         }
-        
         foreach (var supportedMode in DiscordConstants.SUPPORTED_ENCRYPTION_MODES) {
             if (availableModes.Contains(supportedMode)) {
-                LogMessage($"🔐 Selected encryption mode: {supportedMode} (Discord.js preferred)");
                 return supportedMode;
             }
         }
-        
         // フォールバック：利用可能なモードの最初のもの
         var fallbackMode = availableModes.Length > 0 ? availableModes[0] : DiscordConstants.DEFAULT_ENCRYPTION_MODE;
-        LogMessage($"⚠️ Using fallback encryption mode: {fallbackMode}");
         return fallbackMode;
     }
-
     /// <summary>
     /// UDPによる音声データ受信を開始します。
     /// </summary>
@@ -1631,16 +1389,13 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         try {
             // Discord.js VoiceUDPSocket.ts準拠の実装
             await SetupUdpClientForAudio();
-            
             // Discord.js VoiceUDPSocket.ts準拠のKeep Alive開始
             StartKeepAlive();
-            
             _ = Task.Run(ReceiveUdpAudio);
         } catch (Exception ex) {
             LogMessage($"❌ UDP audio receive start error: {ex.Message}");
         }
     }
-    
     /// <summary>
     /// UDP接続を維持するためのKeep-Aliveパケット送信を定期的に開始します。
     /// </summary>
@@ -1649,11 +1404,9 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _keepAliveTimer = new System.Timers.Timer(KEEP_ALIVE_INTERVAL);
         _keepAliveTimer.Elapsed += async (sender, e) => await SendKeepAlive();
         _keepAliveTimer.Start();
-        
         // Discord.js VoiceUDPSocket.ts準拠：即座に最初のKeep Aliveを送信
         _ = Task.Run(SendKeepAlive);
     }
-    
     /// <summary>
     /// Keep-AliveパケットをVoice Serverに送信します。
     /// </summary>
@@ -1662,64 +1415,50 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             if (_voiceUdpClient == null || _voiceServerEndpoint == null) {
                 return;
             }
-            
             // Discord.js VoiceUDPSocket.ts準拠：8バイトKeep Aliveバッファ
             var keepAliveBuffer = new byte[8];
-            
             // カウンターを書き込み（Little Endian）
             var counterBytes = BitConverter.GetBytes(_keepAliveCounter);
             Array.Copy(counterBytes, 0, keepAliveBuffer, 0, 4);
-            
             await _voiceUdpClient.SendAsync(keepAliveBuffer, keepAliveBuffer.Length, _voiceServerEndpoint);
-            
             // Discord.js VoiceUDPSocket.ts準拠：カウンター増加とオーバーフロー処理
             _keepAliveCounter++;
             if (_keepAliveCounter > MAX_COUNTER_VALUE) {
                 _keepAliveCounter = 0;
             }
-            
         } catch (Exception ex) {
             LogMessage($"❌ Keep alive error: {ex.Message}");
         }
     }
-
     /// <summary>
     /// UDP経由で音声データを受信し続けるループ。
     /// </summary>
     private async Task ReceiveUdpAudio() {
         int packetCount = 0;
         int timeoutCount = 0;
-        
         while (_voiceConnected && _voiceUdpClient != null && !_cancellationTokenSource.Token.IsCancellationRequested) {
             try {
                 var receiveTask = _voiceUdpClient.ReceiveAsync();
                 var timeoutTask = Task.Delay(DiscordConstants.UDP_RECEIVE_TIMEOUT);
-                
                 var completedTask = await Task.WhenAny(receiveTask, timeoutTask);
-                
                 if (completedTask == receiveTask) {
                     var result = await receiveTask;
                     var packet = result.Buffer;
                     packetCount++;
                     timeoutCount = 0; // リセット
-                    
                     if (packet.Length >= DiscordConstants.RTP_HEADER_SIZE) {
                         // 音声パケットは通常60バイト以上
                         if (packet.Length >= DiscordConstants.MIN_AUDIO_PACKET_SIZE) {
                             await ProcessRtpPacket(packet);
                         }
                     } else {
-                        LogMessage($"⚠️ Packet too small #{packetCount}: {packet.Length} bytes");
                     }
                 } else {
                     timeoutCount++;
-                    
                     // 30秒経過してもパケットが受信されない場合、再接続を試行
                     if (packetCount == 0 && timeoutCount >= DiscordConstants.UDP_PACKET_TIMEOUT) {
-                        LogMessage($"⚠️ No packets received for {DiscordConstants.UDP_PACKET_TIMEOUT} seconds, attempting reconnection...");
                         break;
                     }
-                    
                     // 長時間アイドル状態でも接続を維持
                     if (packetCount > 0 && timeoutCount >= DiscordConstants.UDP_IDLE_TIMEOUT) {
                         timeoutCount = 0; // リセットして継続
@@ -1732,56 +1471,66 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 await Task.Delay(DiscordConstants.UDP_RECEIVE_TIMEOUT);
             }
         }
-        
     }
-
     /// <summary>
     /// Voice Gatewayへのハートビート送信を定期的に開始します。
     /// </summary>
     /// <param name="interval">ハートビートの間隔（ミリ秒）。</param>
     private async Task StartVoiceHeartbeat(double interval) {
+        // 既存のタイマーを停止
+        _voiceHeartbeatTimer?.Stop();
+        _voiceHeartbeatTimer?.Dispose();
+        // サーバーから指定された間隔を使用
         int intervalMs = (int)interval;
         _voiceHeartbeatTimer = new System.Timers.Timer(intervalMs);
         _voiceHeartbeatTimer.Elapsed += async (sender, e) => {
-            if (_voiceConnected) {
+            if (_voiceConnected && _voiceWebSocket?.State == WebSocketState.Open) {
                 await SendVoiceHeartbeat();
+            } else {
+                // 接続が切断されている場合はタイマーを停止
+                _voiceHeartbeatTimer?.Stop();
+                _voiceHeartbeatTimer?.Dispose();
+                _voiceHeartbeatTimer = null;
             }
         };
         _voiceHeartbeatTimer.Start();
-        
-        LogMessage($"🔄 Voice heartbeat started (interval: {intervalMs}ms) - Discord.js style");
     }
-
     /// <summary>
     /// Voice Gatewayにハートビートを送信します。
     /// </summary>
     private async Task SendVoiceHeartbeat() {
         try {
+            // ACKタイムアウト検出（15秒）
+            if (_lastHeartbeatSend != 0) {
+                var timeSinceLastHeartbeat = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - _lastHeartbeatSend;
+                if (timeSinceLastHeartbeat > 15000 && _missedHeartbeats >= 1) {
+                    LogMessage($"❌ Voice Gateway heartbeat ACK timeout ({timeSinceLastHeartbeat}ms > 15000ms) - disconnecting at {DateTime.Now:HH:mm:ss.fff}");
+                    await _voiceWebSocket?.CloseAsync(WebSocketCloseStatus.NormalClosure, "Heartbeat ACK timeout", CancellationToken.None);
+                    return;
+                }
+            }
             // Discord.js VoiceWebSocket.ts準拠の実装
             if (_lastHeartbeatSend != 0 && _missedHeartbeats >= 3) {
-                LogMessage("❌ Missed too many heartbeats (3) - disconnecting");
+                LogMessage($"❌ Voice Gateway missed too many heartbeats ({_missedHeartbeats}/3) - disconnecting at {DateTime.Now:HH:mm:ss.fff}");
                 await _voiceWebSocket?.CloseAsync(WebSocketCloseStatus.NormalClosure, "Too many missed heartbeats", CancellationToken.None);
                 return;
             }
-            
             _lastHeartbeatSend = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             _missedHeartbeats++;
-            
+            // Voice Gateway準拠：nonceのみでハートビート送信
             var nonce = _lastHeartbeatSend;
-            var heartbeat = DiscordPayloadHelper.CreateVoiceHeartbeatPayload(nonce, _voiceSequence);
-            await SendVoiceMessage(JsonConvert.SerializeObject(heartbeat));
-            
+            var heartbeat = DiscordPayloadHelper.CreateVoiceHeartbeatPayload(nonce, null);
+            var heartbeatJson = JsonConvert.SerializeObject(heartbeat);
+            await SendVoiceMessage(heartbeatJson);
         } catch (Exception ex) {
-            LogMessage($"❌ Voice heartbeat error: {ex.Message}");
+            LogMessage($"❌ Voice Gateway heartbeat error: {ex.Message} at {DateTime.Now:HH:mm:ss.fff}");
         }
     }
-
     // Discord.js VoiceUDPSocket.ts準拠のSocketConfig構造体
     private class SocketConfig {
         public string ip { get; set; }
         public int port { get; set; }
     }
-    
     /// <summary>
     /// DiscordのIP Discovery応答パケットを解析し、IPアドレスとポートを抽出します。
     /// Discord.jsの`parseLocalPacket`互換メソッドです。
@@ -1791,52 +1540,40 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private SocketConfig ParseLocalPacket(byte[] message) {
         try {
             var packet = message;
-            
             // Discord.js VoiceUDPSocket.ts準拠の応答検証
                     if (packet.Length < DiscordConstants.UDP_DISCOVERY_PACKET_SIZE) {
             LogMessage($"❌ Invalid packet length: {packet.Length} (expected {DiscordConstants.UDP_DISCOVERY_PACKET_SIZE})");
             return null;
         }
-            
             // Discord.js実装: if (message.readUInt16BE(0) !== 2) return;
             var responseType = (packet[0] << 8) | packet[1];
             if (responseType != 2) {
                 LogMessage($"❌ Invalid response type: {responseType} (expected 2)");
                 return null;
             }
-            
             // Discord.js実装: packet.slice(8, packet.indexOf(0, 8)).toString('utf8')
             var ipEndIndex = Array.IndexOf(packet, (byte)0, 8);
             if (ipEndIndex == -1) ipEndIndex = packet.Length;
-            
             var ipLength = ipEndIndex - 8;
             var ipBytes = new byte[ipLength];
             Array.Copy(packet, 8, ipBytes, 0, ipLength);
             var ip = Encoding.UTF8.GetString(ipBytes);
-            
             // Discord.js実装: packet.readUInt16BE(packet.length - 2)
             var port = (packet[packet.Length - 2] << 8) | packet[packet.Length - 1];
-            
             if (string.IsNullOrEmpty(ip) || port <= 0) {
                 LogMessage("❌ Invalid IP or port from parseLocalPacket");
                 return null;
             }
-            
             return new SocketConfig { ip = ip, port = port };
-            
         } catch (Exception ex) {
             LogMessage($"❌ parseLocalPacket error: {ex.Message}");
             return null;
         }
     }
-
-    public void Dispose()
-    {
+    public void Dispose() {
         DisposeResources();
     }
-
-    private void DisposeResources()
-    {
+    private void DisposeResources() {
         // Discord.js VoiceWebSocket.ts準拠のクリーンアップ
         _heartbeatTimer?.Dispose();
         _heartbeatTimer = null;
@@ -1844,38 +1581,28 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _voiceHeartbeatTimer = null;
         _keepAliveTimer?.Dispose();
         _keepAliveTimer = null;
-
         // WebSocket接続を閉じる
-        if (_webSocket != null && _webSocket.State == WebSocketState.Open)
-        {
-            LogMessage("🔄 Closing main WebSocket...");
+        if (_webSocket != null && _webSocket.State == WebSocketState.Open) {
             _ = _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Stopping", CancellationToken.None);
         }
         _webSocket?.Dispose();
         _webSocket = null;
-
         // UDPクライアントを閉じる
-        if (_voiceUdpClient != null)
-        {
-            LogMessage("🔄 Closing UDP client...");
+        if (_voiceUdpClient != null) {
             _voiceUdpClient.Close();
             _voiceUdpClient.Dispose();
             _voiceUdpClient = null;
         }
-
         // HttpClientを破棄
         _httpClient?.Dispose();
         _httpClient = null;
-
         // CancellationTokenSourceを破棄
         _cancellationTokenSource?.Dispose();
         _cancellationTokenSource = null;
-
         // Opusデコーダーを破棄
         _opusDecoder?.Dispose();
         _opusDecoder = null;
     }
-
     /// <summary>
     /// WebSocket接続を確立する共通処理
     /// </summary>
@@ -1885,17 +1612,13 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private async Task<ClientWebSocket> CreateWebSocketConnection(string url, bool isVoice, string connectionName) {
         var webSocket = new ClientWebSocket();
         await webSocket.ConnectAsync(new Uri(url), _cancellationTokenSource.Token);
-        
         if (isVoice) {
             _voiceConnected = true;
         } else {
             _isConnected = true;
         }
-        
-        LogMessage($"✅ {connectionName} connected successfully");
         return webSocket;
     }
-
     /// <summary>
     /// DiscordのメインGatewayにWebSocketで接続します。
     /// </summary>
@@ -1906,46 +1629,43 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 false,
                 "Discord Gateway"
             );
-            
             _ = Task.Run(ReceiveMessages, _cancellationTokenSource.Token);
             return true;
         }, "Discord connection", LogMessage);
     }
-
     /// <summary>
     /// CentralManagerからDiscord関連の設定を読み込みます。
     /// </summary>
     private void LoadSettingsFromCentralManager() {
         if (CentralManager.Instance == null) return;
-
         discordToken = CentralManager.Instance.GetDiscordToken();
         guildId = CentralManager.Instance.GetDiscordGuildId();
         voiceChannelId = CentralManager.Instance.GetDiscordVoiceChannelId();
         targetUserId = CentralManager.Instance.GetDiscordTargetUserId();
         inputName = CentralManager.Instance.GetDiscordInputName();
         witaiToken = CentralManager.Instance.GetDiscordWitaiToken();
-
         if (string.IsNullOrEmpty(inputName)) {
             inputName = "Discord";
         }
     }
-
     /// <summary>
     /// ボットを停止し、すべての接続とリソースをクリーンアップします。
     /// </summary>
     public void StopBot() {
-        LogMessage("🛑 Starting bot shutdown process...");
         _isConnected = false;
         _voiceConnected = false;
+        // ハートビートタイマーを停止
+        _voiceHeartbeatTimer?.Stop();
+        _voiceHeartbeatTimer?.Dispose();
+        _voiceHeartbeatTimer = null;
+        LogMessage($"🛑 Voice Gateway heartbeat timer stopped during shutdown at {DateTime.Now:HH:mm:ss.fff}");
         lock (_realtimePcmBuffer) _realtimePcmBuffer.Clear();
         lock (_opusPacketQueue) _opusPacketQueue.Clear();
         DisposeResources();
-        
         // Discord.js準拠の状態リセット
         ResetBotState();
         LogMessage("✅ Bot shutdown completed - all resources cleaned up");
     }
-
     /// <summary>
     /// ボットの状態をリセット
     /// </summary>
@@ -1954,7 +1674,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _lastHeartbeatAck = 0;
         _lastHeartbeatSend = 0;
         _missedHeartbeats = 0;
-        _voiceSequence = -1;
+        _voiceSequence = 1;
         _ping = null;
         _keepAliveCounter = 0;
         _successfulDecryptions = 0;
@@ -1964,26 +1684,53 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _debugCount = 0;
         _silenceDebugCount = 0;
     }
-
+    /// <summary>
+    /// WebSocket Close Codeの詳細説明を取得
+    /// </summary>
+    /// <param name="closeStatus">Close Status</param>
+    /// <returns>詳細説明</returns>
+    private string GetCloseReasonDescription(WebSocketCloseStatus? closeStatus) {
+        if (!closeStatus.HasValue) return "Unknown Close Status";
+        switch (closeStatus.Value) {
+            case WebSocketCloseStatus.NormalClosure:
+                return "Normal Closure - 正常終了";
+            case WebSocketCloseStatus.EndpointUnavailable:
+                return "Endpoint Unavailable - エンドポイントが利用不可";
+            case WebSocketCloseStatus.ProtocolError:
+                return "Protocol Error - プロトコルエラー";
+            case WebSocketCloseStatus.InvalidMessageType:
+                return "Invalid Message Type - 無効なメッセージタイプ";
+            case WebSocketCloseStatus.Empty:
+                return "Empty - 空のメッセージ";
+            case WebSocketCloseStatus.InvalidPayloadData:
+                return "Invalid Payload Data - 無効なペイロードデータ";
+            case WebSocketCloseStatus.PolicyViolation:
+                return "Policy Violation - ポリシー違反";
+            case WebSocketCloseStatus.MessageTooBig:
+                return "Message Too Big - メッセージが大きすぎる";
+            case WebSocketCloseStatus.MandatoryExtension:
+                return "Mandatory Extension - 必須拡張";
+            case WebSocketCloseStatus.InternalServerError:
+                return "Internal Server Error - サーバー内部エラー";
+            default:
+                return $"Unknown Close Status: {closeStatus.Value}";
+        }
+    }
     /// <summary>
     /// メインGatewayからのメッセージを受信し続けます。
     /// </summary>
     private async Task ReceiveMessages() {
         var buffer = new byte[DiscordConstants.WEBSOCKET_BUFFER_SIZE];
         var messageBuilder = new StringBuilder();
-        
         while (_isConnected && !_cancellationTokenSource.Token.IsCancellationRequested) {
             try {
                 var result = await _webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), _cancellationTokenSource.Token);
-                
                 if (result.MessageType == WebSocketMessageType.Text) {
                     var messageChunk = Encoding.UTF8.GetString(buffer, 0, result.Count);
                     messageBuilder.Append(messageChunk);
-                    
                     if (result.EndOfMessage) {
                         var message = messageBuilder.ToString();
                         messageBuilder.Clear();
-                        
                         UnityMainThreadDispatcher.Instance().Enqueue(() => {
                             _ = ProcessDiscordMessage(message);
                         });
@@ -2000,7 +1747,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             }
         }
     }
-
     /// <summary>
     /// メインGatewayから受信した単一のメッセージペイロードを処理します。
     /// </summary>
@@ -2009,11 +1755,9 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         try {
             var payload = JsonConvert.DeserializeObject<DiscordGatewayPayload>(message);
             if (payload == null) return;
-            
             if (payload.s.HasValue) {
                 _mainSequence = payload.s.Value;
             }
-
             switch (payload.op) {
                 case 10: await HandleMainHello(payload); break;
                 case 11: HandleMainHeartbeatAck(); break;
@@ -2023,7 +1767,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             LogMessage($"❌ Message processing error: {ex.Message}");
         }
     }
-
     /// <summary>
     /// メインGatewayのHelloメッセージを処理
     /// </summary>
@@ -2032,14 +1775,12 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         await StartHeartbeat(helloData.heartbeat_interval);
         await SendIdentify();
     }
-
     /// <summary>
     /// メインGatewayのHeartbeat ACKを処理
     /// </summary>
     private void HandleMainHeartbeatAck() {
         _heartbeatAcknowledged = true;
     }
-
     /// <summary>
     /// メインGatewayへのハートビート送信を定期的に開始します。
     /// </summary>
