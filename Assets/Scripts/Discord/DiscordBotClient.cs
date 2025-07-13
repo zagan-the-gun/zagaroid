@@ -1030,7 +1030,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             (now - _lastAudioActivity).TotalMilliseconds >= DiscordConstants.SILENCE_DURATION_MS) {
             if (!_isSilent) {
                 _isSilent = true;
-                LogMessage("🔇 Silence detected - processing accumulated PCM data");
+                // LogMessage("🔇 Silence detected - processing accumulated PCM data");
                 // 蓄積されたPCMデータで音声認識を実行
                 ProcessRealtimePcmBuffer();
             }
@@ -1058,8 +1058,16 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             if (_realtimePcmBuffer.Count > 0) {
                 float[] audioData = _realtimePcmBuffer.ToArray();
                 _realtimePcmBuffer.Clear();
-                // 音声認識を非同期で実行
-                StartCoroutine(ProcessAudioCoroutine(audioData));
+                
+                // 0.5秒以上の音声データかチェック（16kHzで8000サンプル）
+                int minSamples = DiscordConstants.WITA_API_SAMPLE_RATE / 2; // 0.5秒分
+                if (audioData.Length >= minSamples) {
+                    // 音声認識を非同期で実行
+                    StartCoroutine(ProcessAudioCoroutine(audioData));
+                // } else {
+                //     LogMessage($"🔇 Audio data too short ({audioData.Length} samples < {minSamples} samples) - skipping recognition");
+                }
+                
                 // 音声認識処理状態をリセット（_lastAudioActivityはリセットしない）
                 _isProcessingSpeech = false;
                 _isSilent = false;
@@ -1213,11 +1221,32 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             if (_cancellationTokenSource?.Token.IsCancellationRequested == true) {
                 return "";
             }
-            if (_httpClient == null || string.IsNullOrEmpty(witaiToken))
-            {
-                LogMessage("❌ HttpClient is not initialized or witaiToken is missing.");
+            
+            // 音声データの品質チェック
+            if (audioData == null || audioData.Length == 0) {
                 return "";
             }
+            
+            // 0.5秒以上の音声データかチェック（16kHzで8000サンプル）
+            int minSamples = DiscordConstants.WITA_API_SAMPLE_RATE / 2; // 0.5秒分
+            if (audioData.Length < minSamples) {
+                // LogMessage($"🔇 Audio data too short for transcription ({audioData.Length} samples < {minSamples} samples)");
+                return "";
+            }
+            
+            // 音声データの音量チェック（無音データの除外）
+            float audioLevel = CalculateAudioLevel(audioData);
+            if (audioLevel <= DiscordConstants.SILENCE_THRESHOLD) {
+                // LogMessage($"🔇 Audio level too low for transcription ({audioLevel:F4} <= {DiscordConstants.SILENCE_THRESHOLD})");
+                return "";
+            }
+            
+            if (_httpClient == null || string.IsNullOrEmpty(witaiToken))
+            {
+                // LogMessage("❌ HttpClient is not initialized or witaiToken is missing.");
+                return "";
+            }
+            
             // Node.js準拠: 生のPCMデータに変換（48kHz → 16kHz）
             byte[] rawPcmData = ConvertToRawPcm(audioData, DiscordConstants.WITA_API_SAMPLE_RATE, DiscordConstants.WITA_API_CHANNELS);
             using (var content = new ByteArrayContent(rawPcmData))
@@ -1256,7 +1285,10 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                             }
                         }
                     }
-                    LogMessage($"Wit.AI no text found. Response: {jsonResponse}");
+                    // 空のレスポンスの場合はログを出力しない（無駄なログを削減）
+                    if (!string.IsNullOrWhiteSpace(jsonResponse)) {
+                        LogMessage($"Wit.AI no text found. Response: {jsonResponse}");
+                    }
                 } else {
                     LogMessage($"Wit.AI HTTP error: {response.StatusCode} - {response.ReasonPhrase}");
                 }
