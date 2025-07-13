@@ -659,7 +659,7 @@ MonoBehaviour:
       m_Calls: []
   m_text: "\u5BFF\u9650\u7121"
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 3d63f0df0409f4bb19b4a813b964fcaa, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 8640170866e1e405e9dc582484d9358c, type: 2}
   m_sharedMaterial: {fileID: 2542888298519954755, guid: 9d90f9366ce2343648023cd1024b420b, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}

@@ -50,13 +50,16 @@ public class CanvasController : MonoBehaviour {
             textComponent.enableWordWrapping = false;
             textComponent.color = new Color(1f, 1f, 1f, 1f); // 白色で不透明
             // 文字に黒いアウトラインを付ける
-            textComponent.outlineWidth = 0.6f; // アウトラインの太さ
+            textComponent.outlineWidth = 0.1f; // アウトラインの太さ
             textComponent.outlineColor = Color.black; // アウトラインの色
             // textComponent.fontSharedMaterial = textComponent.fontSharedMaterial; // アウトラインを有効にするための設定 (不要かも)
             // newCommentの幅をテキストの長さに合わせて調整
             RectTransform rectTransform = newComment.GetComponent<RectTransform>();
             float textWidth = textComponent.preferredWidth; // テキストの幅を取得
             rectTransform.sizeDelta = new Vector2(textWidth, rectTransform.sizeDelta.y); // 幅を設定
+            
+            // フォントを上下に伸ばす
+            rectTransform.localScale = new Vector3(1f, 1.6f, 1f); // Y軸を1.2倍に伸ばす
         } else {
             Debug.LogError("コメントテンプレートが生成されていません！");
         }
@@ -67,14 +70,6 @@ public class CanvasController : MonoBehaviour {
 
     private IEnumerator scrollComment(GameObject comment) {
         RectTransform rectTransform = comment.GetComponent<RectTransform>();
-        float startPosition = rectTransform.anchoredPosition.x;
-
-        // Canvasを直接取得
-        // Canvas canvas = FindObjectOfType<Canvas>();
-        // if (canvas == null) {
-        //     Debug.LogError("Canvasが見つかりません！");
-        //     yield break; // Canvasが見つからない場合は処理を中断
-        // }
 
         // キャンバスのサイズを取得
         RectTransform canvasRectTransform = canvas.GetComponent<RectTransform>();
@@ -83,16 +78,27 @@ public class CanvasController : MonoBehaviour {
 
         // テキストオブジェクトの高さを取得
         float textHeight = rectTransform.sizeDelta.y;
-        // Debug.Log($"DEAD BEEF textHeight: {textHeight}");
 
         // スクロール開始位置をランダムに設定
         float randomYPosition = UnityEngine.Random.Range(-textHeight, -canvasHeight + textHeight);
-        rectTransform.anchoredPosition = new Vector2(canvasWidth, randomYPosition); // 初期位置をキャンバスの右端に設定し、Y位置をランダムに設定
-        // Debug.Log($"DEAD BEEF randomYPosition: {randomYPosition}");
+        rectTransform.anchoredPosition = new Vector2(canvasWidth, randomYPosition);
+
+        // より滑らかなアニメーションのための設定
+        float scrollSpeed = 400f; // 超高速スクロール
+        float smoothTime = 0.01f; // 最小限のスムージング時間
+        Vector2 velocity = Vector2.zero;
 
         // スクロール処理
         while (rectTransform.anchoredPosition.x > -rectTransform.sizeDelta.x) {
-            rectTransform.anchoredPosition += Vector2.left * 100f * Time.deltaTime; // スクロール速度を調整
+            // より滑らかな移動のためのLerp使用
+            Vector2 targetPosition = rectTransform.anchoredPosition + Vector2.left * scrollSpeed * Time.deltaTime;
+            rectTransform.anchoredPosition = Vector2.SmoothDamp(
+                rectTransform.anchoredPosition, 
+                targetPosition, 
+                ref velocity, 
+                smoothTime
+            );
+            
             yield return null;
         }
 
