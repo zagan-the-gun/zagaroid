@@ -77,13 +77,10 @@
                             <ui:TextField label="Input Name" value="Discord" name="DiscordInputNameInput" style="margin-bottom: 5px;" />
                             <ui:DropdownField label="Subtitle Method" name="DiscordSubtitleMethodDropdown" style="margin-bottom: 5px;" />
                             <ui:TextField label="Wit.ai Token" name="DiscordWitaiTokenInput" style="margin-bottom: 5px;" />
-
                             <ui:Button text="Launch" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartDiscordBotButton" style="margin-bottom: 5px;" />
                         </ui:VisualElement>
                         <ui:VisualElement name="PanelTwitch" class="panel" style="flex-grow: 1; flex-basis: 1px;">
-                            <ui:IntegerField label="Char Per Sec(char)" name="CharactersPerSecondInput" />
-                            <ui:FloatField label="Min Display Time(sec)" value="4" name="MinDisplayTimeInput" />
-                            <ui:FloatField label="Max Display Time(sec)" value="8" name="MaxDisplayTimeInput" />
+                            <ui:IntegerField label="FontSize" name="FontSizeInput" />
                         </ui:VisualElement>
                     </ui:VisualElement>
                     <ui:Button text="Save" name="SaveSettingsButton" style="margin-top: 10px;" />
