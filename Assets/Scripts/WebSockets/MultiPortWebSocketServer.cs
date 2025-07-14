@@ -41,12 +41,14 @@ public class MultiPortWebSocketServer : MonoBehaviour {
 
     private void InitializeServer(int port) {
         try {
-            var server = new WebSocketServer(IPAddress.Any, port);
+            WebSocketServer server = new WebSocketServer(IPAddress.Any, port);
             if (port == 50001) {
             // if (port == 50000) {
                 server.AddWebSocketService<EchoService1>("/");
+                wss1 = server; // インスタンスを保存
             } else if (port == 50002) {
                 server.AddWebSocketService<EchoService2>("/");
+                wss2 = server; // インスタンスを保存
             }
             server.Start();
             Debug.Log($"MultiPortWebSocketServer: WebSocket サーバー開始 - ws://localhost:{port}/");
@@ -56,9 +58,20 @@ public class MultiPortWebSocketServer : MonoBehaviour {
     }
 
     private void OnDestroy() {
+        Debug.Log("MultiPortWebSocketServer: OnDestroy が呼び出されました");
+        StopAllServers();
+    }
+
+    private void OnApplicationQuit() {
+        Debug.Log("MultiPortWebSocketServer: OnApplicationQuit が呼び出されました");
+        StopAllServers();
+    }
+
+    private void StopAllServers() {
         if (wss1 != null) {
             try {
                 wss1.Stop();
+                wss1 = null;
                 Debug.Log("MultiPortWebSocketServer: WebSocket サーバー停止 - ポート: 50001");
             } catch (Exception ex) {
                 Debug.LogError($"MultiPortWebSocketServer: ポート 50001 のサーバー停止に失敗 - {ex.Message}");
@@ -67,12 +80,19 @@ public class MultiPortWebSocketServer : MonoBehaviour {
         if (wss2 != null) {
             try {
                 wss2.Stop();
+                wss2 = null;
                 Debug.Log("MultiPortWebSocketServer: WebSocket サーバー停止 - ポート: 50002");
             } catch (Exception ex) {
                 Debug.LogError($"MultiPortWebSocketServer: ポート 50002 のサーバー停止に失敗 - {ex.Message}");
             }
         }
         messageHandlers.Clear();
+    }
+
+    // 手動でサーバーを停止するためのパブリックメソッド
+    public void StopServers() {
+        Debug.Log("MultiPortWebSocketServer: 手動でサーバーを停止します");
+        StopAllServers();
     }
 
     public void RegisterMessageHandler(int port, Action<string, string> handler) {
