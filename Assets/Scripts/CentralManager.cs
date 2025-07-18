@@ -89,6 +89,7 @@ public class CentralManager : MonoBehaviour {
         // DiscordBotからの音声認識結果を受信するイベントを登録
         DiscordBotClient.OnVoiceRecognized += HandleDiscordVoiceRecognized;
         DiscordBotClient.OnDiscordLog += HandleDiscordLog;
+        DiscordBotClient.OnDiscordBotStateChanged += HandleDiscordBotStateChanged;
         // MultiPortWebSocketServerの情報を受信するイベントを登録
         if (MultiPortWebSocketServer.Instance != null) {
             MultiPortWebSocketServer.OnMessageReceivedFromPort50001 += HandleWebSocketMessageFromPort50001;
@@ -243,6 +244,14 @@ public class CentralManager : MonoBehaviour {
     }
     public void SetMyEnglishSubtitle(string key) {
         PlayerPrefs.SetString("MyEnglishSubtitle", key);
+    }
+
+    public string GetFriendSubtitle() {
+        // "FriendSubtitle"というキーで保存された文字列を読み込む。存在しない場合は空文字列を返す。
+        return PlayerPrefs.GetString("FriendSubtitle", "");
+    }
+    public void SetFriendSubtitle(string key) {
+        PlayerPrefs.SetString("FriendSubtitle", key);
     }
 
     public string GetDeepLApiClientKey() {
@@ -478,6 +487,11 @@ public class CentralManager : MonoBehaviour {
         }
     }
 
+    // DiscordBotの実行状態を確認
+    public bool IsDiscordBotRunning() {
+        return _discordBotClient != null && _discordBotClient.IsBotRunning();
+    }
+
     // すべての PlayerPrefs の変更をディスクに書き込む
     public void SaveAllPlayerPrefs() {
         PlayerPrefs.Save();
@@ -534,6 +548,7 @@ public class CentralManager : MonoBehaviour {
         UnityTwitchChatController.OnTwitchMessageReceived -= HandleTwitchMessageReceived;
         DiscordBotClient.OnVoiceRecognized -= HandleDiscordVoiceRecognized;
         DiscordBotClient.OnDiscordLog -= HandleDiscordLog;
+        DiscordBotClient.OnDiscordBotStateChanged -= HandleDiscordBotStateChanged;
         if (MultiPortWebSocketServer.Instance != null) {
             MultiPortWebSocketServer.OnMessageReceivedFromPort50001 -= HandleWebSocketMessageFromPort50001;
             MultiPortWebSocketServer.OnMessageReceivedFromPort50002 -= HandleWebSocketMessageFromPort50002;
@@ -553,6 +568,7 @@ public class CentralManager : MonoBehaviour {
         UnityTwitchChatController.OnTwitchMessageReceived -= HandleTwitchMessageReceived;
         DiscordBotClient.OnVoiceRecognized -= HandleDiscordVoiceRecognized;
         DiscordBotClient.OnDiscordLog -= HandleDiscordLog;
+        DiscordBotClient.OnDiscordBotStateChanged -= HandleDiscordBotStateChanged;
         if (MultiPortWebSocketServer.Instance != null) {
             MultiPortWebSocketServer.OnMessageReceivedFromPort50001 -= HandleWebSocketMessageFromPort50001;
             MultiPortWebSocketServer.OnMessageReceivedFromPort50002 -= HandleWebSocketMessageFromPort50002;
@@ -592,23 +608,23 @@ public class CentralManager : MonoBehaviour {
     private void HandleDiscordVoiceRecognized(string inputName, string recognizedText) {
         Debug.Log($"DiscordBot音声認識結果を受信しました！ [{inputName}]: {recognizedText}");
 
-        // 字幕用チャンネル名を取得
-        string subtitleChannel = GetMySubtitle();
+        // 字幕用チャンネル名を取得（友達の字幕チャンネルに変更）
+        string subtitleChannel = GetFriendSubtitle();
         if (string.IsNullOrEmpty(subtitleChannel)) {
-            subtitleChannel = "zagan_subtitle"; // デフォルト値
+            return; // 設定されていない場合は処理をスキップ
         }
 
         // 字幕として送信（HandleWebSocketMessageFromPort50001と同じ処理）
         float calculatedDuration = calculateDisplayDuration(recognizedText.Length);
-        string myEnglishSubtitle = GetMyEnglishSubtitle();
-        if (string.IsNullOrEmpty(myEnglishSubtitle)) {
-            myEnglishSubtitle = "zagan_subtitle_en"; // デフォルト値
-        }
+        // string myEnglishSubtitle = GetMyEnglishSubtitle();
+        // if (string.IsNullOrEmpty(myEnglishSubtitle)) {
+        //     myEnglishSubtitle = "zagan_subtitle_en"; // デフォルト値
+        // }
 
         CurrentDisplaySubtitle newEntry = new CurrentDisplaySubtitle(
             recognizedText,
             subtitleChannel,
-            myEnglishSubtitle,
+            "", // 英語字幕チャンネルを一時的に空文字列に
             calculatedDuration
         );
 
@@ -626,6 +642,12 @@ public class CentralManager : MonoBehaviour {
         Debug.Log(logMessage);
         // 必要に応じてUIに表示したり、ファイルに保存したりする
         SendGlobalMessage($"[Discord] {logMessage}");
+    }
+
+    // DiscordBotの状態変更を受け取る
+    private void HandleDiscordBotStateChanged(bool isRunning) {
+        Debug.Log($"DiscordBot状態変更: {(isRunning ? "起動" : "停止")}");
+        // 必要に応じてUIの更新やその他の処理を行う
     }
 
     // コメントをVoiceVoxで喋らせる

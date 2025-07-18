@@ -33,6 +33,7 @@
                             <ui:TextField picking-mode="Ignore" label="OBS WebSocket Password" value="OBS WebSocket Password" name="ObsWebSocketsPasswordInput" />
                             <ui:TextField label="my subtitle" value="my_subtitle" name="MySubtitleInput" />
                             <ui:TextField picking-mode="Ignore" label="my english subtitle" value="my_subtitle_en" name="MyEnglishSubtitleInput" />
+                            <ui:TextField label="friend subtitle" value="friend_subtitle" name="FriendSubtitleInput" />
                         </ui:VisualElement>
                     </ui:VisualElement>
                     <ui:VisualElement name="2" style="flex-grow: 1; flex-direction: row;">
@@ -77,7 +78,10 @@
                             <ui:TextField label="Input Name" value="Discord" name="DiscordInputNameInput" style="margin-bottom: 5px;" />
                             <ui:DropdownField label="Subtitle Method" name="DiscordSubtitleMethodDropdown" style="margin-bottom: 5px;" />
                             <ui:TextField label="Wit.ai Token" name="DiscordWitaiTokenInput" style="margin-bottom: 5px;" />
-                            <ui:Button text="Launch" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartDiscordBotButton" style="margin-bottom: 5px;" />
+                            <ui:VisualElement style="flex-grow: 1; flex-direction: row; flex-wrap: nowrap; flex-shrink: 1;">
+                                <ui:Button text="Start" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartDiscordBotButton" style="margin-bottom: 5px; margin-right: 5px; flex-grow: 1;" />
+                                <ui:Button text="Stop" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StopDiscordBotButton" style="margin-bottom: 5px; flex-grow: 1;" />
+                            </ui:VisualElement>
                         </ui:VisualElement>
                         <ui:VisualElement name="PanelTwitch" class="panel" style="flex-grow: 1; flex-basis: 1px;">
                             <ui:IntegerField label="FontSize" name="FontSizeInput" />

@@ -179,10 +179,13 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     public static event VoiceRecognizedDelegate OnVoiceRecognized;
     public delegate void DiscordLogDelegate(string logMessage);
     public static event DiscordLogDelegate OnDiscordLog;
+    public delegate void DiscordBotStateChangedDelegate(bool isRunning);
+    public static event DiscordBotStateChangedDelegate OnDiscordBotStateChanged;
     // 接続関連
     private ClientWebSocket _webSocket;
     private CancellationTokenSource _cancellationTokenSource;
     private bool _isConnected = false;
+    private bool _isBotRunning = false;
     private string _sessionId;
     private int _mainSequence = 0;
     private System.Timers.Timer _heartbeatTimer;
@@ -316,6 +319,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// 設定を読み込み、Discord Gatewayへの接続を開始します。
     /// </summary>
     public async void StartBot() {
+        if (_isBotRunning) {
+            LogMessage("⚠️ Bot is already running");
+            return;
+        }
+        
         await ErrorHandler.SafeExecuteAsync<bool>(async () => {
             LoadSettingsFromCentralManager();
             if (string.IsNullOrEmpty(discordToken)) {
@@ -327,6 +335,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {witaiToken}");
             InitializeOpusDecoder();
             await ConnectToDiscord();
+            _isBotRunning = true;
+            OnDiscordBotStateChanged?.Invoke(true);
             return true;
         }, "StartBot", LogMessage);
     }
@@ -612,6 +622,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 return; // BOT自身のパケットは静かに無視
             }
             if (_ssrcToUserMap.TryGetValue(ssrc, out string userId)) {
+                // デバッグ情報：受信したユーザーの音声をログ出力（最初の5回のみ）
+                if (_debugCount < 5) {
+                    LogMessage($"🎤 Received audio from user: {userId} (target: {targetUserId})");
+                    _debugCount++;
+                }
                 await ProcessUserAudioPacket(packet, userId);
             } else {
             }
@@ -634,6 +649,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// ユーザーの音声パケットを処理
     /// </summary>
     private async Task ProcessUserAudioPacket(byte[] packet, string userId) {
+        // ターゲットユーザーの音声のみを処理（早期フィルタリング）
+        if (userId != targetUserId) {
+            return; // 早期リターンで効率化
+        }
+        
         var rtpHeader = ExtractRtpHeader(packet);
         var encryptedData = ExtractEncryptedData(packet);
         if (IsValidEncryptedData(encryptedData)) {
@@ -685,6 +705,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// Opusデータをキューに追加
     /// </summary>
     private async Task QueueOpusData(byte[] decryptedOpusData, string userId) {
+        // ターゲットユーザーの音声のみを処理
+        if (userId != targetUserId) {
+            return; // 早期リターンで効率化
+        }
+        
         byte[] actualOpusData = ExtractOpusFromDiscordPacket(decryptedOpusData);
         if (actualOpusData == null) {
             return;
@@ -936,9 +961,16 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <param name="userId">音声の送信元ユーザーID</param>
     private void ProcessOpusData(byte[] opusData, string userId) {
         try {
-            if (_opusDecoder == null || userId != targetUserId) {
-                return; // 早期リターンで効率化
+            if (_opusDecoder == null) {
+                return;
             }
+            
+            // ターゲットユーザーの音声のみを処理（ProcessUserAudioPacketで既にフィルタリング済み）
+            if (userId != targetUserId) {
+                LogMessage($"🔇 Skipping audio from non-target user: {userId} (target: {targetUserId})");
+                return;
+            }
+            
             if (opusData.Length < 1) {
                 LogOpusError("Opus data too small", opusData.Length);
                 return;
@@ -1684,6 +1716,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// ボットを停止し、すべての接続とリソースをクリーンアップします。
     /// </summary>
     public void StopBot() {
+        if (!_isBotRunning) {
+            LogMessage("⚠️ Bot is not running");
+            return;
+        }
+        
         _isConnected = false;
         _voiceConnected = false;
         // ハートビートタイマーを停止
@@ -1696,6 +1733,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         DisposeResources();
         // Discord.js準拠の状態リセット
         ResetBotState();
+        _isBotRunning = false;
+        OnDiscordBotStateChanged?.Invoke(false);
         LogMessage("✅ Bot shutdown completed - all resources cleaned up");
     }
     /// <summary>
@@ -1715,6 +1754,13 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _opusErrors = 0;
         _debugCount = 0;
         _silenceDebugCount = 0;
+    }
+
+    /// <summary>
+    /// ボットの実行状態を取得
+    /// </summary>
+    public bool IsBotRunning() {
+        return _isBotRunning;
     }
     /// <summary>
     /// WebSocket Close Codeの詳細説明を取得

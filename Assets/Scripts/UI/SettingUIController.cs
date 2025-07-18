@@ -35,6 +35,7 @@ public class SettingUIController : MonoBehaviour {
     private TextField obsWebSocketsPasswordInput;
     private TextField mySubtitleInput;
     private TextField myEnglishSubtitleInput;
+    private TextField friendSubtitleInput;
 
     private TextField deepLApiClientKeyInput;
     private DropdownField translationModeDropdown;
@@ -51,6 +52,7 @@ public class SettingUIController : MonoBehaviour {
     private TextField discordWitaiTokenInput;
 
     private Button startDiscordBotButton; // Discord BOT手動起動ボタン
+    private Button stopDiscordBotButton; // Discord BOT停止ボタン
     
     private Button saveSettingsButton;
 
@@ -94,6 +96,7 @@ public class SettingUIController : MonoBehaviour {
         obsWebSocketsPasswordInput = settingContentRoot.Q<TextField>("ObsWebSocketsPasswordInput");
         mySubtitleInput = settingContentRoot.Q<TextField>("MySubtitleInput");
         myEnglishSubtitleInput = settingContentRoot.Q<TextField>("MyEnglishSubtitleInput");
+        friendSubtitleInput = settingContentRoot.Q<TextField>("FriendSubtitleInput");
         deepLApiClientKeyInput = settingContentRoot.Q<TextField>("DeepLApiClientKeyInput"); // DeepL APIキー
         translationModeDropdown = settingContentRoot.Q<DropdownField>("TranslationModeDropdown"); // 翻訳方式選択
         menZTranslationServerUrlInput = settingContentRoot.Q<TextField>("MenZTranslationServerUrlInput"); // MenZ翻訳サーバーURL
@@ -108,6 +111,7 @@ public class SettingUIController : MonoBehaviour {
         discordWitaiTokenInput = settingContentRoot.Q<TextField>("DiscordWitaiTokenInput");
         
         startDiscordBotButton = settingContentRoot.Q<Button>("StartDiscordBotButton"); // Discord BOT手動起動ボタン
+        stopDiscordBotButton = settingContentRoot.Q<Button>("StopDiscordBotButton"); // Discord BOT停止ボタン
         saveSettingsButton = settingContentRoot.Q<Button>("SaveSettingsButton"); // 設定を保存ボタン
 
         // UI要素が見つからない場合のエラーチェック
@@ -151,9 +155,19 @@ public class SettingUIController : MonoBehaviour {
             startDiscordBotButton.clicked += OnStartDiscordBotClicked;
         }
 
+        if (stopDiscordBotButton != null) {
+            stopDiscordBotButton.clicked += OnStopDiscordBotClicked;
+        }
+
         if (saveSettingsButton != null) {
             saveSettingsButton.clicked += SaveSettingsFromUI;
         }
+
+        // DiscordBotの状態変更イベントを登録
+        DiscordBotClient.OnDiscordBotStateChanged += OnDiscordBotStateChanged;
+        
+        // 初期状態でボタンの有効/無効を設定
+        UpdateDiscordBotButtons();
     }
 
     void OnDisable() {
@@ -186,9 +200,16 @@ public class SettingUIController : MonoBehaviour {
             startDiscordBotButton.clicked -= OnStartDiscordBotClicked;
         }
 
+        if (stopDiscordBotButton != null) {
+            stopDiscordBotButton.clicked -= OnStopDiscordBotClicked;
+        }
+
         if (saveSettingsButton != null) {
             saveSettingsButton.clicked -= SaveSettingsFromUI;
         }
+
+        // DiscordBotの状態変更イベントを解除
+        DiscordBotClient.OnDiscordBotStateChanged -= OnDiscordBotStateChanged;
     }
 
     // 設定値をUIに読み込むメソッド
@@ -237,6 +258,9 @@ public class SettingUIController : MonoBehaviour {
         }
         if (myEnglishSubtitleInput != null) {
             myEnglishSubtitleInput.value = CentralManager.Instance.GetMyEnglishSubtitle();
+        }
+        if (friendSubtitleInput != null) {
+            friendSubtitleInput.value = CentralManager.Instance.GetFriendSubtitle();
         }
 
         if (deepLApiClientKeyInput != null) {
@@ -374,6 +398,9 @@ public class SettingUIController : MonoBehaviour {
         }
         if (myEnglishSubtitleInput != null) {
             CentralManager.Instance.SetMyEnglishSubtitle(myEnglishSubtitleInput.value);
+        }
+        if (friendSubtitleInput != null) {
+            CentralManager.Instance.SetFriendSubtitle(friendSubtitleInput.value);
         }
 
         if (deepLApiClientKeyInput != null) {
@@ -567,5 +594,26 @@ public class SettingUIController : MonoBehaviour {
     private void OnStartDiscordBotClicked() {
         Debug.Log("Discord BOT手動起動ボタンがクリックされました");
         CentralManager.Instance.StartDiscordBot();
+    }
+
+    // --- Discord BOT停止ボタンのクリックハンドラ ---
+    private void OnStopDiscordBotClicked() {
+        Debug.Log("Discord BOT停止ボタンがクリックされました");
+        CentralManager.Instance.StopDiscordBot();
+    }
+
+    // --- DiscordBotの状態変更イベントハンドラ ---
+    private void OnDiscordBotStateChanged(bool isRunning) {
+        UpdateDiscordBotButtons();
+    }
+
+    // --- DiscordBotボタンの有効/無効を更新 ---
+    private void UpdateDiscordBotButtons() {
+        if (startDiscordBotButton != null) {
+            startDiscordBotButton.SetEnabled(!CentralManager.Instance.IsDiscordBotRunning());
+        }
+        if (stopDiscordBotButton != null) {
+            stopDiscordBotButton.SetEnabled(CentralManager.Instance.IsDiscordBotRunning());
+        }
     }
 }
