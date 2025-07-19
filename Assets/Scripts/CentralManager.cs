@@ -606,7 +606,6 @@ public class CentralManager : MonoBehaviour {
 
     // DiscordBotから音声認識結果を受け取る
     private void HandleDiscordVoiceRecognized(string inputName, string recognizedText) {
-        Debug.Log($"DiscordBot音声認識結果を受信しました！ [{inputName}]: {recognizedText}");
 
         // 字幕用チャンネル名を取得（友達の字幕チャンネルに変更）
         string subtitleChannel = GetFriendSubtitle();
