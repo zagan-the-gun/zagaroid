@@ -30,15 +30,10 @@ public static class DiscordConstants {
     public const int MIN_AUDIO_PACKET_SIZE = 60;
     public const int DISCORD_HEADER_SIZE = 12;
     // 音声処理関連
-    public const int OPUS_FRAME_SIZE = 960; // 20ms at 48kHz (Discord.js準拠)
-    public const int OPUS_FRAME_SIZE_MS = 20; // 20msフレーム（Discord.js準拠）
     public const int SAMPLE_RATE_48K = 48000;
     public const int SAMPLE_RATE_16K = 16000;
     public const int CHANNELS_STEREO = 2;
-    public const int CHANNELS_MONO = 1;
     public const float PCM_SCALE_FACTOR = 32768.0f;
-    public const int AUDIO_BUFFER_THRESHOLD = 16000 * 2; // 2秒分
-    public const int AUDIO_BUFFER_MIN_SIZE = 1600; // 0.1秒分
     // タイムアウト関連
     public const int RECONNECT_DELAY = 5000;
     public const int UDP_PACKET_TIMEOUT = 30;
@@ -184,7 +179,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     public static event DiscordBotStateChangedDelegate OnDiscordBotStateChanged;
     // 接続関連
     private DiscordNetworkManager _networkManager;
-    private bool _isBotRunning = false;
     private string _sessionId;
     // Voice Gateway関連
     private UdpClient _voiceUdpClient;
@@ -195,21 +189,9 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private Dictionary<uint, string> _ssrcToUserMap = new Dictionary<uint, string>();
     private uint _ourSSRC;
     private byte[] _secretKey;
-    // Discord.js状態管理
-    private enum NetworkingState {
-        OpeningWs,
-        Identifying,
-        UdpHandshaking,
-        SelectingProtocol,
-        Ready,
-        Closed
-    }
-    private NetworkingState _networkingState = NetworkingState.OpeningWs;
     // Discord.js準拠の接続データ
     private string _encryptionMode;
     private string[] _availableModes;
-    // Discord.js VoiceWebSocket.ts準拠のハートビート管理
-    private int _voiceSequence = 1; // Discord.js準拠：1から開始
     // Discord.js VoiceUDPSocket.ts準拠のKeep Alive
     private System.Timers.Timer _keepAliveTimer;
     private uint _keepAliveCounter = 0;
@@ -224,7 +206,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     // 無音検出によるバッファリング
     private AudioBuffer _audioBuffer;
     // 音声認識状態管理
-    private bool _isProcessingSpeech = false;
     private struct OpusPacket {
         public byte[] data;
         public string userId;
@@ -403,7 +384,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// 設定を読み込み、Discord Gatewayへの接続を開始します。
     /// </summary>
     public async void StartBot() {
-        if (_isBotRunning) {
+        if (_networkManager != null && _networkManager.IsMainConnected) {
             LogMessage("⚠️ Bot is already running");
             return;
         }
@@ -418,10 +399,21 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {witaiToken}");
             InitializeOpusDecoder();
             InitializeNetworkManager();
-            await ConnectToDiscord();
-            _isBotRunning = true;
-            OnDiscordBotStateChanged?.Invoke(true);
-            return true;
+            
+            // Discord Gatewayへの接続を試行
+            bool connectionSuccess = await ConnectToDiscord();
+            if (connectionSuccess) {
+                OnDiscordBotStateChanged?.Invoke(true);
+                LogMessage("✅ Discord bot started successfully");
+            } else {
+                LogMessage("❌ Discord bot failed to start - connection failed");
+                // 接続に失敗した場合はリソースをクリーンアップ
+                _networkManager?.Dispose();
+                _networkManager = null;
+                _httpClient?.Dispose();
+                _httpClient = null;
+            }
+            return connectionSuccess;
         }, "StartBot", LogError);
     }
     /// <summary>
@@ -446,7 +438,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private async Task ProcessVoiceMessage(string message) {
         try {
             var payload = JsonConvert.DeserializeObject<VoiceGatewayPayload>(message);
-            UpdateVoiceSequence(message);
             switch (payload.op) {
                 case 8: await HandleVoiceHello(payload); break;
                 case 2: await HandleVoiceReady(payload); break;
@@ -467,7 +458,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// </summary>
     private async Task HandleVoiceHello(VoiceGatewayPayload payload) {
         LogMessage($"🔌 Voice Gateway Hello received at {DateTime.Now:HH:mm:ss.fff}");
-        _networkingState = NetworkingState.Identifying;
         var helloData = JsonConvert.DeserializeObject<VoiceHelloData>(payload.d.ToString());
         await StartVoiceHeartbeat(helloData.heartbeat_interval);
         await SendVoiceIdentify();
@@ -477,7 +467,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// </summary>
     private async Task HandleVoiceReady(VoiceGatewayPayload payload) {
         LogMessage($"🔌 Voice Gateway Ready received at {DateTime.Now:HH:mm:ss.fff}");
-        _networkingState = NetworkingState.Identifying;
         var readyData = JsonConvert.DeserializeObject<VoiceReadyData>(payload.d.ToString());
         await InitializeVoiceConnection(readyData);
         await PerformUdpDiscovery();
@@ -487,7 +476,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// </summary>
     private async Task HandleVoiceSessionDescription(VoiceGatewayPayload payload) {
         LogMessage($"🔌 Voice Gateway Session Description received at {DateTime.Now:HH:mm:ss.fff}");
-        _networkingState = NetworkingState.Ready;
         var sessionData = JsonConvert.DeserializeObject<VoiceSessionDescriptionData>(payload.d.ToString());
         _secretKey = sessionData.secret_key;
         _encryptionMode = sessionData.mode;
@@ -511,8 +499,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _ssrcToUserMap[speakingData.ssrc] = speakingData.user_id;
         
         if (speakingData.user_id == targetUserId && speakingData.speaking) {
-            // 音声認識状態をリセット
-            _isProcessingSpeech = false;
+            // 音声認識状態をリセット（AudioBufferの状態管理に統合）
+            _audioBuffer?.ClearBuffer();
         }
         // Discord.js準拠: speaking.endは無視 - 無音検出に任せる
     }
@@ -554,7 +542,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <returns>IP Discoveryが成功した場合はtrue、それ以外はfalse。</returns>
     private async Task<bool> PerformUdpIpDiscovery() {
         try {
-            _networkingState = NetworkingState.UdpHandshaking;
             await SetupUdpClientForDiscovery();
             var discoveryPacket = CreateDiscoveryPacket();
             await SendDiscoveryPacket(discoveryPacket);
@@ -903,8 +890,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <returns>成功した場合はtrue、それ以外はfalse。</returns>
     private async Task<bool> CompleteUdpDiscovery(string detectedIP, int detectedPort) {
         var result = await ErrorHandler.SafeExecuteAsync(async () => {
-            // Discord.js Networking.ts準拠の状態遷移
-            _networkingState = NetworkingState.SelectingProtocol;
             // Discord.js実装通りの暗号化モード選択
             string selectedMode = ChooseEncryptionMode(_availableModes);
             var selectProtocolData = DiscordPayloadHelper.CreateSelectProtocolPayload(detectedIP, detectedPort, selectedMode);
@@ -1091,8 +1076,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <summary>
     /// Discordに接続
     /// </summary>
-    private async Task ConnectToDiscord() {
-        await _networkManager.ConnectToMainGateway();
+    private async Task<bool> ConnectToDiscord() {
+        return await _networkManager.ConnectToMainGateway();
     }
     /// <summary>
     /// CentralManagerからDiscord関連の設定を読み込みます。
@@ -1112,14 +1097,12 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// ボットを停止し、すべての接続とリソースをクリーンアップします。
     /// </summary>
     public async void StopBot() {
-        if (!_isBotRunning) {
+        if (_networkManager == null) {
             LogMessage("⚠️ Bot is not running");
             return;
         }
         
         LogMessage("🛑 Stopping Discord bot...");
-        _isBotRunning = false;
-        OnDiscordBotStateChanged?.Invoke(false);
         
         // ボイスチャンネルからログオフ
         if (_networkManager.IsMainConnected) {
@@ -1135,14 +1118,14 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _networkManager = null;
         
         ResetBotState();
+        OnDiscordBotStateChanged?.Invoke(false);
+        
         LogMessage("✅ Discord bot stopped");
     }
     /// <summary>
     /// ボットの状態をリセットします。
     /// </summary>
     private void ResetBotState() {
-        _networkingState = NetworkingState.OpeningWs;
-        
         _keepAliveTimer?.Stop();
         _keepAliveTimer?.Dispose();
         _keepAliveTimer = null;
@@ -1169,7 +1152,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// </summary>
     /// <returns>ボットが実行中の場合はtrue、それ以外はfalse。</returns>
     public bool IsBotRunning() {
-        return _isBotRunning;
+        return _networkManager != null && _networkManager.IsMainConnected;
     }
 
     /// <summary>
@@ -1335,16 +1318,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         return opusData;
     }
     
-    /// <summary>
-    /// 音声シーケンスを更新（Voice Gatewayでは使用しない）
-    /// </summary>
-    private void UpdateVoiceSequence(string message) {
-        // Voice Gatewayではシーケンス管理は不要
-        // メインGatewayからのメッセージの場合のみ処理
-        var jsonPayload = JObject.Parse(message);
-        if (jsonPayload["seq"] != null) {
-        }
-    }
+
     
     /// <summary>
     /// 未知のVoiceメッセージをログ出力
@@ -1477,7 +1451,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// </summary>
     private async Task ConnectToVoiceGateway() {
         await ErrorHandler.SafeExecuteAsync<bool>(async () => {
-            _networkingState = NetworkingState.OpeningWs;
             await _networkManager.ConnectToVoiceGateway(_voiceEndpoint);
             return true;
         }, "Voice connection", LogError);
@@ -1517,6 +1490,7 @@ public class AudioBuffer {
     private DateTime lastAudioTime = DateTime.MinValue;
     private DateTime lastNonSilentTime = DateTime.MinValue;
     private bool isCurrentlySilent = true;
+    private bool isProcessingSpeech = false; // 音声処理状態を統合
     private float silenceThreshold;
     private float silenceDurationMs;
     private int sampleRate;
@@ -1630,6 +1604,21 @@ public class AudioBuffer {
     public void ClearBuffer() {
         audioChunks.Clear();
         isCurrentlySilent = true;
+        isProcessingSpeech = false; // 音声処理状態もリセット
+    }
+    
+    /// <summary>
+    /// 音声処理状態を設定
+    /// </summary>
+    public void SetProcessingSpeech(bool processing) {
+        isProcessingSpeech = processing;
+    }
+    
+    /// <summary>
+    /// 音声処理状態を取得
+    /// </summary>
+    public bool IsProcessingSpeech() {
+        return isProcessingSpeech;
     }
     
     /// <summary>

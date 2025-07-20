@@ -48,9 +48,6 @@ public class CentralManager : MonoBehaviour {
     private Queue<string> _japaneseSubtitleQueue = new Queue<string>(); // 日本語字幕のキュー
     private CurrentDisplaySubtitle _currentJapaneseDisplay; // 現在表示中の日本語字幕とその情報
 
-    // 現在の字幕が結合された状態かどうかのフラグ
-    private bool _isCombiningJapaneseSubtitles = false;
-
     private void Awake() {
         // シングルトンパターンの実装
         if (Instance == null) {
@@ -172,7 +169,6 @@ public class CentralManager : MonoBehaviour {
                 }
                
                 _currentJapaneseDisplay = null;
-                _isCombiningJapaneseSubtitles = false; // 結合フラグをリセット
 
                 // キューに次の日本語字幕があれば表示を開始
                 if (_japaneseSubtitleQueue.Count > 0) {
@@ -822,13 +818,12 @@ public class CentralManager : MonoBehaviour {
             // 現在表示中の日本語字幕がない場合、すぐに表示
             startDisplayingJapaneseSubtitle(newJpEntry);
             Debug.Log("字幕：新しい日本語字幕をすぐに表示します。");
-        } else if (!_isCombiningJapaneseSubtitles) {
+        } else if (!_currentJapaneseDisplay.IsCombined) {
             // 表示中の日本語字幕があり、まだ結合中でない場合
             // 2. 先の字幕+次の字幕を同時に表示する
             // 2. 先の字幕の残表示時間+次の字幕の表示時間の間表示する
             Debug.Log("字幕：既存の日本語字幕と新しい日本語字幕を結合して表示します。");
             combineAndDisplayJapaneseSubtitles(_currentJapaneseDisplay, newJpEntry);
-            _isCombiningJapaneseSubtitles = true; // 結合中フラグを立てる
         } else {
             // 3. 既に結合表示中にさらに新しい日本語字幕が来た場合、キューに追加して待機
             Debug.Log("字幕：既に結合表示中またはキューに他の字幕があるため、新しい日本語字幕をキューに追加します。");
@@ -839,7 +834,6 @@ public class CentralManager : MonoBehaviour {
     // 実際に日本語字幕の表示を開始するメソッド
     private void startDisplayingJapaneseSubtitle(CurrentDisplaySubtitle jpEntry) {
         _currentJapaneseDisplay = jpEntry;
-        _isCombiningJapaneseSubtitles = false; // 新しい日本語字幕なので結合フラグはリセット
 
         // 日本語字幕をOBSに送信
         SendObsSubtitles(_currentJapaneseDisplay.japaneseSubtitle, _currentJapaneseDisplay.japaneseText);
@@ -868,6 +862,7 @@ public class CentralManager : MonoBehaviour {
             newDuration
         );
         _currentJapaneseDisplay.remainingDuration = newDuration; // 残り時間も更新
+        _currentJapaneseDisplay.SetCombined(true); // 結合状態を設定
 
         // OBSに送信
         SendObsSubtitles(_currentJapaneseDisplay.japaneseSubtitle, _currentJapaneseDisplay.japaneseText);
@@ -960,6 +955,7 @@ public class CurrentDisplaySubtitle {
     public string englishSubtitle; // 英語字幕のOBSソース名 (例: "zagan_subtitle_en") // 英語字幕チャンネルも保持
     public float displayDuration; // この日本語字幕の表示時間（秒）
     public float remainingDuration; // この日本語字幕の残り表示時間（秒）
+    public bool IsCombined { get; private set; } = false; // 結合状態を管理
 
     public CurrentDisplaySubtitle(string jpText, string jpSubtitle, string enSubtitle, float duration) {
         japaneseText = jpText;
@@ -967,6 +963,14 @@ public class CurrentDisplaySubtitle {
         englishSubtitle = enSubtitle; // 英語チャンネルもここで設定
         displayDuration = duration;
         remainingDuration = duration;
+        IsCombined = false; // 初期状態は非結合
+    }
+    
+    /// <summary>
+    /// 結合状態を設定
+    /// </summary>
+    public void SetCombined(bool combined) {
+        IsCombined = combined;
     }
 }
 

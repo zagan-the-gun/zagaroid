@@ -604,16 +604,19 @@ public class SettingUIController : MonoBehaviour {
 
     // --- DiscordBotの状態変更イベントハンドラ ---
     private void OnDiscordBotStateChanged(bool isRunning) {
+        Debug.Log($"DiscordBot state changed event received - IsRunning: {isRunning}");
         UpdateDiscordBotButtons();
     }
 
     // --- DiscordBotボタンの有効/無効を更新 ---
     private void UpdateDiscordBotButtons() {
+        bool isRunning = CentralManager.Instance.IsDiscordBotRunning();
+        
         if (startDiscordBotButton != null) {
-            startDiscordBotButton.SetEnabled(!CentralManager.Instance.IsDiscordBotRunning());
+            startDiscordBotButton.SetEnabled(!isRunning);
         }
         if (stopDiscordBotButton != null) {
-            stopDiscordBotButton.SetEnabled(CentralManager.Instance.IsDiscordBotRunning());
+            stopDiscordBotButton.SetEnabled(isRunning);
         }
     }
 }

@@ -69,7 +69,13 @@ public class DiscordNetworkManager : IDisposable
             LogMessage("🔌 Connecting to Discord Gateway...", LogLevel.Info);
             
             _mainWebSocket = new ClientWebSocket();
-            await _mainWebSocket.ConnectAsync(new Uri("wss://gateway.discord.gg/?v=9&encoding=json"), _cancellationTokenSource.Token);
+            
+            // 接続タイムアウトを設定（30秒）
+            using (var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
+            using (var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token, timeoutCts.Token))
+            {
+                await _mainWebSocket.ConnectAsync(new Uri("wss://gateway.discord.gg/?v=9&encoding=json"), combinedCts.Token);
+            }
             
             _isMainConnected = true;
             OnConnectionStateChanged?.Invoke(true, "Main Gateway");
@@ -80,6 +86,20 @@ public class DiscordNetworkManager : IDisposable
             _ = Task.Run(ReceiveMainMessages, _cancellationTokenSource.Token);
             
             return true;
+        }
+        catch (OperationCanceledException ex)
+        {
+            LogMessage($"❌ Discord Gateway connection timeout: {ex.Message}", LogLevel.Error);
+            _isMainConnected = false;
+            OnConnectionStateChanged?.Invoke(false, "Main Gateway");
+            return false;
+        }
+        catch (WebSocketException ex)
+        {
+            LogMessage($"❌ Discord Gateway WebSocket error: {ex.Message} (ErrorCode: {ex.WebSocketErrorCode})", LogLevel.Error);
+            _isMainConnected = false;
+            OnConnectionStateChanged?.Invoke(false, "Main Gateway");
+            return false;
         }
         catch (Exception ex)
         {
