@@ -418,11 +418,6 @@ public class DiscordNetworkManager : IDisposable
     public bool IsVoiceConnected => _isVoiceConnected;
     
     /// <summary>
-    /// Voice Gatewayのping値を取得
-    /// </summary>
-    public int? GetVoicePing() => _voicePing;
-    
-    /// <summary>
     /// ログメッセージを生成し、イベントを発行
     /// </summary>
     private void LogMessage(string message, LogLevel level = LogLevel.Info)

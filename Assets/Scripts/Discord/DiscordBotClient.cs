@@ -742,15 +742,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         return monoData;
     }
     /// <summary>
-    /// Opusエラーログ処理（簡素化版）
-    /// </summary>
-    private void LogOpusError(string message) {
-        _opusErrors++;
-        if (_opusErrors <= 3 || _opusErrors % 10 == 0) {
-            LogMessage($"❌ {message} ({_opusErrors} total errors)");
-        }
-    }
-    /// <summary>
     /// Opusデコーダーのリセット処理（簡素化版）
     /// </summary>
     private void HandleOpusDecoderReset(Exception ex) {
@@ -1592,13 +1583,6 @@ public class AudioBuffer {
     }
     
     /// <summary>
-    /// 強制的にバッファを処理
-    /// </summary>
-    public void ForceProcessBuffer() {
-        ProcessBufferedAudio();
-    }
-    
-    /// <summary>
     /// バッファをクリア
     /// </summary>
     public void ClearBuffer() {
@@ -1606,34 +1590,7 @@ public class AudioBuffer {
         isCurrentlySilent = true;
         isProcessingSpeech = false; // 音声処理状態もリセット
     }
-    
-    /// <summary>
-    /// 音声処理状態を設定
-    /// </summary>
-    public void SetProcessingSpeech(bool processing) {
-        isProcessingSpeech = processing;
-    }
-    
-    /// <summary>
-    /// 音声処理状態を取得
-    /// </summary>
-    public bool IsProcessingSpeech() {
-        return isProcessingSpeech;
-    }
-    
-    /// <summary>
-    /// 現在のバッファサイズを取得
-    /// </summary>
-    public int GetBufferSize() {
-        return audioChunks.Count;
-    }
-    
-    /// <summary>
-    /// 現在のバッファの総サンプル数を取得
-    /// </summary>
-    public int GetTotalSamples() {
-        return audioChunks.Sum(chunk => chunk.Length);
-    }
+        
 }
 
 // Data structures - 統合版
