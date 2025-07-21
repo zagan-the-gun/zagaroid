@@ -36,8 +36,6 @@ public static class DiscordConstants {
     public const float PCM_SCALE_FACTOR = 32768.0f;
     // タイムアウト関連
     public const int RECONNECT_DELAY = 5000;
-    public const int UDP_PACKET_TIMEOUT = 30;
-    public const int UDP_IDLE_TIMEOUT = 60;
     // 音声認識関連
     public const int WITA_API_SAMPLE_RATE = 16000;
     public const int WITA_API_CHANNELS = 1;
@@ -896,6 +894,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         }, "UDP discovery completion", LogError);
         return result;
     }
+
     /// <summary>
     /// 利用可能な暗号化モードの中から、サポートされているものを選択します。
     /// </summary>
@@ -914,6 +913,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         var fallbackMode = availableModes.Length > 0 ? availableModes[0] : DiscordConstants.DEFAULT_ENCRYPTION_MODE;
         return fallbackMode;
     }
+
     /// <summary>
     /// UDPによる音声データ受信を開始します。
     /// </summary>
@@ -928,6 +928,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             LogMessage($"❌ UDP audio receive start error: {ex.Message}");
         }
     }
+
     /// <summary>
     /// UDP接続を維持するためのKeep-Aliveパケット送信を定期的に開始します。
     /// </summary>
@@ -939,6 +940,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         // Discord.js VoiceUDPSocket.ts準拠：即座に最初のKeep Aliveを送信
         _ = Task.Run(SendKeepAlive);
     }
+
     /// <summary>
     /// Keep-AliveパケットをVoice Serverに送信します。
     /// </summary>
@@ -962,39 +964,41 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             LogMessage($"❌ Keep alive error: {ex.Message}");
         }
     }
+
     /// <summary>
     /// UDP経由で音声データを受信し続けるループ。
     /// </summary>
     private async Task ReceiveUdpAudio() {
         int packetCount = 0;
         int timeoutCount = 0;
+
+        
         while (_networkManager.IsVoiceConnected && _voiceUdpClient != null) {
             try {
                 var receiveTask = _voiceUdpClient.ReceiveAsync();
-                var timeoutTask = Task.Delay(DiscordConstants.UDP_RECEIVE_TIMEOUT);
+                var timeoutTask = Task.Delay(100); // 100msタイムアウト
                 var completedTask = await Task.WhenAny(receiveTask, timeoutTask);
+                
                 if (completedTask == receiveTask) {
                     var result = await receiveTask;
                     var packet = result.Buffer;
                     packetCount++;
                     timeoutCount = 0; // リセット
+                    
                     if (packet.Length >= DiscordConstants.RTP_HEADER_SIZE) {
                         // 音声パケットは通常60バイト以上
                         if (packet.Length >= DiscordConstants.MIN_AUDIO_PACKET_SIZE) {
-                            await ProcessRtpPacket(packet);
+                            // SSRCフィルタリング
+                            var ssrc = ExtractSsrcFromPacket(packet);
+                            
+                            // ターゲットユーザーの音声のみを処理
+                            if (_ssrcToUserMap.ContainsKey(ssrc)) {
+                                await ProcessUserAudioPacket(packet, targetUserId);
+                            }
                         }
-                    } else {
                     }
                 } else {
                     timeoutCount++;
-                    // 30秒経過してもパケットが受信されない場合、再接続を試行
-                    if (packetCount == 0 && timeoutCount >= DiscordConstants.UDP_PACKET_TIMEOUT) {
-                        break;
-                    }
-                    // 長時間アイドル状態でも接続を維持
-                    if (packetCount > 0 && timeoutCount >= DiscordConstants.UDP_IDLE_TIMEOUT) {
-                        timeoutCount = 0; // リセットして継続
-                    }
                 }
             } catch (Exception ex) {
                 if (_networkManager.IsVoiceConnected) {
@@ -1165,6 +1169,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             LogMessage($"Discord message processing error: {ex.Message}");
         }
     }
+
     /// <summary>
     /// メインGatewayのHelloメッセージを処理
     /// </summary>
@@ -1172,35 +1177,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         var helloData = JsonConvert.DeserializeObject<HelloData>(payload.d.ToString());
         _networkManager.StartMainHeartbeat(helloData.heartbeat_interval);
         await SendIdentify();
-    }
-    /// <summary>
-    /// RTPパケットを処理（Discord.js準拠）
-    /// </summary>
-    private async Task ProcessRtpPacket(byte[] packet) {
-        try {
-            var ssrc = ExtractSsrcFromPacket(packet);
-            if (ssrc == _ourSSRC) {
-                return; // BOT自身のパケットは静かに無視
-            }
-            
-            // Discord.js準拠: SSRCが登録されていない場合は、ターゲットユーザーとして仮登録
-            if (!_ssrcToUserMap.ContainsKey(ssrc)) {
-                _ssrcToUserMap[ssrc] = targetUserId;
-            }
-            
-            if (_ssrcToUserMap.TryGetValue(ssrc, out string userId)) {
-                // Discord.js準拠: ターゲットユーザーの音声のみを処理
-                if (userId == targetUserId) {
-                    await ProcessUserAudioPacket(packet, userId);
-                } else {
-                    // 非ターゲットユーザーは静かにスキップ
-                    return;
-                }
-            }
-        } catch (Exception ex) {
-            // Discord.js準拠: エラーは静かにスキップ
-            return;
-        }
     }
     
     /// <summary>
@@ -1229,10 +1205,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// ユーザーの音声パケットを処理
     /// </summary>
     private async Task ProcessUserAudioPacket(byte[] packet, string userId) {
-        // ターゲットユーザーの音声のみを処理（早期フィルタリング）
-        if (userId != targetUserId) {
-            return; // 早期リターンで効率化
-        }
         
         var rtpHeader = ExtractRtpHeader(packet);
         var encryptedData = ExtractEncryptedData(packet);
@@ -1538,7 +1510,7 @@ public class AudioBuffer {
     /// <summary>
     /// バッファされた音声データを処理
     /// </summary>
-    private void ProcessBufferedAudio() {
+    public void ProcessBufferedAudio() {
         if (audioChunks.Count == 0) return;
         
         // 全チャンクの合計サンプル数を計算
