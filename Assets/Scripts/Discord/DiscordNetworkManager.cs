@@ -22,39 +22,41 @@ public class DiscordNetworkManager : IDisposable
     
     public delegate void MessageReceivedDelegate(string message);
     public event MessageReceivedDelegate OnMainGatewayMessageReceived;
-    public event MessageReceivedDelegate OnVoiceGatewayMessageReceived;
     
     public delegate void ConnectionStateChangedDelegate(bool isConnected, string connectionType);
     public event ConnectionStateChangedDelegate OnConnectionStateChanged;
     
     // 接続関連
     private ClientWebSocket _mainWebSocket;
-    private ClientWebSocket _voiceWebSocket;
     private CancellationTokenSource _cancellationTokenSource;
     private bool _isMainConnected = false;
-    private bool _isVoiceConnected = false;
     
     // ハートビート管理
     private System.Timers.Timer _mainHeartbeatTimer;
-    private System.Timers.Timer _voiceHeartbeatTimer;
     private bool _mainHeartbeatAcknowledged = true;
     private int _mainSequence = 0;
-    
-    // Voice Gateway関連
-    private long _lastVoiceHeartbeatAck = 0;
-    private long _lastVoiceHeartbeatSend = 0;
-    private int _missedVoiceHeartbeats = 0;
-    private int? _voicePing = null;
     
     // ログレベル管理
     private enum LogLevel { Debug, Info, Warning, Error }
     private bool _enableDebugLogging = true;
-    
+
+    /// <summary>
+    /// Discord Gateway用のJSONオブジェクト作成ヘルパー
+    /// </summary>
+    private static class DiscordPayloadHelper {
+        /// <summary>
+        /// メインGateway用ハートビートペイロードを作成
+        /// </summary>
+        public static object CreateHeartbeatPayload(int? sequence) => new {
+            op = 1,
+            d = sequence
+        };
+    }
+
     /// <summary>
     /// コンストラクタ
     /// </summary>
-    public DiscordNetworkManager(bool enableDebugLogging = true)
-    {
+    public DiscordNetworkManager(bool enableDebugLogging = true) {
         _enableDebugLogging = enableDebugLogging;
         _cancellationTokenSource = new CancellationTokenSource();
     }
@@ -110,36 +112,7 @@ public class DiscordNetworkManager : IDisposable
         }
     }
     
-    /// <summary>
-    /// Voice Gatewayに接続
-    /// </summary>
-    public async Task<bool> ConnectToVoiceGateway(string endpoint)
-    {
-        try
-        {
-            LogMessage($"🔌 Connecting to Voice Gateway: {endpoint}...", LogLevel.Info);
-            
-            _voiceWebSocket = new ClientWebSocket();
-            await _voiceWebSocket.ConnectAsync(new Uri($"wss://{endpoint}/?v=4"), _cancellationTokenSource.Token);
-            
-            _isVoiceConnected = true;
-            OnConnectionStateChanged?.Invoke(true, "Voice Gateway");
-            
-            LogMessage("✅ Voice Gateway connected successfully", LogLevel.Info);
-            
-            // メッセージ受信ループを開始
-            _ = Task.Run(ReceiveVoiceMessages, _cancellationTokenSource.Token);
-            
-            return true;
-        }
-        catch (Exception ex)
-        {
-            LogMessage($"❌ Voice Gateway connection failed: {ex.Message}", LogLevel.Error);
-            _isVoiceConnected = false;
-            OnConnectionStateChanged?.Invoke(false, "Voice Gateway");
-            return false;
-        }
-    }
+
     
     /// <summary>
     /// メインGatewayにメッセージを送信
@@ -149,13 +122,7 @@ public class DiscordNetworkManager : IDisposable
         await SendWebSocketMessage(_mainWebSocket, message, "Main Gateway");
     }
     
-    /// <summary>
-    /// Voice Gatewayにメッセージを送信
-    /// </summary>
-    public async Task SendVoiceMessage(string message)
-    {
-        await SendWebSocketMessage(_voiceWebSocket, message, "Voice Gateway");
-    }
+
     
     /// <summary>
     /// WebSocketにメッセージを送信する共通メソッド
@@ -189,13 +156,7 @@ public class DiscordNetworkManager : IDisposable
         await ReceiveWebSocketMessages(_mainWebSocket, OnMainGatewayMessageReceived, "Main Gateway");
     }
     
-    /// <summary>
-    /// Voice Gatewayからのメッセージを受信
-    /// </summary>
-    private async Task ReceiveVoiceMessages()
-    {
-        await ReceiveWebSocketMessages(_voiceWebSocket, OnVoiceGatewayMessageReceived, "Voice Gateway");
-    }
+
     
     /// <summary>
     /// WebSocket受信処理の共通メソッド
@@ -242,11 +203,6 @@ public class DiscordNetworkManager : IDisposable
             _isMainConnected = false;
             OnConnectionStateChanged?.Invoke(false, "Main Gateway");
         }
-        else if (connectionName == "Voice Gateway")
-        {
-            _isVoiceConnected = false;
-            OnConnectionStateChanged?.Invoke(false, "Voice Gateway");
-        }
     }
     
     /// <summary>
@@ -274,31 +230,7 @@ public class DiscordNetworkManager : IDisposable
         LogMessage($"💓 Main Gateway heartbeat started (interval: {interval}ms)", LogLevel.Info);
     }
     
-    /// <summary>
-    /// Voice Gatewayのハートビートを開始
-    /// </summary>
-    public void StartVoiceHeartbeat(double interval)
-    {
-        _voiceHeartbeatTimer?.Stop();
-        _voiceHeartbeatTimer?.Dispose();
-        
-        int intervalMs = (int)interval;
-        _voiceHeartbeatTimer = new System.Timers.Timer(intervalMs);
-        _voiceHeartbeatTimer.Elapsed += async (sender, e) => {
-            if (_isVoiceConnected && _voiceWebSocket?.State == WebSocketState.Open)
-            {
-                await SendVoiceHeartbeat();
-            }
-            else
-            {
-                _voiceHeartbeatTimer?.Stop();
-                _voiceHeartbeatTimer?.Dispose();
-                _voiceHeartbeatTimer = null;
-            }
-        };
-        _voiceHeartbeatTimer.Start();
-        LogMessage($"💓 Voice Gateway heartbeat started (interval: {intervalMs}ms)", LogLevel.Info);
-    }
+
     
     /// <summary>
     /// メインGatewayにハートビートを送信
@@ -309,47 +241,7 @@ public class DiscordNetworkManager : IDisposable
         await SendMainMessage(JsonConvert.SerializeObject(heartbeat));
     }
     
-    /// <summary>
-    /// Voice Gatewayにハートビートを送信
-    /// </summary>
-    private async Task SendVoiceHeartbeat()
-    {
-        try
-        {
-            // ACKタイムアウト検出（15秒）
-            if (_lastVoiceHeartbeatSend != 0)
-            {
-                var timeSinceLastHeartbeat = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - _lastVoiceHeartbeatSend;
-                if (timeSinceLastHeartbeat > 15000 && _missedVoiceHeartbeats >= 1)
-                {
-                    LogMessage($"❌ Voice Gateway heartbeat ACK timeout ({timeSinceLastHeartbeat}ms > 15000ms)", LogLevel.Error);
-                    await _voiceWebSocket?.CloseAsync(WebSocketCloseStatus.NormalClosure, "Heartbeat ACK timeout", CancellationToken.None);
-                    return;
-                }
-            }
-            
-            // ミスしたハートビート数チェック
-            if (_lastVoiceHeartbeatSend != 0 && _missedVoiceHeartbeats >= 3)
-            {
-                LogMessage($"❌ Voice Gateway missed too many heartbeats ({_missedVoiceHeartbeats}/3)", LogLevel.Error);
-                await _voiceWebSocket?.CloseAsync(WebSocketCloseStatus.NormalClosure, "Too many missed heartbeats", CancellationToken.None);
-                return;
-            }
-            
-            _lastVoiceHeartbeatSend = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            _missedVoiceHeartbeats++;
-            
-            // Voice Gateway準拠：nonceのみでハートビート送信
-            var nonce = _lastVoiceHeartbeatSend;
-            var heartbeat = DiscordPayloadHelper.CreateVoiceHeartbeatPayload(nonce, null);
-            var heartbeatJson = JsonConvert.SerializeObject(heartbeat);
-            await SendVoiceMessage(heartbeatJson);
-        }
-        catch (Exception ex)
-        {
-            LogMessage($"❌ Voice Gateway heartbeat error: {ex.Message}", LogLevel.Error);
-        }
-    }
+
     
     /// <summary>
     /// メインGatewayのハートビートACKを処理
@@ -359,27 +251,7 @@ public class DiscordNetworkManager : IDisposable
         _mainHeartbeatAcknowledged = true;
     }
     
-    /// <summary>
-    /// Voice GatewayのハートビートACKを処理
-    /// </summary>
-    public void HandleVoiceHeartbeatAck()
-    {
-        var currentTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        
-        // 前回のACKから短時間で重複ACKが来た場合は無視
-        if (_lastVoiceHeartbeatAck != 0 && (currentTime - _lastVoiceHeartbeatAck) < 100)
-        {
-            return;
-        }
-        
-        _lastVoiceHeartbeatAck = currentTime;
-        _missedVoiceHeartbeats = 0;
-        
-        if (_lastVoiceHeartbeatSend != 0)
-        {
-            _voicePing = (int)(_lastVoiceHeartbeatAck - _lastVoiceHeartbeatSend);
-        }
-    }
+
     
     /// <summary>
     /// メインGatewayのシーケンス番号を更新
@@ -415,7 +287,6 @@ public class DiscordNetworkManager : IDisposable
     /// 接続状態を取得
     /// </summary>
     public bool IsMainConnected => _isMainConnected;
-    public bool IsVoiceConnected => _isVoiceConnected;
     
     /// <summary>
     /// ログメッセージを生成し、イベントを発行
@@ -458,15 +329,8 @@ public class DiscordNetworkManager : IDisposable
         _mainHeartbeatTimer?.Dispose();
         _mainHeartbeatTimer = null;
         
-        _voiceHeartbeatTimer?.Stop();
-        _voiceHeartbeatTimer?.Dispose();
-        _voiceHeartbeatTimer = null;
-        
         _mainWebSocket?.Dispose();
         _mainWebSocket = null;
-        
-        _voiceWebSocket?.Dispose();
-        _voiceWebSocket = null;
         
         _cancellationTokenSource?.Dispose();
         _cancellationTokenSource = null;
