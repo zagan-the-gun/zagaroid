@@ -23,6 +23,22 @@ public class DiscordVoiceGatewayManager : IDisposable {
     public delegate void ConnectionStateChangedDelegate(bool isConnected);
     public event ConnectionStateChangedDelegate OnConnectionStateChanged;
     
+    // Voice Gateway メッセージ処理イベント
+    public delegate void VoiceHelloReceivedDelegate(double heartbeatInterval);
+    public event VoiceHelloReceivedDelegate OnVoiceHelloReceived;
+    
+    public delegate void VoiceReadyReceivedDelegate(uint ssrc, string ip, int port, string[] modes);
+    public event VoiceReadyReceivedDelegate OnVoiceReadyReceived;
+    
+    public delegate void VoiceSessionDescriptionReceivedDelegate(byte[] secretKey, string mode);
+    public event VoiceSessionDescriptionReceivedDelegate OnVoiceSessionDescriptionReceived;
+    
+    public delegate void VoiceHeartbeatAckReceivedDelegate();
+    public event VoiceHeartbeatAckReceivedDelegate OnVoiceHeartbeatAckReceived;
+    
+    public delegate void VoiceSpeakingReceivedDelegate(bool speaking, uint ssrc, string userId);
+    public event VoiceSpeakingReceivedDelegate OnVoiceSpeakingReceived;
+    
     // 接続関連
     private ClientWebSocket _webSocket;
     private CancellationTokenSource _cancellationTokenSource;
@@ -166,37 +182,31 @@ public class DiscordVoiceGatewayManager : IDisposable {
     /// <summary>
     /// メッセージを受信
     /// </summary>
-    private async Task ReceiveMessages()
-    {
+    private async Task ReceiveMessages() {
         var buffer = new byte[DiscordConstants.WEBSOCKET_BUFFER_SIZE];
         var messageBuffer = new List<byte>();
         
-        while (_webSocket.State == WebSocketState.Open && !_cancellationTokenSource.Token.IsCancellationRequested)
-        {
-            try
-            {
+        while (_webSocket.State == WebSocketState.Open && !_cancellationTokenSource.Token.IsCancellationRequested) {
+            try {
                 var result = await _webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), _cancellationTokenSource.Token);
                 
-                if (result.MessageType == WebSocketMessageType.Text)
-                {
+                if (result.MessageType == WebSocketMessageType.Text) {
                     messageBuffer.AddRange(buffer.Take(result.Count));
-                    if (result.EndOfMessage)
-                    {
+                    if (result.EndOfMessage) {
                         var message = Encoding.UTF8.GetString(messageBuffer.ToArray());
                         messageBuffer.Clear();
                         
                         LogMessage($"📥 Voice Gateway message received: {message.Substring(0, Math.Min(100, message.Length))}...", LogLevel.Debug);
                         OnMessageReceived?.Invoke(message);
+                        
+                        // Voice Gatewayメッセージを処理
+                        _ = ProcessVoiceMessage(message);
                     }
-                }
-                else if (result.MessageType == WebSocketMessageType.Close)
-                {
+                } else if (result.MessageType == WebSocketMessageType.Close) {
                     LogMessage("Voice Gateway connection closed", LogLevel.Info);
                     break;
                 }
-            }
-            catch (Exception ex)
-            {
+            } catch (Exception ex) {
                 LogMessage($"Voice Gateway receive error: {ex.Message}", LogLevel.Error);
                 break;
             }
@@ -204,6 +214,89 @@ public class DiscordVoiceGatewayManager : IDisposable {
         
         _isConnected = false;
         OnConnectionStateChanged?.Invoke(false);
+    }
+    
+    /// <summary>
+    /// Voice Gatewayメッセージを処理
+    /// </summary>
+    private async Task ProcessVoiceMessage(string message) {
+        try {
+            var payload = JsonConvert.DeserializeObject<VoiceGatewayPayload>(message);
+            LogMessage($"📥 Processing Voice Gateway message: op={payload.op}", LogLevel.Debug);
+            
+            switch (payload.op) {
+                case 8: await HandleVoiceHello(payload); break;
+                case 2: await HandleVoiceReady(payload); break;
+                case 4: await HandleVoiceSessionDescription(payload); break;
+                case 6: HandleVoiceHeartbeatAck(); break;
+                case 5: 
+                    // LogMessage($"🎤 Received op5 (Speaking) message", LogLevel.Info);
+                    HandleVoiceSpeaking(payload); 
+                    break;
+                case 3: LogMessage($"📤 Voice Gateway heartbeat echo received (ignored) at {DateTime.Now:HH:mm:ss.fff}"); break;
+                case 11: case 18: case 20: 
+                    // LogMessage($"DEAD BEEF Received op{payload.op} message: {payload.d}", LogLevel.Info);
+                    break; // 無視するメッセージ
+                default: LogUnknownVoiceMessage(payload.op, payload.d); break;
+            }
+        } catch (Exception ex) {
+            LogMessage($"Voice message processing error: {ex.Message}", LogLevel.Error);
+            LogMessage($"Raw message: {message}", LogLevel.Error);
+        }
+    }
+    
+    /// <summary>
+    /// Voice GatewayのHelloメッセージを処理
+    /// </summary>
+    private async Task HandleVoiceHello(VoiceGatewayPayload payload) {
+        LogMessage($"🔌 Voice Gateway Hello received at {DateTime.Now:HH:mm:ss.fff}", LogLevel.Info);
+        var helloData = JsonConvert.DeserializeObject<VoiceHelloData>(payload.d.ToString());
+        OnVoiceHelloReceived?.Invoke(helloData.heartbeat_interval);
+    }
+    
+    /// <summary>
+    /// Voice GatewayのReadyメッセージを処理
+    /// </summary>
+    private async Task HandleVoiceReady(VoiceGatewayPayload payload) {
+        LogMessage($"🔌 Voice Gateway Ready received at {DateTime.Now:HH:mm:ss.fff}", LogLevel.Info);
+        var readyData = JsonConvert.DeserializeObject<VoiceReadyData>(payload.d.ToString());
+        OnVoiceReadyReceived?.Invoke(readyData.ssrc, readyData.ip, readyData.port, readyData.modes);
+    }
+    
+    /// <summary>
+    /// Voice GatewayのSession Descriptionメッセージを処理
+    /// </summary>
+    private async Task HandleVoiceSessionDescription(VoiceGatewayPayload payload) {
+        LogMessage($"🔌 Voice Gateway Session Description received at {DateTime.Now:HH:mm:ss.fff}", LogLevel.Info);
+        var sessionData = JsonConvert.DeserializeObject<VoiceSessionDescriptionData>(payload.d.ToString());
+        OnVoiceSessionDescriptionReceived?.Invoke(sessionData.secret_key, sessionData.mode);
+    }
+    
+    /// <summary>
+    /// Voice GatewayのHeartbeat ACKを処理
+    /// </summary>
+    private void HandleVoiceHeartbeatAck() {
+        HandleHeartbeatAck();
+        OnVoiceHeartbeatAckReceived?.Invoke();
+    }
+    
+    /// <summary>
+    /// Voice GatewayのSpeakingメッセージを処理
+    /// </summary>
+    private void HandleVoiceSpeaking(VoiceGatewayPayload payload) {
+        var speakingData = JsonConvert.DeserializeObject<VoiceSpeakingData>(payload.d.ToString());
+        LogMessage($"🎤 Voice Gateway Speaking received: user_id={speakingData.user_id}, ssrc={speakingData.ssrc}, speaking={speakingData.speaking} at {DateTime.Now:HH:mm:ss.fff}", LogLevel.Info);
+        
+        if (speakingData.user_id != null) {
+            OnVoiceSpeakingReceived?.Invoke(speakingData.speaking, speakingData.ssrc, speakingData.user_id);
+        }
+    }
+    
+    /// <summary>
+    /// 未知のVoice Gatewayメッセージをログ出力
+    /// </summary>
+    private void LogUnknownVoiceMessage(int opCode, object data) {
+        LogMessage($"❓ Unknown Voice Gateway message: op={opCode}, data={JsonConvert.SerializeObject(data)}", LogLevel.Warning);
     }
     
     /// <summary>
