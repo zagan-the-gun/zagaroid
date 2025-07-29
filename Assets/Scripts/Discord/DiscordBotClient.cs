@@ -14,6 +14,9 @@ using System.Net.Http;
 using Concentus;
 using Concentus.Structs;
 using Newtonsoft.Json.Linq;
+
+
+
 /// <summary>
 /// Discord Bot関連の定数定義
 /// </summary>
@@ -77,6 +80,7 @@ public static class DiscordPayloadHelper {
             }
         }
     };
+
     /// <summary>
     /// ハートビートペイロードを作成
     /// </summary>
@@ -84,6 +88,7 @@ public static class DiscordPayloadHelper {
         op = 1,
         d = sequence
     };
+
     /// <summary>
     /// ボイスチャンネル参加ペイロードを作成
     /// </summary>
@@ -227,6 +232,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             _mainThreadActions.Enqueue(action);
         }
     }
+
     /// <summary>
     /// 接続状態変更時の処理
     /// </summary>
@@ -241,30 +247,23 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         try {
             // ターゲットユーザーのSSRCかチェック
             if (_ssrcToUserMap.ContainsKey(ssrc)) {
-                LogMessage($"DEAD BEEF 1 OnAudioPacketReceived", LogLevel.Debug);
-                // 処理済みのOpusデータを直接デコード
-                _ = Task.Run(() => ProcessOpusData(opusData, userId));
+                // 非同期でOpusデータをPCMに変換してAudioBufferに追加
+                _ = Task.Run(async () => {
+                    try {
+                        // OpusデータをPCMデータに変換
+                        var pcmData = AdvancedDecodeOpusToPcm(opusData);
+                        
+                        if (pcmData != null) {
+                            // AudioBufferに追加
+                            _audioBuffer?.AddAudioData(pcmData);
+                        }
+                    } catch (Exception ex) {
+                        LogMessage($"Opus data processing error: {ex.Message}", LogLevel.Error);
+                    }
+                });
             }
         } catch (Exception ex) {
             LogMessage($"Audio packet processing error: {ex.Message}", LogLevel.Error);
-        }
-    }
-    
-    /// <summary>
-    /// 処理済みのOpusデータをPCMに変換してAudioBufferに追加
-    /// </summary>
-    private async Task ProcessOpusData(byte[] opusData, string userId) {
-        try {
-            // OpusデータをPCMデータに変換
-            var pcmData = AdvancedDecodeOpusToPcm(opusData);
-            
-            if (pcmData != null) {
-                LogMessage($"DEAD BEEF 1 ProcessOpusData", LogLevel.Debug);
-                // AudioBufferに追加
-                _audioBuffer?.AddAudioData(pcmData);
-            }
-        } catch (Exception ex) {
-            LogMessage($"Opus data processing error: {ex.Message}", LogLevel.Error);
         }
     }
     
@@ -275,6 +274,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private void Awake() {
         InitializeOpusDecoder();
     }
+
     /// <summary>
     /// Unityのライフサイクルメソッド。
     /// オブジェクトが破棄される際に呼び出され、リソースをクリーンアップします。
@@ -288,9 +288,9 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             _audioBuffer.ClearBuffer();
             _audioBuffer = null;
         }
-        
         StopBot();
     }
+
     /// <summary>
     /// OpusデコーダーとAudioBufferを初期化します。
     /// 48kHz、ステレオの音声をデコードするように設定されます。
@@ -367,6 +367,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         
         LogMessage("NetworkManager, VoiceGatewayManager, and VoiceUdpManager initialized");
     }
+
     /// <summary>
     /// Unityのライフサイクルメソッド。
     /// フレームごとに呼び出され、Opusパケットキューを処理します。
@@ -1173,10 +1174,8 @@ public class DiscordVoiceNetworkManager {
     private int silenceDurationMs = 0; // 無音継続時間（ミリ秒）
     private int sampleRate;
     private int channels;
-    
     public delegate void AudioBufferReadyDelegate(float[] audioData, int sampleRate, int channels);
     public event AudioBufferReadyDelegate OnAudioBufferReady;
-    
     private readonly Action<Action> _enqueueMainThreadAction;
 
     public DiscordVoiceNetworkManager(float silenceThreshold, int silenceDurationMs, int sampleRate, int channels, Action<Action> enqueueMainThreadAction) {
@@ -1191,46 +1190,38 @@ public class DiscordVoiceNetworkManager {
     /// 音声データをバッファに追加
     /// </summary>
     public void AddAudioData(float[] pcmData) {
-        Debug.Log("DEAD BEEF AddAudioData: 1");
         if (pcmData == null || pcmData.Length == 0) return;
         
         // 音声レベルを計算
         float audioLevel = CalculateAudioLevel(pcmData);
-        Debug.Log("DEAD BEEF AddAudioData: 2");
         bool isSilent = audioLevel < silenceThreshold;
-        Debug.Log("DEAD BEEF AddAudioData: 3");
         
         // 音声データをバッファに追加
         audioChunks.Add(pcmData);
-        Debug.Log("DEAD BEEF AddAudioData: 4");
         
         // PCMデータの実際の時間を計算
         int pcmDurationMs = (int)((float)pcmData.Length / sampleRate * 1000);
-        Debug.Log($"DEAD BEEF AddAudioData: 4.5 - PCMデータ長: {pcmData.Length}サンプル, 時間: {pcmDurationMs}ms");
         
         // 無音状態の更新
         if (!isSilent) {
             // 音声が検出された - 無音時間をリセット
             silenceDurationMs = 0;
-            Debug.Log("DEAD BEEF AddAudioData: 5 - 音声検出、無音時間リセット");
         } else {
             // 無音が検出された - 無音時間を加算
             silenceDurationMs += pcmDurationMs;
-            Debug.Log($"DEAD BEEF AddAudioData: 6 - 無音継続中: {silenceDurationMs}ms");
             
             // 無音が1000ms以上続いたら処理
             if (silenceDurationMs >= 1000) {
-                Debug.Log("DEAD BEEF AddAudioData: 7 - 無音1000ms達成、処理開始");
                 ProcessBufferedAudio(); // 無言になるとすぐにパケットが送信されなくなるので、PushToTalkで以外はここに処理が及ぶことはない
                 silenceDurationMs = 0; // リセット
             }
         }
     }
+
     /// <summary>
     /// バッファされた音声データを処理
     /// </summary>
     public void ProcessBufferedAudio() {
-        Debug.Log("DEAD BEEF ProcessBufferedAudio: 1");
         if (audioChunks.Count == 0) return;
         
         // 全チャンクの合計サンプル数を計算
@@ -1241,28 +1232,22 @@ public class DiscordVoiceNetworkManager {
             // 小さすぎるバッファは処理しない
             return;
         }
-        Debug.Log("DEAD BEEF ProcessBufferedAudio: 2");
-
         
         // 結合された音声データを作成
         float[] combinedAudio = new float[totalSamples];
         int currentIndex = 0;
-        Debug.Log("DEAD BEEF ProcessBufferedAudio: 3");
         foreach (var chunk in audioChunks) {
             Array.Copy(chunk, 0, combinedAudio, currentIndex, chunk.Length);
             currentIndex += chunk.Length;
         }
-        Debug.Log("DEAD BEEF ProcessBufferedAudio: 4");
         // イベントを発火（メインスレッドで実行）
         if (OnAudioBufferReady != null) {
             _enqueueMainThreadAction(() => {
                 OnAudioBufferReady.Invoke(combinedAudio, sampleRate, channels);
             });
         }
-        Debug.Log("DEAD BEEF ProcessBufferedAudio: 5");
         // バッファをクリア
         audioChunks.Clear();
-        Debug.Log("DEAD BEEF ProcessBufferedAudio: 6");
     }
     
     /// <summary>

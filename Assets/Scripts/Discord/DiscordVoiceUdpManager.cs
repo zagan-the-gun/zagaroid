@@ -328,7 +328,6 @@ public class DiscordVoiceUdpManager : IDisposable
                     ProcessAudioPacket(result.Buffer);
                     _timeout = false;
                 } else if (!_timeout) {
-                    LogMessage("DEAD BEEF ReceiveAudioLoop: 1", LogLevel.Debug);
                     // タイムアウト時に発話終了を検出
                     OnSpeechEndDetected?.Invoke();
                     _timeout = true;
