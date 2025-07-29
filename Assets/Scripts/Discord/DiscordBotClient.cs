@@ -97,8 +97,6 @@ public static class DiscordPayloadHelper {
         }
     };
 
-
-
 }
 /// <summary>
 /// エラーハンドリング用のヘルパークラス
@@ -504,7 +502,20 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         LogMessage($"🔌 Voice Gateway Ready received at {DateTime.Now:HH:mm:ss.fff}");
         var readyData = new VoiceReadyData { ssrc = ssrc, ip = ip, port = port, modes = modes };
         await InitializeVoiceConnection(readyData);
-        await PerformUdpDiscovery();
+        
+        // DiscordVoiceUdpManagerでUDP Discoveryを実行
+        bool discoverySuccess = await _voiceUdpManager.PerformUdpDiscovery(
+            _ourSSRC, 
+            _voiceServerEndpoint, 
+            _availableModes, 
+            async (detectedIP, detectedPort, selectedMode) => {
+                return await CompleteUdpDiscovery(detectedIP, detectedPort);
+            }
+        );
+        
+        if (!discoverySuccess) {
+            LogMessage("❌ WARNING: UDP Discovery failed. Voice may not work.", LogLevel.Warning);
+        }
     }
     /// <summary>
     /// Voice GatewayのSession Descriptionメッセージを処理
@@ -568,105 +579,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         LogMessage($"🔐 Available encryption modes: [{string.Join(", ", _availableModes)}]");
         await SetupUdpClient();
     }
-    /// <summary>
-    /// UDP発見処理を実行
-    /// </summary>
-    private async Task<bool> PerformUdpDiscovery() {
-        bool discoverySuccess = await PerformUdpIpDiscovery();
-        if (!discoverySuccess) {
-            await PerformUdpFallback();
-        }
-        return discoverySuccess;
-    }
-    /// <summary>
-    /// UDP発見のフォールバック処理
-    /// </summary>
-    private async Task PerformUdpFallback() {
-        var localEndpoint = _voiceUdpManager.GetLocalEndpoint();
-        string fallbackIP = GetLocalIPAddress();
-        bool fallbackSuccess = await CompleteUdpDiscovery(fallbackIP, localEndpoint?.Port ?? 0);
-        if (!fallbackSuccess) {
-            LogMessage("❌ WARNING: Both IP discovery and fallback failed. Voice may not work.");
-        }
-    }
-    /// <summary>
-    /// DiscordのVoice Serverに対してUDP IP Discoveryを実行し、
-    /// 外部から見た自身のIPアドレスとポートを取得します。
-    /// </summary>
-    /// <returns>IP Discoveryが成功した場合はtrue、それ以外はfalse。</returns>
-    private async Task<bool> PerformUdpIpDiscovery() {
-        try {
-            await SetupUdpClientForDiscovery();
-            var result = await _voiceUdpManager.PerformIpDiscovery(_ourSSRC);
-            if (result.HasValue) {
-                return await CompleteUdpDiscovery(result.Value.ip, result.Value.port);
-            }
-            return false;
-        } catch (Exception ex) {
-            LogMessage($"❌ UDP discovery error: {ex.Message}");
-            return await UseDiscordJsFallback();
-        }
-    }
-    /// <summary>
-    /// UDP発見用のクライアントをセットアップ
-    /// </summary>
-    private async Task SetupUdpClientForDiscovery() {
-        await _voiceUdpManager.SetupUdpClient(_voiceServerEndpoint, false);
-    }
-    /// <summary>
-    /// 発見パケットを作成
-    /// </summary>
-    private byte[] CreateDiscoveryPacket() {
-        var discoveryBuffer = new byte[DiscordConstants.UDP_DISCOVERY_PACKET_SIZE];
-        // Type: 1
-        discoveryBuffer[0] = 0x00;
-        discoveryBuffer[1] = 0x01;
-        // Length: 70
-        discoveryBuffer[2] = 0x00;
-        discoveryBuffer[3] = 0x46;
-        // SSRC (Big Endian)
-        var ssrcBytes = BitConverter.GetBytes(_ourSSRC);
-        if (BitConverter.IsLittleEndian) {
-            Array.Reverse(ssrcBytes);
-        }
-        Array.Copy(ssrcBytes, 0, discoveryBuffer, 4, 4);
-        return discoveryBuffer;
-    }
-    /// <summary>
-    /// 発見パケットを送信
-    /// </summary>
-    private async Task SendDiscoveryPacket(byte[] packet) {
-        await _voiceUdpClient.SendAsync(packet, packet.Length, _voiceServerEndpoint);
-    }
-    /// <summary>
-    /// 発見応答を待機
-    /// </summary>
-    private async Task<bool> WaitForDiscoveryResponse() {
-        var receiveTask = _voiceUdpClient.ReceiveAsync();
-        var timeoutTask = Task.Delay(DiscordConstants.UDP_DISCOVERY_TIMEOUT);
-        var completedTask = await Task.WhenAny(receiveTask, timeoutTask);
-        if (completedTask == receiveTask) {
-            return await ProcessDiscoveryResponse(await receiveTask);
-        } else {
-            LogMessage($"❌ Discovery timeout after {DiscordConstants.UDP_DISCOVERY_TIMEOUT}ms");
-            return await UseDiscordJsFallback();
-        }
-    }
-    /// <summary>
-    /// 発見応答を処理
-    /// </summary>
-    private async Task<bool> ProcessDiscoveryResponse(UdpReceiveResult result) {
-        var message = result.Buffer;
-        if (message.Length >= DiscordConstants.UDP_DISCOVERY_PACKET_SIZE) {
-            var localConfig = ParseLocalPacket(message);
-            if (localConfig != null) {
-                return await CompleteUdpDiscovery(localConfig.ip, localConfig.port);
-            }
-        } else {
-            LogMessage($"❌ Discovery response too short: {message.Length} bytes");
-        }
-        return await UseDiscordJsFallback();
-    }
 
     /// <summary>
     /// PCMデータの音量レベルを計算（RMS方式）
@@ -680,7 +592,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         }
         return (float)Math.Sqrt(sum / pcmData.Length);
     }
-
 
     /// <summary>
     /// 音声データのリサンプリング処理
@@ -756,8 +667,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 LogMessage($"🔇 Audio level too low for transcription ({audioLevel:F4} <= {DiscordConstants.SILENCE_THRESHOLD})");
                 return "";
             }
-            
-
             
             if (_httpClient == null || string.IsNullOrEmpty(witaiToken))
             {
@@ -838,20 +747,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         }
         return rawData.ToArray();
     }
-    /// <summary>
-    /// IP Discoveryに失敗した場合のフォールバック処理。
-    /// ローカルIPアドレスを使用してUDP接続を試みます。
-    /// </summary>
-    private async Task<bool> UseDiscordJsFallback() {
-        var result = await ErrorHandler.SafeExecuteAsync(async () => {
-            LogMessage("📋 Using Discord.js fallback approach...");
-            // Discord.js フォールバック: ローカルエンドポイントを使用
-            var localEndpoint = (IPEndPoint)_voiceUdpClient.Client.LocalEndPoint;
-            string fallbackIP = GetLocalIPAddress();
-            return await CompleteUdpDiscovery(fallbackIP, localEndpoint.Port);
-        }, "Discord.js fallback", LogError);
-        return result;
-    }
+
     /// <summary>
     /// UDPのIP Discoveryを完了し、選択した暗号化プロトコルをサーバーに通知します。
     /// </summary>
@@ -860,8 +756,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <returns>成功した場合はtrue、それ以外はfalse。</returns>
     private async Task<bool> CompleteUdpDiscovery(string detectedIP, int detectedPort) {
         var result = await ErrorHandler.SafeExecuteAsync(async () => {
-            // Discord.js実装通りの暗号化モード選択
-            string selectedMode = ChooseEncryptionMode(_availableModes);
+            // DiscordVoiceUdpManagerで暗号化モード選択
+            string selectedMode = _voiceUdpManager.ChooseEncryptionMode(_availableModes);
             var selectProtocolData = DiscordVoiceGatewayManager.VoicePayloadHelper.CreateSelectProtocolPayload(detectedIP, detectedPort, selectedMode);
             var jsonData = JsonConvert.SerializeObject(selectProtocolData);
             
@@ -874,25 +770,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             return true;
         }, "UDP discovery completion", LogError);
         return result;
-    }
-
-    /// <summary>
-    /// 利用可能な暗号化モードの中から、サポートされているものを選択します。
-    /// </summary>
-    /// <param name="availableModes">サーバーから提供された利用可能なモードの配列。</param>
-    /// <returns>選択された暗号化モードの文字列。</returns>
-    private string ChooseEncryptionMode(string[] availableModes) {
-        if (availableModes == null) {
-            return "xsalsa20_poly1305";
-        }
-        foreach (var supportedMode in DiscordConstants.SUPPORTED_ENCRYPTION_MODES) {
-            if (availableModes.Contains(supportedMode)) {
-                return supportedMode;
-            }
-        }
-        // フォールバック：利用可能なモードの最初のもの
-        var fallbackMode = availableModes.Length > 0 ? availableModes[0] : DiscordConstants.DEFAULT_ENCRYPTION_MODE;
-        return fallbackMode;
     }
 
     /// <summary>
@@ -940,8 +817,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             return true;
         }, "UDP setup", LogError);
     }
-
-
 
     /// <summary>
     /// OpusデータをPCMデータにデコード（オリジナルBOT準拠の簡素化版）
@@ -1027,50 +902,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private async Task StartVoiceHeartbeat(double interval) {
         _voiceGatewayManager.StartHeartbeat(interval);
     }
-    // Discord.js VoiceUDPSocket.ts準拠のSocketConfig構造体
-    private class SocketConfig {
-        public string ip { get; set; }
-        public int port { get; set; }
-    }
-    /// <summary>
-    /// DiscordのIP Discovery応答パケットを解析し、IPアドレスとポートを抽出します。
-    /// Discord.jsの`parseLocalPacket`互換メソッドです。
-    /// </summary>
-    /// <param name="message">サーバーからの74バイトの応答パケット。</param>
-    /// <returns>IPとポートを含むSocketConfigオブジェクト。解析に失敗した場合はnull。</returns>
-    private SocketConfig ParseLocalPacket(byte[] message) {
-        try {
-            var packet = message;
-            // Discord.js VoiceUDPSocket.ts準拠の応答検証
-                    if (packet.Length < DiscordConstants.UDP_DISCOVERY_PACKET_SIZE) {
-            LogMessage($"❌ Invalid packet length: {packet.Length} (expected {DiscordConstants.UDP_DISCOVERY_PACKET_SIZE})");
-            return null;
-        }
-            // Discord.js実装: if (message.readUInt16BE(0) !== 2) return;
-            var responseType = (packet[0] << 8) | packet[1];
-            if (responseType != 2) {
-                LogMessage($"❌ Invalid response type: {responseType} (expected 2)");
-                return null;
-            }
-            // Discord.js実装: packet.slice(8, packet.indexOf(0, 8)).toString('utf8')
-            var ipEndIndex = Array.IndexOf(packet, (byte)0, 8);
-            if (ipEndIndex == -1) ipEndIndex = packet.Length;
-            var ipLength = ipEndIndex - 8;
-            var ipBytes = new byte[ipLength];
-            Array.Copy(packet, 8, ipBytes, 0, ipLength);
-            var ip = Encoding.UTF8.GetString(ipBytes);
-            // Discord.js実装: packet.readUInt16BE(packet.length - 2)
-            var port = (packet[packet.Length - 2] << 8) | packet[packet.Length - 1];
-            if (string.IsNullOrEmpty(ip) || port <= 0) {
-                LogMessage("❌ Invalid IP or port from parseLocalPacket");
-                return null;
-            }
-            return new SocketConfig { ip = ip, port = port };
-        } catch (Exception ex) {
-            LogMessage($"❌ parseLocalPacket error: {ex.Message}");
-            return null;
-        }
-    }
+
     public void Dispose() {
         DisposeResources();
     }

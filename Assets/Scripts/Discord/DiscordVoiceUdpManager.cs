@@ -465,6 +465,101 @@ public class DiscordVoiceUdpManager : IDisposable
     }
     
     /// <summary>
+    /// 利用可能な暗号化モードの中から、サポートされているものを選択します。
+    /// </summary>
+    /// <param name="availableModes">サーバーから提供された利用可能なモードの配列。</param>
+    /// <returns>選択された暗号化モードの文字列。</returns>
+    public string ChooseEncryptionMode(string[] availableModes) {
+        if (availableModes == null) {
+            return DiscordConstants.DEFAULT_ENCRYPTION_MODE;
+        }
+        foreach (var supportedMode in DiscordConstants.SUPPORTED_ENCRYPTION_MODES) {
+            if (availableModes.Contains(supportedMode)) {
+                LogMessage($"🔐 Selected encryption mode: {supportedMode}", LogLevel.Info);
+                return supportedMode;
+            }
+        }
+        // フォールバック：利用可能なモードの最初のもの
+        var fallbackMode = availableModes.Length > 0 ? availableModes[0] : DiscordConstants.DEFAULT_ENCRYPTION_MODE;
+        LogMessage($"🔐 Using fallback encryption mode: {fallbackMode}", LogLevel.Warning);
+        return fallbackMode;
+    }
+    
+    /// <summary>
+    /// UDP Discovery処理を実行（IP Discovery + フォールバック）
+    /// </summary>
+    /// <param name="ssrc">自分のSSRC</param>
+    /// <param name="voiceServerEndpoint">Voice Serverのエンドポイント</param>
+    /// <param name="availableModes">利用可能な暗号化モード</param>
+    /// <param name="onDiscoveryComplete">Discovery完了時のコールバック</param>
+    /// <returns>Discoveryが成功した場合はtrue、それ以外はfalse</returns>
+    public async Task<bool> PerformUdpDiscovery(uint ssrc, IPEndPoint voiceServerEndpoint, string[] availableModes, Func<string, int, string, Task<bool>> onDiscoveryComplete) {
+        try {
+            LogMessage("🔍 Starting UDP Discovery process...", LogLevel.Info);
+            
+            // UDPクライアントをセットアップ
+            await SetupUdpClient(voiceServerEndpoint, false);
+            
+            // IP Discoveryを実行
+            var discoveryResult = await PerformIpDiscovery(ssrc);
+            if (discoveryResult.HasValue) {
+                LogMessage($"📍 IP Discovery successful: {discoveryResult.Value.ip}:{discoveryResult.Value.port}", LogLevel.Info);
+                string selectedMode = ChooseEncryptionMode(availableModes);
+                return await onDiscoveryComplete(discoveryResult.Value.ip, discoveryResult.Value.port, selectedMode);
+            }
+            
+            // IP Discoveryが失敗した場合のフォールバック
+            LogMessage("⚠️ IP Discovery failed, trying fallback...", LogLevel.Warning);
+            return await PerformUdpFallback(ssrc, availableModes, onDiscoveryComplete);
+            
+        } catch (Exception ex) {
+            LogMessage($"❌ UDP Discovery error: {ex.Message}", LogLevel.Error);
+            return await PerformUdpFallback(ssrc, availableModes, onDiscoveryComplete);
+        }
+    }
+    
+    /// <summary>
+    /// UDP Discoveryのフォールバック処理
+    /// </summary>
+    private async Task<bool> PerformUdpFallback(uint ssrc, string[] availableModes, Func<string, int, string, Task<bool>> onDiscoveryComplete) {
+        try {
+            LogMessage("🔄 Performing UDP Discovery fallback...", LogLevel.Info);
+            
+            var localEndpoint = GetLocalEndpoint();
+            if (localEndpoint == null) {
+                LogMessage("❌ Cannot get local endpoint for fallback", LogLevel.Error);
+                return false;
+            }
+            
+            string fallbackIP = GetLocalIPAddress();
+            string selectedMode = ChooseEncryptionMode(availableModes);
+            
+            LogMessage($"🔄 Using fallback config: {fallbackIP}:{localEndpoint.Port}", LogLevel.Info);
+            return await onDiscoveryComplete(fallbackIP, localEndpoint.Port, selectedMode);
+            
+        } catch (Exception ex) {
+            LogMessage($"❌ UDP Discovery fallback error: {ex.Message}", LogLevel.Error);
+            return false;
+        }
+    }
+    
+    /// <summary>
+    /// ローカルのIPアドレスを取得
+    /// </summary>
+    private string GetLocalIPAddress() {
+        try {
+            using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0)) {
+                socket.Connect("8.8.8.8", 65530);
+                IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
+                return endPoint?.Address.ToString() ?? "192.168.1.1";
+            }
+        } catch (Exception ex) {
+            LogMessage($"❌ Local IP detection error: {ex.Message}", LogLevel.Warning);
+            return "192.168.1.1";
+        }
+    }
+    
+    /// <summary>
     /// SSRC とユーザーIDのマッピングを設定
     /// </summary>
     public void SetSSRCMapping(uint ssrc, string userId)
