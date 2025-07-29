@@ -51,6 +51,35 @@ public class DiscordNetworkManager : IDisposable
             op = 1,
             d = sequence
         };
+
+        /// <summary>
+        /// Identifyペイロードを作成
+        /// </summary>
+        public static object CreateIdentifyPayload(string token) => new {
+            op = 2,
+            d = new {
+                token = token,
+                intents = DiscordConstants.DISCORD_INTENTS,
+                properties = new {
+                    os = DiscordConstants.DISCORD_OS,
+                    browser = DiscordConstants.DISCORD_BROWSER,
+                    device = DiscordConstants.DISCORD_DEVICE
+                }
+            }
+        };
+
+        /// <summary>
+        /// ボイスチャンネル参加ペイロードを作成
+        /// </summary>
+        public static object CreateVoiceStateUpdatePayload(string guildId, string channelId) => new {
+            op = 4,
+            d = new {
+                guild_id = guildId,
+                channel_id = channelId,
+                self_mute = true,
+                self_deaf = false
+            }
+        };
     }
 
     /// <summary>
@@ -120,6 +149,33 @@ public class DiscordNetworkManager : IDisposable
     public async Task SendMainMessage(string message)
     {
         await SendWebSocketMessage(_mainWebSocket, message, "Main Gateway");
+    }
+
+    /// <summary>
+    /// Identifyメッセージを送信
+    /// </summary>
+    public async Task SendIdentify(string token)
+    {
+        var identify = DiscordPayloadHelper.CreateIdentifyPayload(token);
+        await SendMainMessage(JsonConvert.SerializeObject(identify));
+    }
+
+    /// <summary>
+    /// ボイスチャンネル参加メッセージを送信
+    /// </summary>
+    public async Task SendJoinVoiceChannel(string guildId, string channelId)
+    {
+        var voiceStateUpdate = DiscordPayloadHelper.CreateVoiceStateUpdatePayload(guildId, channelId);
+        await SendMainMessage(JsonConvert.SerializeObject(voiceStateUpdate));
+    }
+
+    /// <summary>
+    /// ボイスチャンネル離脱メッセージを送信
+    /// </summary>
+    public async Task SendLeaveVoiceChannel(string guildId)
+    {
+        var voiceStateUpdate = DiscordPayloadHelper.CreateVoiceStateUpdatePayload(guildId, null);
+        await SendMainMessage(JsonConvert.SerializeObject(voiceStateUpdate));
     }
     
 

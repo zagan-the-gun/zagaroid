@@ -62,48 +62,6 @@ public static class DiscordConstants {
 }
 
 /// <summary>
-/// Discord Gateway用のJSONオブジェクト作成ヘルパー
-/// </summary>
-public static class DiscordPayloadHelper {
-    /// <summary>
-    /// Identifyペイロードを作成
-    /// </summary>
-    public static object CreateIdentifyPayload(string token) => new {
-        op = 2,
-        d = new {
-            token = token,
-            intents = DiscordConstants.DISCORD_INTENTS,
-            properties = new {
-                os = DiscordConstants.DISCORD_OS,
-                browser = DiscordConstants.DISCORD_BROWSER,
-                device = DiscordConstants.DISCORD_DEVICE
-            }
-        }
-    };
-
-    /// <summary>
-    /// ハートビートペイロードを作成
-    /// </summary>
-    public static object CreateHeartbeatPayload(int? sequence) => new {
-        op = 1,
-        d = sequence
-    };
-
-    /// <summary>
-    /// ボイスチャンネル参加ペイロードを作成
-    /// </summary>
-    public static object CreateVoiceStateUpdatePayload(string guildId, string channelId) => new {
-        op = 4,
-        d = new {
-            guild_id = guildId,
-            channel_id = channelId,
-            self_mute = true,
-            self_deaf = false
-        }
-    };
-
-}
-/// <summary>
 /// エラーハンドリング用のヘルパークラス
 /// </summary>
 public static class ErrorHandler {
@@ -1132,24 +1090,21 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// </summary>
     /// <param name="message">送信するJSON文字列。</param>
     private async Task SendIdentify() {
-        var identify = DiscordPayloadHelper.CreateIdentifyPayload(discordToken);
-        await SendMessage(JsonConvert.SerializeObject(identify));
+        await _networkManager.SendIdentify(discordToken);
     }
     
     /// <summary>
     /// 指定されたボイスチャンネルに参加するためのリクエストを送信します。
     /// </summary>
     private async Task JoinVoiceChannel() {
-        var voiceStateUpdate = DiscordPayloadHelper.CreateVoiceStateUpdatePayload(guildId, voiceChannelId);
-        await SendMessage(JsonConvert.SerializeObject(voiceStateUpdate));
+        await _networkManager.SendJoinVoiceChannel(guildId, voiceChannelId);
     }
     
     /// <summary>
     /// ボイスチャンネルからログオフするためのリクエストを送信します。
     /// </summary>
     private async Task LeaveVoiceChannel() {
-        var voiceStateUpdate = DiscordPayloadHelper.CreateVoiceStateUpdatePayload(guildId, null);
-        await SendMessage(JsonConvert.SerializeObject(voiceStateUpdate));
+        await _networkManager.SendLeaveVoiceChannel(guildId);
     }
 
     /// <summary>
