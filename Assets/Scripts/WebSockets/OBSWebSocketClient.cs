@@ -3,6 +3,7 @@ using System.Text;
 using System.Security.Cryptography;
 using UnityEngine;
 using WebSocketSharp;
+using System.Collections;
 
 public class OBSWebSocketClient : MonoBehaviour {
     private WebSocket ws;
@@ -11,48 +12,93 @@ public class OBSWebSocketClient : MonoBehaviour {
     public string textSourceName = "ksk_subtitles"; // OBSのテキストソース名
 
     private string challengeResponse;
+    private bool isConnected = false;
+    private Coroutine reconnectCoroutine;
+    private float reconnectInterval = 10f; // 再接続間隔を10秒に延長
+
+    private void Awake() {
+    }
 
     private void Start() {
         // OBS WebSocket接続用パスワードの読み取り
         OBS_WEBSOCKETS_PASSWORD = CentralManager.Instance != null ? CentralManager.Instance.GetObsWebSocketsPassword() : null;
         if (string.IsNullOrEmpty(OBS_WEBSOCKETS_PASSWORD)) {
-            Debug.LogError("おーびーえすうぇぶそけっつぱすわーど！よみこみえらー！");
-        } else {
-            Debug.Log("おーびーえすうぇぶそけっつぱすわーどをよみこみました！: " + OBS_WEBSOCKETS_PASSWORD);
+            Debug.LogError("[OBS] パスワード読み込みエラー");
+        }
+
+        ConnectToOBS();
+    }
+
+    private void ConnectToOBS() {
+        if (ws != null) {
+            ws.Close();
         }
 
         ws = new WebSocket(obsUrl);
 
         // メッセージ受信時のイベントハンドラ
         ws.OnMessage += (sender, e) => {
-            Debug.Log("Received: " + e.Data);
             HandleMessage(e.Data);
         };
 
-        // (認証前)接続成功時のイベントハンドラ
+        // 接続成功時のイベントハンドラ
         ws.OnOpen += (sender, e) => {
-            Debug.Log("Connected to OBS: " + sender);
+            isConnected = true;
+            if (reconnectCoroutine != null) {
+                StopCoroutine(reconnectCoroutine);
+                reconnectCoroutine = null;
+            }
         };
 
         // エラー発生時のイベントハンドラ
         ws.OnError += (sender, e) => {
-            Debug.LogError("Error OBS: " + e.Message);
+            Debug.LogError("[OBS] 接続エラー: " + e.Message);
+            isConnected = false;
         };
 
         // 切断時のイベントハンドラ
         ws.OnClose += (sender, e) => {
-            Debug.Log("Disconnected from OBS");
+            isConnected = false;
+            
+            // 自動再接続を開始
+            if (reconnectCoroutine == null) {
+                reconnectCoroutine = StartCoroutine(ReconnectToOBS());
+            }
         };
 
-        ws.Connect();
+        try {
+            ws.Connect();
+        } catch (Exception ex) {
+            Debug.LogError("[OBS] 接続エラー: " + ex.Message);
+            isConnected = false;
+            
+            // 自動再接続を開始
+            if (reconnectCoroutine == null) {
+                reconnectCoroutine = StartCoroutine(ReconnectToOBS());
+            }
+        }
+    }
+
+    private IEnumerator ReconnectToOBS() {
+        yield return new WaitForSeconds(reconnectInterval);
+        
+        // 接続中でない場合のみ再接続を試行
+        if (!isConnected) {
+            ConnectToOBS();
+        }
+        
+        // 再接続が失敗した場合、新しい再接続コルーチンを開始
+        if (!isConnected) {
+            reconnectCoroutine = StartCoroutine(ReconnectToOBS());
+        } else {
+            reconnectCoroutine = null;
+        }
     }
 
     private void HandleMessage(string message) {
         try {
             var response = JsonUtility.FromJson<HelloResponse>(message);
-            // Debug.Log("DEAD BEEF OBS 1: " + message);
             if (response.op == 0) { // Helloメッセージ
-                // Debug.Log("DEAD BEEF OBS o1 1: " + message);
                 if (response.d.authentication != null) { // 認証が必要な場合
                     string challenge = response.d.authentication.challenge;
                     string salt = response.d.authentication.salt;
@@ -66,26 +112,30 @@ public class OBSWebSocketClient : MonoBehaviour {
                             authentication = challengeResponse
                         }
                     };
-                    // Debug.Log("DEAD BEEF OBS o1 2 " + JsonUtility.ToJson(authenticateRequest));
-                    ws.Send(JsonUtility.ToJson(authenticateRequest));
+                    SendMessage(JsonUtility.ToJson(authenticateRequest));
                 }
             } else if (response.op == 2) {// 識別済み
                 // negotiatedRpcVersionを取得
                 int negotiatedRpcVersion = response.d.negotiatedRpcVersion;
-
-                // デバッグログに表示
-                Debug.Log("Negotiated RPC Version: " + negotiatedRpcVersion);
-
             } else if (response.op == 5) {// イベント取得
-                // Debug.Log("DEAD BEEF OBS EventResponse" + message);
             } else if (response.op == 7) {// リクエストレスポンス
-                // var requestResponse = JsonUtility.FromJson<RequestResponse>(message);
-                // Debug.Log("DEAD BEEF OBS RequestResponse" + message);
             }
 
         } catch (Exception ex) {
-            Debug.LogError("DEAD BEEF OBS Error processing message: " + ex.Message);
-            Debug.LogError("DEAD BEEF OBS Received message: " + message);
+            Debug.LogError("[OBS] メッセージ処理エラー: " + ex.Message);
+        }
+    }
+
+    private void SendMessage(string message) {
+        if (ws != null && isConnected) {
+            try {
+                ws.Send(message);
+            } catch (Exception ex) {
+                Debug.LogError("[OBS] メッセージ送信エラー: " + ex.Message);
+                isConnected = false;
+            }
+        } else {
+            Debug.LogWarning("[OBS] WebSocketが接続されていません。メッセージを送信できません: " + message);
         }
     }
 
@@ -114,6 +164,9 @@ public class OBSWebSocketClient : MonoBehaviour {
 
     private void OnDestroy() {
         CentralManager.OnObsSubtitlesSend -= HandleObsSubtitlesSend;
+        if (reconnectCoroutine != null) {
+            StopCoroutine(reconnectCoroutine);
+        }
         if (ws != null)
         {
             ws.Close();
@@ -121,7 +174,15 @@ public class OBSWebSocketClient : MonoBehaviour {
     }
 
     public void HandleObsSubtitlesSend(string textSourceName, string text) {
-        // Debug.Log("DEAD BEEF OBS UpdateTextSource 発火！: " + text);
+        // 接続状態をチェック
+        if (!isConnected) {
+            // 再接続を開始
+            if (reconnectCoroutine == null) {
+                reconnectCoroutine = StartCoroutine(ReconnectToOBS());
+            }
+            return;
+        }
+
         // OBS WebSocket APIを使用してテキストソースを更新
         var updateTextSourceRequest = new UpdateTextSourceRequest {
             op = 6, // SetTextGDIPlusのオペレーションコード
@@ -136,10 +197,7 @@ public class OBSWebSocketClient : MonoBehaviour {
                 }
             }
         };
-        // Debug.Log("DEAD BEEF OBS UpdateTextSource 1 request: " + updateTextSourceRequest);
-        ws.Send(JsonUtility.ToJson(updateTextSourceRequest));
-        // Debug.Log("DEAD BEEF OBS UpdateTextSource 2 request: " + JsonUtility.ToJson(updateTextSourceRequest));
-        Debug.Log($"Updated text source '{textSourceName}' to: {text}");
+        SendMessage(JsonUtility.ToJson(updateTextSourceRequest));
     }
 
     // Helloメッセージのレスポンス用クラス
