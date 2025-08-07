@@ -16,11 +16,26 @@ using Newtonsoft.Json;
 /// </summary>
 public class DiscordVoiceUdpManager : IDisposable
 {
-    // UDP関連の定数
-    private const int UDP_BUFFER_SIZE = 65536;
-    private const int UDP_SEND_TIMEOUT = 5000;
-    private const int UDP_DISCOVERY_TIMEOUT = 3000;
-    private const int UDP_DISCOVERY_PACKET_SIZE = 74;
+    // UDP関連の定数（このクラス専用）
+    private const int UDP_BUFFER_SIZE = 65536;           // 64KB - UDP送受信バッファサイズ
+    private const int UDP_SEND_TIMEOUT = 5000;           // 5秒 - UDP送信タイムアウト
+    private const int UDP_DISCOVERY_TIMEOUT = 3000;      // 3秒 - IP Discovery応答待機時間
+    private const int UDP_DISCOVERY_PACKET_SIZE = 74;    // 74バイト - IP Discoveryパケットサイズ
+    
+    // 音声パケット処理関連の定数（このクラス専用）
+    private const int RTP_HEADER_SIZE = 12;              // RTPヘッダーサイズ
+    private const int MIN_ENCRYPTED_DATA_SIZE = 40;      // 暗号化データ最小サイズ
+    private const int MIN_AUDIO_PACKET_SIZE = 60;        // 音声パケット最小サイズ  
+    private const int DISCORD_HEADER_SIZE = 12;          // Discordヘッダーサイズ
+    
+    // 暗号化関連の定数（このクラス専用）
+    private static readonly string[] SUPPORTED_ENCRYPTION_MODES = { 
+        "xsalsa20_poly1305", 
+        "xsalsa20_poly1305_suffix"
+        // "aead_xchacha20_poly1305_rtpsize", // 未実装のため除外
+        // "aead_aes256_gcm_rtpsize" // 未実装のため除外
+    };
+    private const string DEFAULT_ENCRYPTION_MODE = "xsalsa20_poly1305";
     
     // イベント
     public delegate void DiscordLogDelegate(string logMessage);
@@ -361,12 +376,12 @@ public class DiscordVoiceUdpManager : IDisposable
     public void ProcessAudioPacket(byte[] packet) {
         try {
             // 最小パケットサイズチェック
-            if (packet.Length < DiscordConstants.MIN_AUDIO_PACKET_SIZE) {
+            if (packet.Length < MIN_AUDIO_PACKET_SIZE) {
                 return;
             }
             
             // RTPヘッダーからSSRCを抽出
-            if (packet.Length >= DiscordConstants.DISCORD_HEADER_SIZE) {
+            if (packet.Length >= DISCORD_HEADER_SIZE) {
                 var ssrc = BitConverter.ToUInt32(packet, 8);
                 if (BitConverter.IsLittleEndian) {
                     ssrc = ((ssrc & 0xFF) << 24) | (((ssrc >> 8) & 0xFF) << 16) | 
@@ -424,8 +439,8 @@ public class DiscordVoiceUdpManager : IDisposable
     /// RTPヘッダーを抽出
     /// </summary>
     private byte[] ExtractRtpHeader(byte[] packet) {
-        var rtpHeader = new byte[DiscordConstants.RTP_HEADER_SIZE];
-        Array.Copy(packet, 0, rtpHeader, 0, DiscordConstants.RTP_HEADER_SIZE);
+        var rtpHeader = new byte[RTP_HEADER_SIZE];
+        Array.Copy(packet, 0, rtpHeader, 0, RTP_HEADER_SIZE);
         return rtpHeader;
     }
     
@@ -433,8 +448,8 @@ public class DiscordVoiceUdpManager : IDisposable
     /// 暗号化されたデータを抽出
     /// </summary>
     private byte[] ExtractEncryptedData(byte[] packet) {
-        var encryptedData = new byte[packet.Length - DiscordConstants.RTP_HEADER_SIZE];
-        Array.Copy(packet, DiscordConstants.RTP_HEADER_SIZE, encryptedData, 0, encryptedData.Length);
+        var encryptedData = new byte[packet.Length - RTP_HEADER_SIZE];
+        Array.Copy(packet, RTP_HEADER_SIZE, encryptedData, 0, encryptedData.Length);
         return encryptedData;
     }
     
@@ -442,19 +457,19 @@ public class DiscordVoiceUdpManager : IDisposable
     /// 暗号化されたデータが有効かチェック
     /// </summary>
     private bool IsValidEncryptedData(byte[] encryptedData) {
-        return encryptedData.Length >= DiscordConstants.MIN_ENCRYPTED_DATA_SIZE && _secretKey != null;
+        return encryptedData.Length >= MIN_ENCRYPTED_DATA_SIZE && _secretKey != null;
     }
     
     /// <summary>
     /// Discordの音声パケットから純粋なOpusデータを抽出
     /// </summary>
     private byte[] ExtractOpusFromDiscordPacket(byte[] discordPacket) {
-        if (discordPacket?.Length <= DiscordConstants.DISCORD_HEADER_SIZE) {
+        if (discordPacket?.Length <= DISCORD_HEADER_SIZE) {
             return null;
         }
         // Opusデータ部分を抽出（12バイト後から）
-        var opusData = new byte[discordPacket.Length - DiscordConstants.DISCORD_HEADER_SIZE];
-        Array.Copy(discordPacket, DiscordConstants.DISCORD_HEADER_SIZE, opusData, 0, opusData.Length);
+        var opusData = new byte[discordPacket.Length - DISCORD_HEADER_SIZE];
+        Array.Copy(discordPacket, DISCORD_HEADER_SIZE, opusData, 0, opusData.Length);
         return opusData;
     }
     
@@ -481,16 +496,16 @@ public class DiscordVoiceUdpManager : IDisposable
     /// <returns>選択された暗号化モードの文字列。</returns>
     public string ChooseEncryptionMode(string[] availableModes) {
         if (availableModes == null) {
-            return DiscordConstants.DEFAULT_ENCRYPTION_MODE;
+            return DEFAULT_ENCRYPTION_MODE;
         }
-        foreach (var supportedMode in DiscordConstants.SUPPORTED_ENCRYPTION_MODES) {
+        foreach (var supportedMode in SUPPORTED_ENCRYPTION_MODES) {
             if (availableModes.Contains(supportedMode)) {
                 LogMessage($"🔐 Selected encryption mode: {supportedMode}", LogLevel.Info);
                 return supportedMode;
             }
         }
         // フォールバック：利用可能なモードの最初のもの
-        var fallbackMode = availableModes.Length > 0 ? availableModes[0] : DiscordConstants.DEFAULT_ENCRYPTION_MODE;
+        var fallbackMode = availableModes.Length > 0 ? availableModes[0] : DEFAULT_ENCRYPTION_MODE;
         LogMessage($"🔐 Using fallback encryption mode: {fallbackMode}", LogLevel.Warning);
         return fallbackMode;
     }

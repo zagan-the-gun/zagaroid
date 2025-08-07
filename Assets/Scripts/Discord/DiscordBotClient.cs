@@ -21,37 +21,23 @@ using Newtonsoft.Json.Linq;
 /// Discord Bot関連の定数定義
 /// </summary>
 public static class DiscordConstants {
-    // ネットワーク関連
+    // ネットワーク関連（共通使用）
     public const int WEBSOCKET_BUFFER_SIZE = 4096;
-    public const int UDP_BUFFER_SIZE = 65536;
-    public const int UDP_SEND_TIMEOUT = 5000;
-    public const int UDP_DISCOVERY_TIMEOUT = 3000;
-    public const int UDP_RECEIVE_TIMEOUT = 1000;
-    public const int UDP_DISCOVERY_PACKET_SIZE = 74;
-    public const int RTP_HEADER_SIZE = 12;
-    public const int MIN_ENCRYPTED_DATA_SIZE = 40;
-    public const int MIN_AUDIO_PACKET_SIZE = 60;
-    public const int DISCORD_HEADER_SIZE = 12;
+    
+    // タイムアウト関連（共通使用）
+    public const int RECONNECT_DELAY = 5000;
+    
     // 音声処理関連
     public const int SAMPLE_RATE_48K = 48000;
     public const int SAMPLE_RATE_16K = 16000;
     public const int CHANNELS_STEREO = 2;
     public const float PCM_SCALE_FACTOR = 32768.0f;
-    // タイムアウト関連
-    public const int RECONNECT_DELAY = 5000;
     // 音声認識関連
     public const int WITA_API_SAMPLE_RATE = 16000;
     public const int WITA_API_CHANNELS = 1;
     // Discord Gateway関連
     public const int DISCORD_INTENTS = 32509;
-    // Discord.js準拠の暗号化モード（実装済みのもののみ）
-    public static readonly string[] SUPPORTED_ENCRYPTION_MODES = { 
-        "xsalsa20_poly1305", 
-        "xsalsa20_poly1305_suffix"
-        // "aead_xchacha20_poly1305_rtpsize", // 未実装のため除外
-        // "aead_aes256_gcm_rtpsize" // 未実装のため除外
-    };
-    public const string DEFAULT_ENCRYPTION_MODE = "xsalsa20_poly1305";
+
     // 無音検出関連
     public const float SILENCE_THRESHOLD = 0.005f; // 無音判定の閾値（音量レベル）- より寛容に設定
     public const int SILENCE_DURATION_MS = 1000; // 無音継続時間（ミリ秒）- より長く設定
