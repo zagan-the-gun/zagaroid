@@ -23,10 +23,8 @@ using Newtonsoft.Json.Linq;
 public static class DiscordConstants {
     // ネットワーク関連（共通使用）
     public const int WEBSOCKET_BUFFER_SIZE = 4096;
-    
     // タイムアウト関連（共通使用）
     public const int RECONNECT_DELAY = 5000;
-    
     // 音声処理関連
     public const int SAMPLE_RATE_48K = 48000;
     public const int SAMPLE_RATE_16K = 16000;
@@ -37,7 +35,6 @@ public static class DiscordConstants {
     public const int WITA_API_CHANNELS = 1;
     // Discord Gateway関連
     public const int DISCORD_INTENTS = 32509;
-
     // 無音検出関連
     public const float SILENCE_THRESHOLD = 0.005f; // 無音判定の閾値（音量レベル）- より寛容に設定
     public const int SILENCE_DURATION_MS = 1000; // 無音継続時間（ミリ秒）- より長く設定
@@ -127,6 +124,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         public byte[] data;
         public string userId;
     }
+    
+    // PCMデバッグ機能
+    [Header("PCM Debug Settings")]
+    public bool enablePcmDebug = false; // PCMデバッグの有効/無効
+    
     // ログレベル管理
     private enum LogLevel { Debug, Info, Warning, Error }
     
@@ -329,6 +331,9 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             LogMessage($"Audio data invalid: {audioData?.Length ?? 0} samples, level={audioLevel:F4}", LogLevel.Debug);
             return;
         }
+        
+        // PCMデバッグ：複合されたPCMデータを再生
+        PlayPcmForDebug(audioData, "Combined Audio");
         
         LogMessage($"Audio ready: {audioData.Length} samples, level={audioLevel:F4}", LogLevel.Debug);
         StartCoroutine(ProcessAudioCoroutine(audioData));
@@ -614,6 +619,9 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 // LogMessage("❌ HttpClient is not initialized or witaiToken is missing.");
                 return "";
             }
+            
+            // PCMデバッグ：翻訳API送信前のPCMデータを再生
+            PlayPcmForDebug(audioData, $"Pre-Translation (Wit.AI) - Level: {audioLevel:F4}");
             
             // Node.js準拠: 生のPCMデータに変換（48kHz → 16kHz）
             byte[] rawPcmData = ConvertToRawPcm(audioData, DiscordConstants.WITA_API_SAMPLE_RATE, DiscordConstants.WITA_API_CHANNELS);
@@ -1050,6 +1058,31 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             _audioBuffer?.ProcessBufferedAudio();
         }
     }
+    
+    /// <summary>
+    /// PCMデバッグ用：音声データを直接再生
+    /// </summary>
+    private void PlayPcmForDebug(float[] pcmData, string label) {
+        if (!enablePcmDebug || pcmData == null || pcmData.Length == 0) return;
+        
+        // AudioClipを作成
+        AudioClip clip = AudioClip.Create($"DebugPCM_{label}", pcmData.Length, 1, 16000, false);
+        clip.SetData(pcmData, 0);
+        
+        // AudioSourceを探して再生
+        AudioSource audioSource = FindObjectOfType<AudioSource>();
+        if (audioSource == null) {
+            // AudioSourceが見つからない場合は新しく作成
+            GameObject audioObj = new GameObject("PCM_Debug_AudioSource");
+            audioSource = audioObj.AddComponent<AudioSource>();
+            audioSource.volume = 1.0f;
+            audioSource.spatialBlend = 0.0f; // 2D音声
+        }
+        
+        audioSource.clip = clip;
+        audioSource.volume = 1.0f;
+        audioSource.Play();
+    }
 }
 
 /// <summary>
@@ -1127,6 +1160,7 @@ public class DiscordVoiceNetworkManager {
             Array.Copy(chunk, 0, combinedAudio, currentIndex, chunk.Length);
             currentIndex += chunk.Length;
         }
+        
         // イベントを発火（メインスレッドで実行）
         if (OnAudioBufferReady != null) {
             _enqueueMainThreadAction(() => {
