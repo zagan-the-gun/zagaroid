@@ -53,7 +53,7 @@ public class WindowSizeController : MonoBehaviour
 
             // メインキャンバスのサイズ
             RectTransform mainRectTransform = mainCanvas.GetComponent<RectTransform>();
-            Debug.Log($"DEAD BEEF Main.x: {mainRectTransform.sizeDelta.x}, Main.y: {mainRectTransform.sizeDelta.y}");
+            // デバッグログを削減: メインキャンバスサイズ
 
             // メニューキャンバスのサイズ
             // RectTransform menuRectTransform = menuCanvas.GetComponent<RectTransform>();
@@ -61,11 +61,11 @@ public class WindowSizeController : MonoBehaviour
 
             // ログキャンバスのサイズ
             RectTransform logRectTransform = logCanvas.GetComponent<RectTransform>();
-            Debug.Log($"DEAD BEEF Log.x: {logRectTransform.sizeDelta.x}, Log.y: {logRectTransform.sizeDelta.y}");
+            // デバッグログを削減: ログキャンバスサイズ
 
             // 表示キャンバスのサイズ
             RectTransform canvasRectTransform = canvas.GetComponent<RectTransform>();
-            Debug.Log($"DEAD BEEF Before Canvas.x: {canvasRectTransform.sizeDelta.x}, Canvas.y: {canvasRectTransform.sizeDelta.y}");
+            // デバッグログを削減: キャンバスサイズ（変更前）
             float canvas_y = mainRectTransform.sizeDelta.y - logRectTransform.sizeDelta.y;
             // float canvas_x = mainRectTransform.sizeDelta.x - menuRectTransform.sizeDelta.x;
             float canvas_x = mainRectTransform.sizeDelta.x;
@@ -78,8 +78,7 @@ public class WindowSizeController : MonoBehaviour
             float scaleX = canvas_x / 1920f;
             float scaleY = canvas_y / 960f;
             canvas.transform.localScale = new Vector3(scaleX, scaleY, 1f);
-            Debug.Log($"DEAD BEEF After Canvas.x: {canvasRectTransform.sizeDelta.x}, Canvas.y: {canvasRectTransform.sizeDelta.y}");
-            Debug.Log($"DEAD BEEF After Main.x: {mainRectTransform.sizeDelta.x}, Main.y: {mainRectTransform.sizeDelta.y}");
+            // デバッグログを削減: キャンバスサイズ（変更後）
             // Debug.Log($"DEAD BEEF new Canvas.x: {canvasRectTransform.sizeDelta.x}, new Canvas.y: {canvasRectTransform.sizeDelta.y}");
         }
         else

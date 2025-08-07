@@ -25,7 +25,7 @@ public class DeepLApiClient : MonoBehaviour {
         if (string.IsNullOrEmpty(authorization)) {
             Debug.LogError("でーぷるきー！よみこみえらー！");
         } else {
-            Debug.Log("でーぷるきーをよみこみました！: " + authorization);
+            // ログを削減: DeepLキー読み込みログを削除
         }
 
         // JSON データを作成
@@ -44,7 +44,7 @@ public class DeepLApiClient : MonoBehaviour {
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Authorization",  "DeepL-Auth-Key " + authorization);
             request.SetRequestHeader("Content-Type", "application/json");
-            Debug.Log("DeepLApiClientKey: " + authorization);
+            // ログを削減: DeepL APIキーログを削除
 
             // リクエストを送信し、レスポンスを待つ
             yield return request.SendWebRequest();
@@ -66,7 +66,7 @@ public class DeepLApiClient : MonoBehaviour {
                 string translatedText = translationResponse.translations[0].text;
 
                 // 結果をログに出力
-                Debug.Log("Translated Text: " + translatedText);
+                // ログを削減: 翻訳結果ログを削除
 
                 // コールバックを呼び出して翻訳結果を返す
                 onTranslated?.Invoke(translatedText);

@@ -45,7 +45,7 @@ public class MenZTranslationClient : MonoBehaviour {
         
         // イベントハンドラーを設定
         ws.OnOpen += (sender, e) => {
-            Debug.Log("MenZ翻訳サーバーに接続しました: " + MENZ_TRANSLATION_URL);
+            // ログを削減: MenZ翻訳サーバー接続ログを削除
             isConnected = true;
         };
         
@@ -59,7 +59,7 @@ public class MenZTranslationClient : MonoBehaviour {
         };
         
         ws.OnClose += (sender, e) => {
-            Debug.Log($"MenZ翻訳サーバーから切断されました (Code: {e.Code}, Reason: {e.Reason})");
+            // ログを削減: MenZ翻訳サーバー切断ログを削除
             isConnected = false;
         };
         
@@ -114,7 +114,7 @@ public class MenZTranslationClient : MonoBehaviour {
     public IEnumerator PostTranslate(string text, string targetLang, string contextId, Action<string> onTranslated) {
         // 接続されていない場合は再接続を試行
         if (!isConnected) {
-            Debug.Log("MenZ翻訳サーバーに接続されていません。再接続を試行します...");
+            // ログを削減: MenZ翻訳サーバー再接続ログを削除
             ConnectToServer();
             
             // 短時間待機して接続を確認
@@ -146,7 +146,7 @@ public class MenZTranslationClient : MonoBehaviour {
             string jsonRequest = JsonConvert.SerializeObject(request);
             ws.Send(jsonRequest);
             
-            Debug.Log($"翻訳リクエスト送信: {text} -> {targetLang} (検出言語: {request.source_lang})");
+            // ログを削減: 翻訳リクエスト送信ログを削除
         } catch (Exception ex) {
             Debug.LogError("翻訳リクエスト送信エラー: " + ex.Message);
             if (pendingRequests.ContainsKey(requestId)) {
@@ -246,7 +246,7 @@ public class MenZTranslationClient : MonoBehaviour {
         if (isConnected && !string.IsNullOrEmpty(contextId)) {
             var clearRequest = new { type = "context_clear", context_id = contextId };
             ws.Send(JsonConvert.SerializeObject(clearRequest));
-            Debug.Log($"文脈クリアリクエスト送信: {contextId}");
+            // ログを削減: 文脈クリアリクエストログを削除
         } else {
             Debug.LogWarning("文脈クリア失敗: サーバーに接続されていません");
         }
@@ -260,7 +260,7 @@ public class MenZTranslationClient : MonoBehaviour {
     }
 
     void OnDestroy() {
-        Debug.Log("MenZTranslationClient: OnDestroy - クリーンアップを開始します");
+        // ログを削減: OnDestroyログを削除
         
         try {
             isConnected = false;

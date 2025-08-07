@@ -16,6 +16,12 @@ using Newtonsoft.Json;
 /// </summary>
 public class DiscordVoiceUdpManager : IDisposable
 {
+    // UDP関連の定数
+    private const int UDP_BUFFER_SIZE = 65536;
+    private const int UDP_SEND_TIMEOUT = 5000;
+    private const int UDP_DISCOVERY_TIMEOUT = 3000;
+    private const int UDP_DISCOVERY_PACKET_SIZE = 74;
+    
     // イベント
     public delegate void DiscordLogDelegate(string logMessage);
     public event DiscordLogDelegate OnDiscordLog;
@@ -75,25 +81,32 @@ public class DiscordVoiceUdpManager : IDisposable
             
             LogMessage($"🔌 Setting up UDP client (forAudio: {forAudio})...", LogLevel.Info);
             
-            // 既存のクライアントがあればクローズ
+            // 音声用の場合は既存クライアントを再利用
             if (forAudio && _udpClient != null) {
+                LogMessage($"🔄 Reusing existing UDP client for audio reception", LogLevel.Info);
+                _isConnected = true;
+                OnConnectionStateChanged?.Invoke(true);
+                LogMessage($"✅ UDP client setup completed (forAudio: {forAudio})", LogLevel.Info);
+                return true;
+            }
+            
+            // Discovery用の場合のみ、既存クライアントがあればクローズ
+            if (!forAudio && _udpClient != null) {
                 _udpClient?.Close();
                 _udpClient?.Dispose();
             }
             
             _udpClient = new UdpClient();
-            _udpClient.Client.ReceiveBufferSize = DiscordConstants.UDP_BUFFER_SIZE;
-            _udpClient.Client.SendBufferSize = DiscordConstants.UDP_BUFFER_SIZE;
+            _udpClient.Client.ReceiveBufferSize = UDP_BUFFER_SIZE;
+            _udpClient.Client.SendBufferSize = UDP_BUFFER_SIZE;
             _udpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             _udpClient.Client.ReceiveTimeout = 0;
-            _udpClient.Client.SendTimeout = DiscordConstants.UDP_SEND_TIMEOUT;
+            _udpClient.Client.SendTimeout = UDP_SEND_TIMEOUT;
             
-            if (!forAudio) {
-                // Discovery用のバインド
-                _udpClient.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
-                var boundEndpoint = (IPEndPoint)_udpClient.Client.LocalEndPoint;
-                LogMessage($"📍 UDP client bound to {boundEndpoint.Address}:{boundEndpoint.Port}");
-            }
+            // UDPクライアントをバインド
+            _udpClient.Client.Bind(new IPEndPoint(IPAddress.Any, 0));
+            var boundEndpoint = (IPEndPoint)_udpClient.Client.LocalEndPoint;
+            LogMessage($"📍 UDP client bound to {boundEndpoint.Address}:{boundEndpoint.Port}");
             
             _isConnected = true;
             OnConnectionStateChanged?.Invoke(true);
@@ -126,13 +139,13 @@ public class DiscordVoiceUdpManager : IDisposable
             
             // 発見応答を待機（元のWaitForDiscoveryResponseから移植）
             var receiveTask = _udpClient.ReceiveAsync();
-            var timeoutTask = Task.Delay(DiscordConstants.UDP_DISCOVERY_TIMEOUT);
+            var timeoutTask = Task.Delay(UDP_DISCOVERY_TIMEOUT);
             var completedTask = await Task.WhenAny(receiveTask, timeoutTask);
             if (completedTask == receiveTask) {
                 var result = await receiveTask;
                 return ProcessDiscoveryResponse(result);
             } else {
-                LogMessage($"❌ Discovery timeout after {DiscordConstants.UDP_DISCOVERY_TIMEOUT}ms", LogLevel.Error);
+                LogMessage($"❌ Discovery timeout after {UDP_DISCOVERY_TIMEOUT}ms", LogLevel.Error);
                 return null;
             }
         }
@@ -147,7 +160,7 @@ public class DiscordVoiceUdpManager : IDisposable
     /// 発見パケットを作成（元のDiscordBotClientから移植）
     /// </summary>
     private byte[] CreateDiscoveryPacket(uint ssrc) {
-        var discoveryBuffer = new byte[DiscordConstants.UDP_DISCOVERY_PACKET_SIZE];
+                    var discoveryBuffer = new byte[UDP_DISCOVERY_PACKET_SIZE];
         // Type: 1
         discoveryBuffer[0] = 0x00;
         discoveryBuffer[1] = 0x01;
@@ -171,7 +184,7 @@ public class DiscordVoiceUdpManager : IDisposable
         try
         {
             var message = result.Buffer;
-            if (message.Length >= DiscordConstants.UDP_DISCOVERY_PACKET_SIZE) {
+            if (message.Length >= UDP_DISCOVERY_PACKET_SIZE) {
                 var localConfig = ParseLocalPacket(message);
                 if (localConfig.HasValue) {
                     LogMessage($"📍 Discovered local config: {localConfig.Value.ip}:{localConfig.Value.port}", LogLevel.Info);
@@ -205,10 +218,10 @@ public class DiscordVoiceUdpManager : IDisposable
         {
             var packet = message;
             // Discord.js VoiceUDPSocket.ts準拠の応答検証
-            if (packet.Length < DiscordConstants.UDP_DISCOVERY_PACKET_SIZE) {
-                LogMessage($"❌ Invalid packet length: {packet.Length} (expected {DiscordConstants.UDP_DISCOVERY_PACKET_SIZE})", LogLevel.Error);
+            if (packet.Length < UDP_DISCOVERY_PACKET_SIZE) {
+                LogMessage($"❌ Invalid packet length: {packet.Length} (expected {UDP_DISCOVERY_PACKET_SIZE})", LogLevel.Error);
                 return null;
-            }
+        }
             // Discord.js実装: if (message.readUInt16BE(0) !== 2) return;
             var responseType = (packet[0] << 8) | packet[1];
             if (responseType != 2) {
@@ -448,8 +461,7 @@ public class DiscordVoiceUdpManager : IDisposable
     /// <summary>
     /// 暗号化キーを設定
     /// </summary>
-    public void SetSecretKey(byte[] secretKey)
-    {
+    public void SetSecretKey(byte[] secretKey) {
         _secretKey = secretKey;
         LogMessage($"🔐 Secret key set (length: {secretKey?.Length ?? 0} bytes)", LogLevel.Info);
     }
@@ -457,8 +469,7 @@ public class DiscordVoiceUdpManager : IDisposable
     /// <summary>
     /// 暗号化モードを設定
     /// </summary>
-    public void SetEncryptionMode(string encryptionMode)
-    {
+    public void SetEncryptionMode(string encryptionMode) {
         _encryptionMode = encryptionMode;
         LogMessage($"🔐 Encryption mode set: {encryptionMode}", LogLevel.Info);
     }
@@ -561,8 +572,7 @@ public class DiscordVoiceUdpManager : IDisposable
     /// <summary>
     /// SSRC とユーザーIDのマッピングを設定
     /// </summary>
-    public void SetSSRCMapping(uint ssrc, string userId)
-    {
+    public void SetSSRCMapping(uint ssrc, string userId) {
         _ssrcToUserMap[ssrc] = userId;
         LogMessage($"👤 SSRC mapping set: {ssrc} -> {userId}", LogLevel.Debug);
     }
@@ -570,8 +580,7 @@ public class DiscordVoiceUdpManager : IDisposable
     /// <summary>
     /// 自分のSSRCを設定
     /// </summary>
-    public void SetOurSSRC(uint ssrc)
-    {
+    public void SetOurSSRC(uint ssrc) {
         _ourSSRC = ssrc;
         LogMessage($"🎤 Our SSRC set: {ssrc}", LogLevel.Info);
     }
@@ -584,21 +593,18 @@ public class DiscordVoiceUdpManager : IDisposable
     /// <summary>
     /// ローカルエンドポイントを取得
     /// </summary>
-    public IPEndPoint GetLocalEndpoint()
-    {
+    public IPEndPoint GetLocalEndpoint() {
         return _udpClient?.Client?.LocalEndPoint as IPEndPoint;
     }
     
     /// <summary>
     /// ログメッセージを生成し、イベントを発行
     /// </summary>
-    private void LogMessage(string message, LogLevel level = LogLevel.Info)
-    {
+    private void LogMessage(string message, LogLevel level = LogLevel.Info) {
         if (!_enableDebugLogging && level == LogLevel.Debug) return;
         
         string prefix;
-        switch (level)
-        {
+        switch (level) {
             case LogLevel.Debug:
                 prefix = "🔍";
                 break;
@@ -620,8 +626,7 @@ public class DiscordVoiceUdpManager : IDisposable
     /// <summary>
     /// リソースをクリーンアップ
     /// </summary>
-    public void Dispose()
-    {
+    public void Dispose() {
         LogMessage("🗑️ DiscordVoiceUdpManager disposing - performing cleanup", LogLevel.Info);
         
         _isConnected = false;

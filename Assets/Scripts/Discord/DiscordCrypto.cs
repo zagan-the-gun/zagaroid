@@ -109,7 +109,7 @@ public static class DiscordCrypto
     {
         try
         {
-            // Debug.Log("🔐 TweetNaclSharp XSalsa20Poly1305復号開始");
+            // ログを削減: 復号開始ログを削除
             
             if (encryptedData.Length < TAG_SIZE)
             {

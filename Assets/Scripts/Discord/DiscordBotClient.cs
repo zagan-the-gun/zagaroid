@@ -44,10 +44,6 @@ public static class DiscordConstants {
     public const int WITA_API_CHANNELS = 1;
     // Discord Gateway関連
     public const int DISCORD_INTENTS = 32509;
-    public const string DISCORD_OS = "unity";
-    public const string DISCORD_BROWSER = "unity-bot";
-    public const string DISCORD_DEVICE = "unity-bot";
-    public const string DISCORD_PROTOCOL = "udp";
     // Discord.js準拠の暗号化モード（実装済みのもののみ）
     public static readonly string[] SUPPORTED_ENCRYPTION_MODES = { 
         "xsalsa20_poly1305", 
@@ -90,7 +86,7 @@ public static class ErrorHandler {
 }
 public class DiscordBotClient : MonoBehaviour, IDisposable {
     [Header("Debug Settings")]
-    public bool enableDebugLogging = true;
+    public bool enableDebugLogging = false; // ログ削減のためデフォルトを無効に
     [Header("Discord Settings")]
     private string discordToken;
     private string guildId;
@@ -113,7 +109,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private DiscordVoiceUdpManager _voiceUdpManager;
     private string _sessionId;
     // Voice Gateway関連
-    private UdpClient _voiceUdpClient;
     private string _voiceToken;
     private string _voiceEndpoint;
     private string _voiceSessionId;
@@ -127,7 +122,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     // Discord.js VoiceUDPSocket.ts準拠のKeep Alive
     private System.Timers.Timer _keepAliveTimer;
     private uint _keepAliveCounter = 0;
-    private const int KEEP_ALIVE_INTERVAL = DiscordConstants.UDP_SEND_TIMEOUT; // 5秒
+    private const int KEEP_ALIVE_INTERVAL = 5000; // 5秒
     private const uint MAX_COUNTER_VALUE = uint.MaxValue;
     // 音声処理統計
     private static int _opusErrors = 0;
@@ -536,7 +531,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _voiceUdpManager.SetOurSSRC(_ourSSRC);
         
         LogMessage($"🔐 Available encryption modes: [{string.Join(", ", _availableModes)}]");
-        await SetupUdpClient();
+        // DiscordVoiceUdpManagerに委譲
+        await _voiceUdpManager.SetupUdpClient(_voiceServerEndpoint, false);
     }
 
     /// <summary>
@@ -751,30 +747,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// 音声受信用にUDPクライアントをセットアップします。
     /// </summary>
     private async Task SetupUdpClientForAudio() {
-        await SetupUdpClient(true);
-    }
-
-    /// <summary>
-    /// UDPクライアントをセットアップする統合メソッド
-    /// </summary>
-    /// <param name="forAudio">音声受信用かどうか</param>
-    private async Task SetupUdpClient(bool forAudio = false) {
-        await ErrorHandler.SafeExecuteAsync<bool>(async () => {
-            // 音声受信用の場合は既存クライアントをチェック
-            if (forAudio && _voiceUdpClient != null) {
-                return true;
-            }
-            _voiceUdpClient?.Close();
-            _voiceUdpClient?.Dispose();
-            _voiceUdpClient = new UdpClient();
-            _voiceUdpClient.Client.ReceiveBufferSize = DiscordConstants.UDP_BUFFER_SIZE;
-            _voiceUdpClient.Client.SendBufferSize = DiscordConstants.UDP_BUFFER_SIZE;
-            _voiceUdpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-            _voiceUdpClient.Client.ReceiveTimeout = 0;
-            _voiceUdpClient.Client.SendTimeout = DiscordConstants.UDP_SEND_TIMEOUT;
-            LogMessage($"UDP client set up successfully (forAudio: {forAudio})");
-            return true;
-        }, "UDP setup", LogError);
+        // DiscordVoiceUdpManagerに委譲
+        await _voiceUdpManager.SetupUdpClient(_voiceServerEndpoint, true);
     }
 
     /// <summary>
@@ -828,30 +802,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// </summary>
     private void StartKeepAlive() {
         _voiceUdpManager.StartKeepAlive();
-    }
-
-    /// <summary>
-    /// Keep-AliveパケットをVoice Serverに送信します。
-    /// </summary>
-    private async Task SendKeepAlive() {
-        try {
-            if (_voiceUdpClient == null || _voiceServerEndpoint == null) {
-                return;
-            }
-            // Discord.js VoiceUDPSocket.ts準拠：8バイトKeep Aliveバッファ
-            var keepAliveBuffer = new byte[8];
-            // カウンターを書き込み（Little Endian）
-            var counterBytes = BitConverter.GetBytes(_keepAliveCounter);
-            Array.Copy(counterBytes, 0, keepAliveBuffer, 0, 4);
-            await _voiceUdpClient.SendAsync(keepAliveBuffer, keepAliveBuffer.Length, _voiceServerEndpoint);
-            // Discord.js VoiceUDPSocket.ts準拠：カウンター増加とオーバーフロー処理
-            _keepAliveCounter++;
-            if (_keepAliveCounter > MAX_COUNTER_VALUE) {
-                _keepAliveCounter = 0;
-            }
-        } catch (Exception ex) {
-            LogMessage($"❌ Keep alive error: {ex.Message}");
-        }
     }
 
     /// <summary>
@@ -935,10 +885,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _keepAliveTimer?.Stop();
         _keepAliveTimer?.Dispose();
         _keepAliveTimer = null;
-        
-        _voiceUdpClient?.Close();
-        _voiceUdpClient?.Dispose();
-        _voiceUdpClient = null;
         
         _httpClient?.Dispose();
         _httpClient = null;

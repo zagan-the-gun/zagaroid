@@ -16,6 +16,11 @@ using Newtonsoft.Json;
 /// </summary>
 public class DiscordNetworkManager : IDisposable
 {
+    // メインゲートウェイ専用の定数
+    private const string DISCORD_OS = "unity";
+    private const string DISCORD_BROWSER = "unity-bot";
+    private const string DISCORD_DEVICE = "unity-bot";
+    
     // イベント
     public delegate void DiscordLogDelegate(string logMessage);
     public event DiscordLogDelegate OnDiscordLog;
@@ -61,9 +66,9 @@ public class DiscordNetworkManager : IDisposable
                 token = token,
                 intents = DiscordConstants.DISCORD_INTENTS,
                 properties = new {
-                    os = DiscordConstants.DISCORD_OS,
-                    browser = DiscordConstants.DISCORD_BROWSER,
-                    device = DiscordConstants.DISCORD_DEVICE
+                    os = DISCORD_OS,
+                    browser = DISCORD_BROWSER,
+                    device = DISCORD_DEVICE
                 }
             }
         };

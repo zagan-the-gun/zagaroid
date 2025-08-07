@@ -117,9 +117,9 @@ public class MultiPortWebSocketServer : MonoBehaviour {
 
     // 各 WebSocketBehavior からメッセージを受け取り、対応するポートのイベントを発行する
     public void HandleMessage(int port, string user, string message) {
-        Debug.Log($"MultiPortWebSocketServer: メッセージ受信 (スレッド: {System.Threading.Thread.CurrentThread.ManagedThreadId}) - ポート: {port}, ユーザー: {user}, メッセージ: {message}");
+        // ログを削減: メッセージ受信の詳細ログを削除
         Enqueue(() => {
-            Debug.Log($"HandleMessage (メインスレッド): ポート: {port}, ユーザー: {user}, メッセージ: {message}");
+            // ログを削減: メインスレッドでの処理ログを削除
             if (port == 50001) {
             // if (port == 50000) {
                 OnMessageReceivedFromPort50001?.Invoke(user, message);
@@ -144,18 +144,18 @@ public class MultiPortWebSocketServer : MonoBehaviour {
     // ポート50001用のエコーサービス (内部クラス)
     private class EchoService1 : WebSocketBehavior {
         protected override void OnMessage(MessageEventArgs e) {
-            Debug.Log($"EchoService1 Received on port 50001 (スレッド: {System.Threading.Thread.CurrentThread.ManagedThreadId}): {e.Data}");
+            // ログを削減: EchoService1の受信ログを削除
             Instance?.HandleMessage(50001, MultiPortWebSocketServer.Instance.mySubtitle, e.Data);
             // Instance?.HandleMessage(50000, MultiPortWebSocketServer.Instance.mySubtitle, e.Data);
             // ポート50001ではエコーバックなし
         }
 
         protected override void OnOpen() {
-            Debug.Log($"EchoService1: クライアント接続 (ポート 50001)");
+            // ログを削減: EchoService1の接続ログを削除
         }
 
         protected override void OnClose(CloseEventArgs e) {
-            Debug.Log($"EchoService1: クライアント切断 (ポート 50001) - コード: {e.Code}, 理由: {e.Reason}");
+            // ログを削減: EchoService1の切断ログを削除
         }
 
         protected override void OnError(ErrorEventArgs e) {
@@ -166,17 +166,17 @@ public class MultiPortWebSocketServer : MonoBehaviour {
     // ポート50002用のエコーサービス (内部クラス)
     private class EchoService2 : WebSocketBehavior {
         protected override void OnMessage(MessageEventArgs e) {
-            Debug.Log($"EchoService2 Received on port 50002 (スレッド: {System.Threading.Thread.CurrentThread.ManagedThreadId}): {e.Data}");
+            // ログを削減: EchoService2の受信ログを削除
             Instance?.HandleMessage(50002, "ksk_subtitles", e.Data);
             Send($"Echo from port 50002: {e.Data}");
         }
 
         protected override void OnOpen() {
-            Debug.Log($"EchoService2: クライアント接続 (ポート 50002)");
+            // ログを削減: EchoService2の接続ログを削除
         }
 
         protected override void OnClose(CloseEventArgs e) {
-            Debug.Log($"EchoService2: クライアント切断 (ポート 50002) - コード: {e.Code}, 理由: {e.Reason}");
+            // ログを削減: EchoService2の切断ログを削除
         }
 
         protected override void OnError(ErrorEventArgs e) {

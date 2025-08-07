@@ -75,7 +75,7 @@ public class VoiceVoxApiClient {
                     // リクエスト成功
                     _audioQuery = request.downloadHandler.text;
                     _audioQueryBytes = request.downloadHandler.data;
-                    // Debug.Log("AudioQuery:" + request.downloadHandler.text);
+                    // ログを削減: AudioQueryレスポンスログを削除
                 } else {
                     // リクエスト失敗
                     Debug.Log("AudioQuery:" + request.responseCode);
@@ -133,13 +133,13 @@ public class VoiceVoxApiClient {
         if (speakersList.Count > 0) {
             int randomIndex = UnityEngine.Random.Range(0, speakersList.Count);
             Speaker randomSpeaker = speakersList[randomIndex];
-            // Debug.Log($"ランダムに選ばれた話者: {randomSpeaker.name} (UUID: {randomSpeaker.speaker_uuid})");
+            // ログを削減: ランダム話者選択ログを削除
 
             // スタイルをランダムに選択
             if (randomSpeaker.styles != null && randomSpeaker.styles.Count > 0) {
                 int randomStyleIndex = UnityEngine.Random.Range(0, randomSpeaker.styles.Count);
                 SpeakerStyle randomStyle = randomSpeaker.styles[randomStyleIndex];
-                Debug.Log($"name: {randomSpeaker.name}, style: {randomStyle.name}, (ID: {randomStyle.id})");
+                // ログを削減: 話者スタイル情報ログを削除
                 // yield return randomStyle.id;
                 callback(randomStyle.id); // コールバックを呼び出してスタイルIDを返す
             } else {
@@ -169,7 +169,7 @@ public class VoiceVoxApiClient {
                 if (request.responseCode == 200) {
                     // リクエスト成功
                     string jsonResponse = request.downloadHandler.text;
-                    // Debug.Log("Speakers: " + jsonResponse);
+                    // ログを削減: 話者リストログを削除
                     
                     // JSONをパースして話者情報を取得する処理を追加
                     ParseSpeakers(jsonResponse);

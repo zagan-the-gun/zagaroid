@@ -84,7 +84,7 @@ public class UnityTwitchChatController : MonoBehaviour {
 
     // セントラルマネージャーから情報を受け取るイベント
     void HandleTwitchMessageSend(string text) {
-        Debug.Log("Global Message Received: " + text);
+        // ログを削減: グローバルメッセージ受信ログを削除
         // messageをTwitchコメントに送信 (ライブラリの送信メソッドに合わせて修正が必要)
         IRC.Instance.SendChatMessage(text);
     }
@@ -96,7 +96,7 @@ public class UnityTwitchChatController : MonoBehaviour {
             return;
         }
 
-        Debug.Log($" {chatter.tags.displayName}: {chatter.message}");
+        // ログを削減: チャッターメッセージログを削除
 
         // セントラルマネージャーへ送信
         SendCentralManager(chatter.tags.displayName, chatter.message);
@@ -107,11 +107,11 @@ public class UnityTwitchChatController : MonoBehaviour {
             Debug.LogWarning("受信したアラートがnullです");
             return;
         }
-        // Debug.Log($" Connection Alert: {alert}");
+        // ログを削減: 接続アラートログを削除
         switch (alert) {
             case IRCReply.PONG_RECEIVED:
                 lastPongReceivedTime = DateTime.Now;
-                // Debug.Log($" PONG を受信しました。詳細: {alert}");
+                // ログを削減: PONG受信ログを削除
                 break;
             case IRCReply.NO_CONNECTION:
                 Debug.LogError($"Twitch IRC への接続に失敗しました。 詳細: {alert}");
@@ -126,7 +126,7 @@ public class UnityTwitchChatController : MonoBehaviour {
                 // 設定画面へ誘導するなどの処理
                 break;
             case IRCReply.CONNECTED_TO_SERVER:
-                Debug.Log($"Twitch IRC サーバーに接続しました。 詳細: {alert}");
+                // ログを削減: IRCサーバー接続ログを削除
                 // 接続成功時の UI 更新などの処理
                 break;
             case IRCReply.CONNECTION_INTERRUPTED:
@@ -138,12 +138,12 @@ public class UnityTwitchChatController : MonoBehaviour {
                 // IRC.Instance.Connect();
                 break;
             case IRCReply.JOINED_CHANNEL:
-                Debug.Log($"チャンネルに参加しました。 詳細: {alert}");
+                // ログを削減: チャンネル参加ログを削除
                 // チャンネル参加成功時の UI 更新などの処理
                 isTwitchConnected = true;
                 break;
             default:
-                Debug.Log($" その他の接続アラート 詳細: {alert}");
+                // ログを削減: その他の接続アラートログを削除
                 break;
         }
     }
