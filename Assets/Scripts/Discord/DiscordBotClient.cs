@@ -499,7 +499,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             if (speaking) {
                 LogMessage($"DEAD BEEF 3 HandleVoiceSpeaking", LogLevel.Debug);
                 _targetUserSpeaking = true; // ターゲットユーザーの発話開始
-                _audioBuffer?.ClearBuffer();
             } else {
                 LogMessage($"DEAD BEEF 4 HandleVoiceSpeaking", LogLevel.Debug);
                 _targetUserSpeaking = false; // ターゲットユーザーの発話終了
@@ -507,7 +506,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 _audioBuffer?.ProcessBufferedAudio();
             }
         }
-        // Discord.js準拠: speaking.endは無視 - 無音検出に任せる
     }
 
     /// <summary>
@@ -1146,8 +1144,8 @@ public class DiscordVoiceNetworkManager {
         
         // 全チャンクの合計サンプル数を計算
         int totalSamples = audioChunks.Sum(chunk => chunk.Length);
-        // 最小バッファサイズチェック（0.5秒分）
-        int minSamples = sampleRate / 2; // 0.5秒分
+        // 最小バッファサイズチェック（0.２秒分）
+        int minSamples = sampleRate / 5; // 0.2秒分
         if (totalSamples < minSamples) {
             // 小さすぎるバッファは処理しない
             return;
