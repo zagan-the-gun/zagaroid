@@ -36,7 +36,7 @@ public static class DiscordConstants {
     // Discord Gateway関連
     public const int DISCORD_INTENTS = 32509;
     // 無音検出関連
-    public const float SILENCE_THRESHOLD = 0.005f; // 無音判定の閾値（音量レベル）- より寛容に設定
+    public const float SILENCE_THRESHOLD = 0.001f; // 無音判定の閾値（音量レベル）- 発話冒頭欠けを防ぐため更に下げた
     public const int SILENCE_DURATION_MS = 1000; // 無音継続時間（ミリ秒）- より長く設定
 }
 
@@ -96,7 +96,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private string _voiceEndpoint;
     private string _voiceSessionId;
     private IPEndPoint _voiceServerEndpoint;
-    private Dictionary<uint, string> _ssrcToUserMap = new Dictionary<uint, string>();
     private uint _ourSSRC;
     private byte[] _secretKey;
     // Discord.js準拠の接続データ
@@ -115,6 +114,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     // 無音検出によるバッファリング
     private DiscordVoiceNetworkManager _audioBuffer;
     private bool _targetUserSpeaking = false;
+    
+    // 役割集約により、プレロールはUDP側に移譲（このクラスでは保持しない）
     
     // メインスレッドで実行するためのキュー
     private readonly Queue<Action> _mainThreadActions = new Queue<Action>();
@@ -186,16 +187,12 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// </summary>
     private void OnAudioPacketReceived(byte[] opusData, uint ssrc, string userId) {
         try {
-            // ターゲットユーザーのSSRCかチェック
-            if (_ssrcToUserMap.ContainsKey(ssrc)) {
-                // 非同期でOpusデータをPCMに変換してAudioBufferに追加
+            // UDP層でuserId付与済み。ここでは対象ユーザのみ処理
+            if (!string.IsNullOrEmpty(userId) && userId == targetUserId) {
                 _ = Task.Run(async () => {
                     try {
-                        // OpusデータをPCMデータに変換
                         var pcmData = AdvancedDecodeOpusToPcm(opusData);
-                        
                         if (pcmData != null) {
-                            // AudioBufferに追加
                             _audioBuffer?.AddAudioData(pcmData);
                         }
                     } catch (Exception ex) {
@@ -351,7 +348,12 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         
         // 音量レベル計算
         audioLevel = CalculateAudioLevel(audioData);
-        return audioLevel > DiscordConstants.SILENCE_THRESHOLD;
+        bool isValid = audioLevel > DiscordConstants.SILENCE_THRESHOLD;
+        
+        // 🔧 デバッグ: 音量レベルをログ出力（発話冒頭欠けの調査用）
+        LogMessage($"VOICE_VOLUME: Audio level={audioLevel:F6}, threshold={DiscordConstants.SILENCE_THRESHOLD:F6}, valid={isValid}", LogLevel.Debug);
+        
+        return isValid;
     }
 
     /// <summary>
@@ -491,14 +493,16 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         
         if (userId == null) return;
         
-        // Discord.js準拠: SSRCマッピングを動的に管理
-        _ssrcToUserMap[ssrc] = userId;
+        // SSRCマッピングはUDP層で一元管理
+        _voiceUdpManager?.SetSSRCMapping(ssrc, userId);
         
         if (userId == targetUserId) {
             LogMessage($"DEAD BEEF 2 HandleVoiceSpeaking", LogLevel.Debug);
             if (speaking) {
                 LogMessage($"DEAD BEEF 3 HandleVoiceSpeaking", LogLevel.Debug);
                 _targetUserSpeaking = true; // ターゲットユーザーの発話開始
+
+                // プレロールのフラッシュはUDP層で実施済み
             } else {
                 LogMessage($"DEAD BEEF 4 HandleVoiceSpeaking", LogLevel.Debug);
                 _targetUserSpeaking = false; // ターゲットユーザーの発話終了
@@ -881,7 +885,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _httpClient?.Dispose();
         _httpClient = null;
         
-        _ssrcToUserMap.Clear();
+        // SSRCマッピングはUDP層で管理
         
         // AudioBufferのクリーンアップ
         if (_audioBuffer != null) {
@@ -1113,6 +1117,9 @@ public class DiscordVoiceNetworkManager {
         // 音声レベルを計算
         float audioLevel = CalculateAudioLevel(pcmData);
         bool isSilent = audioLevel < silenceThreshold;
+        
+        // 🔧 デバッグ: バッファ追加時の音量レベルをログ出力
+        UnityEngine.Debug.Log($"VOICE_BUFFER: Adding audio chunk - level={audioLevel:F6}, threshold={silenceThreshold:F6}, silent={isSilent}, samples={pcmData.Length}");
         
         // 音声データをバッファに追加
         audioChunks.Add(pcmData);

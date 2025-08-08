@@ -68,6 +68,11 @@ public class DiscordVoiceUdpManager : IDisposable
     private Dictionary<uint, string> _ssrcToUserMap = new Dictionary<uint, string>();
     private uint _ourSSRC;
     
+    // SSRC判定レース対策: SSRCごとのOpusプレロールバッファ
+    private readonly Dictionary<uint, Queue<byte[]>> _preRollOpusBySsrc = new Dictionary<uint, Queue<byte[]>>();
+    private readonly object _preRollLock = new object();
+    private const int PREROLL_MAX_FRAMES = 15; // 約300ms
+    
     // ログレベル管理
     private enum LogLevel { Debug, Info, Warning, Error }
     private bool _enableDebugLogging = true;
@@ -388,7 +393,7 @@ public class DiscordVoiceUdpManager : IDisposable
                           (((ssrc >> 16) & 0xFF) << 8) | ((ssrc >> 24) & 0xFF);
                 }
 
-                // ユーザーIDを取得
+                // ユーザーIDを取得（未マッピングの可能性あり）
                 string userId = null;
                 _ssrcToUserMap.TryGetValue(ssrc, out userId);
                 
@@ -396,8 +401,22 @@ public class DiscordVoiceUdpManager : IDisposable
                 byte[] processedOpusData = ProcessAudioData(packet);
                 
                 if (processedOpusData != null) {
-                    // 処理済みのOpusデータをイベントで発行
-                    OnAudioPacketReceived?.Invoke(processedOpusData, ssrc, userId);
+                    if (!string.IsNullOrEmpty(userId)) {
+                        // マッピング済みなら即時発行
+                        OnAudioPacketReceived?.Invoke(processedOpusData, ssrc, userId);
+                    } else {
+                        // 未マッピングならプレロールに積む
+                        lock (_preRollLock) {
+                            if (!_preRollOpusBySsrc.TryGetValue(ssrc, out var queue)) {
+                                queue = new Queue<byte[]>();
+                                _preRollOpusBySsrc[ssrc] = queue;
+                            }
+                            queue.Enqueue(processedOpusData);
+                            while (queue.Count > PREROLL_MAX_FRAMES) {
+                                queue.Dequeue();
+                            }
+                        }
+                    }
                 }
             }
         } catch (Exception ex) {
@@ -590,6 +609,25 @@ public class DiscordVoiceUdpManager : IDisposable
     public void SetSSRCMapping(uint ssrc, string userId) {
         _ssrcToUserMap[ssrc] = userId;
         LogMessage($"👤 SSRC mapping set: {ssrc} -> {userId}", LogLevel.Debug);
+
+        // プレロールをフラッシュ
+        Queue<byte[]> preRoll = null;
+        lock (_preRollLock) {
+            if (_preRollOpusBySsrc.TryGetValue(ssrc, out var queue) && queue.Count > 0) {
+                preRoll = new Queue<byte[]>(queue);
+                _preRollOpusBySsrc[ssrc] = new Queue<byte[]>();
+            }
+        }
+        if (preRoll != null) {
+            while (preRoll.Count > 0) {
+                var opus = preRoll.Dequeue();
+                try {
+                    OnAudioPacketReceived?.Invoke(opus, ssrc, userId);
+                } catch (Exception ex) {
+                    LogMessage($"⚠️ PreRoll dispatch error: {ex.Message}", LogLevel.Warning);
+                }
+            }
+        }
     }
     
     /// <summary>
