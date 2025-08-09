@@ -243,8 +243,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             _audioBuffer = new DiscordVoiceNetworkManager(
                 DiscordConstants.SILENCE_THRESHOLD,
                 DiscordConstants.SILENCE_DURATION_MS,
-                DiscordConstants.SAMPLE_RATE_48K,
-                DiscordConstants.CHANNELS_STEREO,
+                DiscordConstants.WITA_API_SAMPLE_RATE, // 16kHz
+                DiscordConstants.WITA_API_CHANNELS,    // モノラル
                 EnqueueMainThreadAction // コールバック関数を渡す
             );
             
