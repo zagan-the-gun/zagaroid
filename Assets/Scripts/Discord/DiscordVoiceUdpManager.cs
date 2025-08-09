@@ -68,10 +68,12 @@ public class DiscordVoiceUdpManager : IDisposable
     private Dictionary<uint, string> _ssrcToUserMap = new Dictionary<uint, string>();
     private uint _ourSSRC;
     
-    // SSRC判定レース対策: SSRCごとのOpusプレロールバッファ
-    private readonly Dictionary<uint, Queue<byte[]>> _preRollOpusBySsrc = new Dictionary<uint, Queue<byte[]>>();
+    // SSRC判定レース対策: SSRCごとのOpusプレロールバッファ（時間基準）
+    private class PrerollFrame { public byte[] opusData; public DateTime enqueuedAtUtc; }
+    private readonly Dictionary<uint, Queue<PrerollFrame>> _preRollOpusBySsrc = new Dictionary<uint, Queue<PrerollFrame>>();
     private readonly object _preRollLock = new object();
-    private const int PREROLL_MAX_FRAMES = 15; // 約300ms
+    private const int PREROLL_MAX_FRAMES = 32; // 安全上限
+    private const int PREROLL_MAX_DURATION_MS = 300; // 最大保持時間（ms）
     
     // ログレベル管理
     private enum LogLevel { Debug, Info, Warning, Error }
@@ -405,15 +407,22 @@ public class DiscordVoiceUdpManager : IDisposable
                         // マッピング済みなら即時発行
                         OnAudioPacketReceived?.Invoke(processedOpusData, ssrc, userId);
                     } else {
-                        // 未マッピングならプレロールに積む
+                        // 未マッピングならプレロールに積む（時間基準で古いものは捨てる）
                         lock (_preRollLock) {
                             if (!_preRollOpusBySsrc.TryGetValue(ssrc, out var queue)) {
-                                queue = new Queue<byte[]>();
+                                queue = new Queue<PrerollFrame>();
                                 _preRollOpusBySsrc[ssrc] = queue;
                             }
-                            queue.Enqueue(processedOpusData);
-                            while (queue.Count > PREROLL_MAX_FRAMES) {
-                                queue.Dequeue();
+                            var frame = new PrerollFrame { opusData = processedOpusData, enqueuedAtUtc = DateTime.UtcNow };
+                            queue.Enqueue(frame);
+                            while (queue.Count > 0) {
+                                var head = queue.Peek();
+                                var ageMs = (int)(DateTime.UtcNow - head.enqueuedAtUtc).TotalMilliseconds;
+                                if (ageMs > PREROLL_MAX_DURATION_MS || queue.Count > PREROLL_MAX_FRAMES) {
+                                    queue.Dequeue();
+                                } else {
+                                    break;
+                                }
                             }
                         }
                     }
@@ -431,6 +440,7 @@ public class DiscordVoiceUdpManager : IDisposable
         try {
             // RTPヘッダーを抽出
             var rtpHeader = ExtractRtpHeader(packet);
+            int headerLen = IsRtpsizeMode(_encryptionMode) ? GetUnencryptedHeaderLength(packet) : RTP_HEADER_SIZE;
             
             // 暗号化された音声データを抽出
             var encryptedData = ExtractEncryptedData(packet);
@@ -458,8 +468,10 @@ public class DiscordVoiceUdpManager : IDisposable
     /// RTPヘッダーを抽出
     /// </summary>
     private byte[] ExtractRtpHeader(byte[] packet) {
-        var rtpHeader = new byte[RTP_HEADER_SIZE];
-        Array.Copy(packet, 0, rtpHeader, 0, RTP_HEADER_SIZE);
+        int headerLen = IsRtpsizeMode(_encryptionMode) ? GetUnencryptedHeaderLength(packet) : RTP_HEADER_SIZE;
+        if (headerLen < RTP_HEADER_SIZE || headerLen > packet.Length) headerLen = RTP_HEADER_SIZE;
+        var rtpHeader = new byte[headerLen];
+        Array.Copy(packet, 0, rtpHeader, 0, headerLen);
         return rtpHeader;
     }
     
@@ -467,9 +479,31 @@ public class DiscordVoiceUdpManager : IDisposable
     /// 暗号化されたデータを抽出
     /// </summary>
     private byte[] ExtractEncryptedData(byte[] packet) {
-        var encryptedData = new byte[packet.Length - RTP_HEADER_SIZE];
-        Array.Copy(packet, RTP_HEADER_SIZE, encryptedData, 0, encryptedData.Length);
+        int headerLen = IsRtpsizeMode(_encryptionMode) ? GetUnencryptedHeaderLength(packet) : RTP_HEADER_SIZE;
+        if (headerLen < RTP_HEADER_SIZE || headerLen > packet.Length) headerLen = RTP_HEADER_SIZE;
+        var encryptedData = new byte[packet.Length - headerLen];
+        Array.Copy(packet, headerLen, encryptedData, 0, encryptedData.Length);
         return encryptedData;
+    }
+
+    // rtpsize系（aead_*_rtpsize / xsalsa20_poly1305_lite_rtpsize）かどうか
+    private bool IsRtpsizeMode(string mode)
+    {
+        if (string.IsNullOrEmpty(mode)) return false;
+        return mode.Contains("rtpsize");
+    }
+
+    // 未暗号化RTPヘッダー長（12 + 4*CC + (X?4:0)）
+    private int GetUnencryptedHeaderLength(byte[] packet)
+    {
+        if (packet == null || packet.Length < RTP_HEADER_SIZE) return RTP_HEADER_SIZE;
+        byte b0 = packet[0];
+        int cc = b0 & 0x0F;               // CC: CSRC count
+        bool x = (b0 & 0x10) != 0;        // X: extension flag
+        int headerLen = RTP_HEADER_SIZE + (cc * 4) + (x ? 4 : 0);
+        // 上限ガード
+        if (headerLen > packet.Length) headerLen = RTP_HEADER_SIZE;
+        return headerLen;
     }
     
     /// <summary>
@@ -480,16 +514,13 @@ public class DiscordVoiceUdpManager : IDisposable
     }
     
     /// <summary>
-    /// Discordの音声パケットから純粋なOpusデータを抽出
+    /// 復号済みペイロードからOpusデータを抽出（RTPヘッダーは既に取り除かれている想定）
     /// </summary>
-    private byte[] ExtractOpusFromDiscordPacket(byte[] discordPacket) {
-        if (discordPacket?.Length <= DISCORD_HEADER_SIZE) {
+    private byte[] ExtractOpusFromDiscordPacket(byte[] decryptedPayload) {
+        if (decryptedPayload == null || decryptedPayload.Length == 0) {
             return null;
         }
-        // Opusデータ部分を抽出（12バイト後から）
-        var opusData = new byte[discordPacket.Length - DISCORD_HEADER_SIZE];
-        Array.Copy(discordPacket, DISCORD_HEADER_SIZE, opusData, 0, opusData.Length);
-        return opusData;
+        return decryptedPayload;
     }
     
     /// <summary>
@@ -514,19 +545,24 @@ public class DiscordVoiceUdpManager : IDisposable
     /// <param name="availableModes">サーバーから提供された利用可能なモードの配列。</param>
     /// <returns>選択された暗号化モードの文字列。</returns>
     public string ChooseEncryptionMode(string[] availableModes) {
-        if (availableModes == null) {
+        if (availableModes == null || availableModes.Length == 0) {
+            LogMessage("⚠️ Available encryption modes not provided; defaulting to xsalsa20_poly1305", LogLevel.Warning);
             return DEFAULT_ENCRYPTION_MODE;
         }
+
+        // サポート済みモードを優先的に選択
         foreach (var supportedMode in SUPPORTED_ENCRYPTION_MODES) {
             if (availableModes.Contains(supportedMode)) {
                 LogMessage($"🔐 Selected encryption mode: {supportedMode}", LogLevel.Info);
                 return supportedMode;
             }
         }
-        // フォールバック：利用可能なモードの最初のもの
-        var fallbackMode = availableModes.Length > 0 ? availableModes[0] : DEFAULT_ENCRYPTION_MODE;
-        LogMessage($"🔐 Using fallback encryption mode: {fallbackMode}", LogLevel.Warning);
-        return fallbackMode;
+
+        // サポート外のみが提示された場合は安全に拒否する（未対応モードを選ばない）
+        LogMessage($"❌ No supported encryption modes available. Server offered: [{string.Join(", ", availableModes)}]", LogLevel.Error);
+        // どうしても選ぶ必要がある場合はここで return availableModes[0] するが、復号不能となる。
+        // 現状は既知モードが無い場合は既定値を返し、上位で再試行/失敗処理を行う。
+        return DEFAULT_ENCRYPTION_MODE;
     }
     
     /// <summary>
@@ -611,18 +647,18 @@ public class DiscordVoiceUdpManager : IDisposable
         LogMessage($"👤 SSRC mapping set: {ssrc} -> {userId}", LogLevel.Debug);
 
         // プレロールをフラッシュ
-        Queue<byte[]> preRoll = null;
+        Queue<PrerollFrame> preRoll = null;
         lock (_preRollLock) {
             if (_preRollOpusBySsrc.TryGetValue(ssrc, out var queue) && queue.Count > 0) {
-                preRoll = new Queue<byte[]>(queue);
-                _preRollOpusBySsrc[ssrc] = new Queue<byte[]>();
+                preRoll = new Queue<PrerollFrame>(queue);
+                _preRollOpusBySsrc[ssrc] = new Queue<PrerollFrame>();
             }
         }
         if (preRoll != null) {
             while (preRoll.Count > 0) {
-                var opus = preRoll.Dequeue();
+                var frame = preRoll.Dequeue();
                 try {
-                    OnAudioPacketReceived?.Invoke(opus, ssrc, userId);
+                    OnAudioPacketReceived?.Invoke(frame.opusData, ssrc, userId);
                 } catch (Exception ex) {
                     LogMessage($"⚠️ PreRoll dispatch error: {ex.Message}", LogLevel.Warning);
                 }

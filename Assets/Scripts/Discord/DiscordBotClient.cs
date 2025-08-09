@@ -110,6 +110,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private static int _opusErrors = 0;
     // 音声処理関連
     private IOpusDecoder _opusDecoder;
+    private readonly object _opusDecodeLock = new object();
     private HttpClient _httpClient;
     // 無音検出によるバッファリング
     private DiscordVoiceNetworkManager _audioBuffer;
@@ -760,13 +761,48 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             }
             
             // オリジナルBOT準拠: シンプルなデコード
-            // 固定バッファサイズ（最大60ms at 48kHz）
-            int maxFrameSize = 2880; // 60ms at 48kHz
+            // 固定バッファサイズ（最大120ms at 48kHz）
+            int maxFrameSize = 5760; // 120ms at 48kHz (安全側)
             int safeBufferSize = maxFrameSize * DiscordConstants.CHANNELS_STEREO;
             short[] pcmData = new short[safeBufferSize];
             
             // シンプルなデコード（フレームサイズは自動検出に任せる）
-            int decodedSamples = _opusDecoder.Decode(opusData, pcmData, maxFrameSize, false);
+            // RTP拡張プレアンブル(0xBE,0xDE)が先頭に残っている場合は確定的に除去（12B）
+            byte[] inputOpus = opusData;
+            if (opusData != null && opusData.Length >= 12 && opusData[0] == 0xBE && opusData[1] == 0xDE)
+            {
+                var trimmed = new byte[opusData.Length - 12];
+                Array.Copy(opusData, 12, trimmed, 0, trimmed.Length);
+                inputOpus = trimmed;
+                // Debug: 無効化済み
+            }
+
+            // デバッグログ出力は無効化
+            int decodedSamples;
+            try {
+                lock (_opusDecodeLock) {
+                    decodedSamples = _opusDecoder.Decode(inputOpus, pcmData, maxFrameSize, false);
+                }
+            } catch (Exception)
+            {
+                // 例外時フォールバック: 先頭に余分なヘッダが含まれている可能性を考慮
+                if (inputOpus != null && inputOpus.Length > 12)
+                {
+                    var alt = new byte[inputOpus.Length - 12];
+                    Array.Copy(inputOpus, 12, alt, 0, alt.Length);
+                    short[] pcmAlt = new short[safeBufferSize];
+                    lock (_opusDecodeLock) {
+                        decodedSamples = _opusDecoder.Decode(alt, pcmAlt, maxFrameSize, false);
+                    }
+                    if (decodedSamples > 0)
+                    {
+                        short[] monoAlt = ConvertStereoToMono(pcmAlt, decodedSamples * DiscordConstants.CHANNELS_STEREO);
+                        var resultAlt = ResampleAudioData(monoAlt, DiscordConstants.SAMPLE_RATE_48K, DiscordConstants.SAMPLE_RATE_16K);
+                        return resultAlt;
+                    }
+                }
+                throw;
+            }
             if (decodedSamples <= 0) {
                 _opusErrors++;
                 
@@ -774,7 +810,25 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 if (_opusErrors % 10 == 0) {
                     HandleOpusDecoderReset(new Exception($"Decode failed: {decodedSamples}"));
                 }
-
+                // フォールバック: 復号結果にDiscord独自ヘッダー相当が含まれている可能性
+                if (opusData.Length > 12) {
+                    try {
+                        var alt = new byte[opusData.Length - 12];
+                        Array.Copy(opusData, 12, alt, 0, alt.Length);
+                        short[] pcmAlt = new short[safeBufferSize];
+                        int decodedAlt;
+                        lock (_opusDecodeLock) {
+                            decodedAlt = _opusDecoder.Decode(alt, pcmAlt, maxFrameSize, false);
+                        }
+                        if (decodedAlt > 0) {
+                            short[] monoAlt = ConvertStereoToMono(pcmAlt, decodedAlt * DiscordConstants.CHANNELS_STEREO);
+                            var resultAlt = ResampleAudioData(monoAlt, DiscordConstants.SAMPLE_RATE_48K, DiscordConstants.SAMPLE_RATE_16K);
+                            return resultAlt;
+                        }
+                    } catch (Exception) {
+                        // 何もしない（下で例外を出力）
+                    }
+                }
                 return null;
             }
             
