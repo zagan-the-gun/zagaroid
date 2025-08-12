@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using System;
 using System.Collections.Generic;
+using System.Collections;
 
 public class LogUIController : MonoBehaviour {
     [SerializeField] private UIDocument uiDocument;
@@ -16,8 +17,7 @@ public class LogUIController : MonoBehaviour {
     // スクロールが一番下に固定されているかどうか
     private bool isScrolledToBottom = true; 
 
-    // スクロールバーが動いたかどうかを追跡するための過去のスクロールオフセット
-    // private Vector2 lastScrollOffset = Vector2.zero; // これは不要になるので削除
+
 
     void OnEnable() {
         // Unityのシステムログイベントを購読
@@ -35,24 +35,19 @@ public class LogUIController : MonoBehaviour {
             return;
         }
 
-        // フォントを明示的に設定（Text Settings が無い環境向け）
+        // フォントを明示的に設定（UI Toolkit 用）
         if (japaneseFont != null) {
-            // 旧API
-            logTextField.style.unityFont = japaneseFont;
-            // 新API（2022.3+）
             logTextField.style.unityFontDefinition = FontDefinition.FromFont(japaneseFont);
-
-            // 内部の入力要素（unity-text-input）にも適用
-            var inputElement = logTextField.Q("unity-text-input");
-            if (inputElement is TextElement textElement) {
-                textElement.style.unityFont = japaneseFont;
-                textElement.style.unityFontDefinition = FontDefinition.FromFont(japaneseFont);
-            }
         } else {
             Debug.LogWarning("LogUIController: 日本語フォントが未設定です。インスペクタで 'Japanese Font' に NotoSansJP などを割り当ててください。");
         }
 
         logTextField.isReadOnly = true;
+
+        // PanelSettings に TextSettings が未割当なら空の PanelTextSettings を割当
+        if (uiDocument.panelSettings != null && uiDocument.panelSettings.textSettings == null) {
+            uiDocument.panelSettings.textSettings = ScriptableObject.CreateInstance<PanelTextSettings>();
+        }
 
         // TextFieldの親要素であるScrollViewを取得
         logScrollView = logTextField.parent as ScrollView; 
