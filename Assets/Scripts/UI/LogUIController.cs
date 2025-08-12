@@ -5,6 +5,7 @@ using System.Collections.Generic;
 
 public class LogUIController : MonoBehaviour {
     [SerializeField] private UIDocument uiDocument;
+    [SerializeField] private Font japaneseFont; // 日本語グリフを含むフォント（例: NotoSansJP）
 
     private TextField logTextField;
     private ScrollView logScrollView;
@@ -32,6 +33,23 @@ public class LogUIController : MonoBehaviour {
         if (logTextField == null) {
             Debug.LogError("LogUIController: UXML内で 'logOutput' という名前のTextFieldが見つかりません。");
             return;
+        }
+
+        // フォントを明示的に設定（Text Settings が無い環境向け）
+        if (japaneseFont != null) {
+            // 旧API
+            logTextField.style.unityFont = japaneseFont;
+            // 新API（2022.3+）
+            logTextField.style.unityFontDefinition = FontDefinition.FromFont(japaneseFont);
+
+            // 内部の入力要素（unity-text-input）にも適用
+            var inputElement = logTextField.Q("unity-text-input");
+            if (inputElement is TextElement textElement) {
+                textElement.style.unityFont = japaneseFont;
+                textElement.style.unityFontDefinition = FontDefinition.FromFont(japaneseFont);
+            }
+        } else {
+            Debug.LogWarning("LogUIController: 日本語フォントが未設定です。インスペクタで 'Japanese Font' に NotoSansJP などを割り当ててください。");
         }
 
         logTextField.isReadOnly = true;
