@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using System.Timers;
 using UnityEngine;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 /// <summary>
 /// Discord WebSocket通信を管理するクラス
@@ -27,6 +28,14 @@ public class DiscordNetworkManager : IDisposable
     
     public delegate void MessageReceivedDelegate(string message);
     public event MessageReceivedDelegate OnMainGatewayMessageReceived;
+        
+        // メインGateway: Hello受信時（heartbeat interval を通知）
+        public delegate void HelloReceivedDelegate(int heartbeatInterval);
+        public event HelloReceivedDelegate OnHelloReceived;
+        
+        // メインGateway: Dispatch受信時（イベントタイプとデータJSONを通知）
+        public delegate void DispatchReceivedDelegate(string eventType, string dataJson);
+        public event DispatchReceivedDelegate OnDispatchReceived;
     
     public delegate void ConnectionStateChangedDelegate(bool isConnected, string connectionType);
     public event ConnectionStateChangedDelegate OnConnectionStateChanged;
@@ -93,6 +102,9 @@ public class DiscordNetworkManager : IDisposable
     public DiscordNetworkManager(bool enableDebugLogging = true) {
         _enableDebugLogging = enableDebugLogging;
         _cancellationTokenSource = new CancellationTokenSource();
+        
+        // 受信メッセージを内部処理へルーティング
+        OnMainGatewayMessageReceived += ProcessMainGatewayMessage;
     }
     
     /// <summary>
@@ -257,12 +269,60 @@ public class DiscordNetworkManager : IDisposable
                 break;
             }
         }
-        
+
         // 接続状態を更新
         if (connectionName == "Main Gateway")
         {
             _isMainConnected = false;
             OnConnectionStateChanged?.Invoke(false, "Main Gateway");
+        }
+    }
+    
+    /// <summary>
+    /// メインGatewayの受信メッセージを処理（opコードで分岐し、内部状態更新やイベント発火を行う）
+    /// </summary>
+    /// <param name="message">受信したJSON文字列</param>
+    private void ProcessMainGatewayMessage(string message)
+    {
+        try
+        {
+            var payload = JsonConvert.DeserializeObject<DiscordGatewayPayload>(message);
+            if (payload == null) return;
+
+            if (payload.s.HasValue)
+            {
+                UpdateMainSequence(payload.s.Value);
+            }
+
+            switch (payload.op)
+            {
+                case 10: // Hello
+                {
+                    var dJson = payload.d?.ToString();
+                    if (!string.IsNullOrEmpty(dJson))
+                    {
+                        var obj = JObject.Parse(dJson);
+                        var interval = obj.Value<int>("heartbeat_interval");
+                        StartMainHeartbeat(interval);
+                        OnHelloReceived?.Invoke(interval);
+                    }
+                    break;
+                }
+                case 0: // Dispatch
+                {
+                    OnDispatchReceived?.Invoke(payload.t, payload.d?.ToString());
+                    break;
+                }
+                case 11: // Heartbeat ACK
+                {
+                    HandleMainHeartbeatAck();
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"❌ Main Gateway message processing error: {ex.Message}", LogLevel.Error);
         }
     }
     

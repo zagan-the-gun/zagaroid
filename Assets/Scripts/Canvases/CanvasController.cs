@@ -1,20 +1,14 @@
 using UnityEngine;
-using System.Collections.Generic;
 using System.Collections;
 using TMPro;
 
 
 public class CanvasController : MonoBehaviour {
-    [SerializeField] private GameObject mainCanvas; // Main Canvasを指定
-    // [SerializeField] private GameObject menuCanvas; // Menu Canvasを指定
-    [SerializeField] private GameObject logCanvas; // Log Canvasを指定
-    [SerializeField] private GameObject canvas; // 対象のCanvasを指定
 
     [Header("Comment template")]
     [SerializeField] private GameObject commentTemplate; // 流れるコメントのテンプレート
 
-    void Start() {
-    }
+    
 
     void OnEnable() {
         // セントラルマネージャからコメントを受信するイベントを登録
@@ -27,18 +21,13 @@ public class CanvasController : MonoBehaviour {
 
     // セントラルマネージャーから情報を受け取るイベント
     void HandleCanvasCommentSend(string comment) {
-        Debug.Log("Global Message Received: " + comment);
-        // messageをTwitchコメントに送信
         addComment(comment);
     }
 
     // スクロール前にTMPオブジェクトの生成
     private void addComment(string comment) {
-        // テンプレートから新しいコメントオブジェクトを生成
-        // CanvasのTransformを取得
-        Transform canvasTransform = GameObject.Find("Canvas").transform; // "Canvas"はCanvasオブジェクトの名前
-        // Canvasの配下に新しいTMPオブジェクトを生成
-        GameObject newComment = Instantiate(commentTemplate, canvasTransform);
+        // テンプレートから新しいコメントオブジェクトを生成（自身の親Canvas配下へ）
+        GameObject newComment = Instantiate(commentTemplate, transform);
 
         newComment.SetActive(true); // 新しいコメントを表示
 
@@ -59,7 +48,7 @@ public class CanvasController : MonoBehaviour {
             rectTransform.sizeDelta = new Vector2(textWidth, rectTransform.sizeDelta.y); // 幅を設定
             
             // フォントを上下に伸ばす
-            rectTransform.localScale = new Vector3(1f, 1.6f, 1f); // Y軸を1.2倍に伸ばす
+            rectTransform.localScale = new Vector3(1f, 1f, 1f); // Y軸を1.2倍に伸ばす
         } else {
             Debug.LogError("コメントテンプレートが生成されていません！");
         }
@@ -71,17 +60,26 @@ public class CanvasController : MonoBehaviour {
     private IEnumerator scrollComment(GameObject comment) {
         RectTransform rectTransform = comment.GetComponent<RectTransform>();
 
-        // キャンバスのサイズを取得
-        RectTransform canvasRectTransform = canvas.GetComponent<RectTransform>();
-        float canvasHeight = 960;
-        float canvasWidth = 1920;
+        // 表示親(RectTransform)の実サイズを使用
+        RectTransform parentRect = rectTransform.parent as RectTransform;
+        float canvasHeight = parentRect.rect.height;
+        float canvasWidth = parentRect.rect.width;
 
-        // テキストオブジェクトの高さを取得
-        float textHeight = rectTransform.sizeDelta.y;
+        // テキストオブジェクトの高さを取得（フォントサイズ反映のため実サイズを優先）
+        float textHeight = rectTransform.rect.height > 0 ? rectTransform.rect.height : rectTransform.sizeDelta.y;
 
-        // スクロール開始位置をランダムに設定
-        float randomYPosition = UnityEngine.Random.Range(-textHeight, -canvasHeight + textHeight);
-        rectTransform.anchoredPosition = new Vector2(canvasWidth, randomYPosition);
+		// スクロール開始位置をランダムに設定（アンカー/ピボット対応）
+		float yMin = -rectTransform.anchorMin.y * canvasHeight + rectTransform.pivot.y * textHeight;
+		float yMax = (1f - rectTransform.anchorMin.y) * canvasHeight - (1f - rectTransform.pivot.y) * textHeight;
+		float randomYPosition = UnityEngine.Random.Range(yMin, yMax);
+
+        // 右端の画面外から開始（アンカー/ピボット対応の一般式）
+		float textWidth = rectTransform.rect.width > 0 ? rectTransform.rect.width : rectTransform.sizeDelta.x;
+		float startX = (1f - rectTransform.anchorMin.x) * canvasWidth + rectTransform.pivot.x * textWidth; // 左端がちょうど右端に接する位置
+        rectTransform.anchoredPosition = new Vector2(startX, randomYPosition);
+
+        // 監視用ログ（初期配置・サイズ・アンカー/ピボット・Y可視範囲）
+        Debug.Log($"[TICKER] initPos=({rectTransform.anchoredPosition.x:F1},{rectTransform.anchoredPosition.y:F1}) textRect=({rectTransform.rect.width:F1}x{rectTransform.rect.height:F1}) canvasSize=({canvasWidth:F1}x{canvasHeight:F1}) anchors(x={rectTransform.anchorMin.x:F2},y={rectTransform.anchorMin.y:F2}) pivot(x={rectTransform.pivot.x:F2},y={rectTransform.pivot.y:F2}) yRange=({yMin:F1}..{yMax:F1}) parent={parentRect.name}");
 
         // より滑らかなアニメーションのための設定
         float scrollSpeed = 400f; // 超高速スクロール
@@ -89,7 +87,9 @@ public class CanvasController : MonoBehaviour {
         Vector2 velocity = Vector2.zero;
 
         // スクロール処理
-        while (rectTransform.anchoredPosition.x > -rectTransform.sizeDelta.x) {
+        // 左端の画面外まで流れたら終了（アンカー/ピボット対応）
+		float endX = -((1f - rectTransform.pivot.x) * textWidth) - (rectTransform.anchorMin.x * canvasWidth);
+        while (rectTransform.anchoredPosition.x > endX) {
             // より滑らかな移動のためのLerp使用
             Vector2 targetPosition = rectTransform.anchoredPosition + Vector2.left * scrollSpeed * Time.deltaTime;
             rectTransform.anchoredPosition = Vector2.SmoothDamp(

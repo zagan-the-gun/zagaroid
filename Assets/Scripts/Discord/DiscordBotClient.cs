@@ -284,7 +284,13 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         
         // Main Gateway イベントハンドラーを設定
         _networkManager.OnDiscordLog += (message) => LogMessage(message);
-        _networkManager.OnMainGatewayMessageReceived += (message) => _ = ProcessDiscordMessage(message);
+        _networkManager.OnHelloReceived += async (interval) => {
+            // Hello受信時は Identify を送信（HB開始は NetworkManager 内で実行済み）
+            await SendIdentify();
+        };
+        _networkManager.OnDispatchReceived += async (eventType, dataJson) => {
+            await HandleDispatchEvent(eventType, dataJson);
+        };
         _networkManager.OnConnectionStateChanged += OnConnectionStateChanged;
         
         // Voice Gateway イベントハンドラーを設定
@@ -957,31 +963,12 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <summary>
     /// Discordメッセージを処理
     /// </summary>
-    private async Task ProcessDiscordMessage(string message) {
-        try {
-            var payload = JsonConvert.DeserializeObject<DiscordGatewayPayload>(message);
-            if (payload.s.HasValue) {
-                _networkManager.UpdateMainSequence(payload.s.Value);
-            }
-            
-            switch (payload.op) {
-                case 10: await HandleMainHello(payload); break;
-                case 0: await HandleDispatchEvent(payload.t, payload.d.ToString()); break;
-                case 11: _networkManager.HandleMainHeartbeatAck(); break;
-            }
-        } catch (Exception ex) {
-            LogMessage($"Discord message processing error: {ex.Message}");
-        }
-    }
+    // メインGatewayのJSON処理は DiscordNetworkManager に移譲済み
 
     /// <summary>
     /// メインGatewayのHelloメッセージを処理
     /// </summary>
-    private async Task HandleMainHello(DiscordGatewayPayload payload) {
-        var helloData = JsonConvert.DeserializeObject<HelloData>(payload.d.ToString());
-        _networkManager.StartMainHeartbeat(helloData.heartbeat_interval);
-        await SendIdentify();
-    }
+    // Hello は NetworkManager 側で処理し、Identify は OnHelloReceived で送信
 
     /// <summary>
     /// Voice GatewayにIdentifyペイロードを送信し、音声セッションを確立します。
