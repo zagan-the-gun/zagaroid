@@ -322,37 +322,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <summary>
     /// AudioBufferから音声データが準備完了した時の処理
     /// </summary>
-    private void OnAudioBufferReady(float[] audioData, int sampleRate, int channels) {
-        if (!IsValidAudioData(audioData, out float audioLevel)) {
-            LogMessage($"Audio data invalid: {audioData?.Length ?? 0} samples, level={audioLevel:F4}", LogLevel.Debug);
-            return;
-        }
-        
+    private void OnAudioBufferReady(float[] audioData, int sampleRate, int channels) {        
         // PCMデバッグ：複合されたPCMデータを再生
         PlayPcmForDebug(audioData, "Combined Audio");
         
-        LogMessage($"Audio ready: {audioData.Length} samples, level={audioLevel:F4}", LogLevel.Debug);
         StartCoroutine(ProcessAudioCoroutine(audioData));
-    }
-
-    /// <summary>
-    /// 音声データの品質チェック（統合版）
-    /// </summary>
-    private bool IsValidAudioData(float[] audioData, out float audioLevel) {
-        audioLevel = 0f;
-        if (audioData == null || audioData.Length == 0) return false;
-        
-        // 最小長チェック
-        if (audioData.Length < DiscordConstants.WITA_API_SAMPLE_RATE / 2) return false;
-        
-        // 音量レベル計算
-        audioLevel = CalculateAudioLevel(audioData);
-        bool isValid = audioLevel > DiscordConstants.SILENCE_THRESHOLD;
-        
-        // 🔧 デバッグ: 音量レベルをログ出力（発話冒頭欠けの調査用）
-        LogMessage($"VOICE_VOLUME: Audio level={audioLevel:F6}, threshold={DiscordConstants.SILENCE_THRESHOLD:F6}, valid={isValid}", LogLevel.Debug);
-        
-        return isValid;
     }
 
     /// <summary>
@@ -516,18 +490,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         await _voiceUdpManager.SetupUdpClient(_voiceServerEndpoint, false);
     }
 
-    /// <summary>
-    /// PCMデータの音量レベルを計算（RMS方式）
-    /// </summary>
-    private float CalculateAudioLevel(float[] pcmData) {
-        if (pcmData?.Length == 0) return 0f;
-        
-        float sum = 0f;
-        for (int i = 0; i < pcmData.Length; i++) {
-            sum += pcmData[i] * pcmData[i];
-        }
-        return (float)Math.Sqrt(sum / pcmData.Length);
-    }
+    
 
     /// <summary>
     /// 音声データのリサンプリング処理
@@ -588,12 +551,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             if (audioData == null) return "";
             int minSamples = DiscordConstants.WITA_API_SAMPLE_RATE / 2;
             if (audioData.Length < minSamples) return "";
-            float audioLevel = CalculateAudioLevel(audioData);
-            if (audioLevel <= DiscordConstants.SILENCE_THRESHOLD) return "";
             if (_httpClient == null || string.IsNullOrEmpty(witaiToken)) return "";
-
-            // 送信前のPCMデバッグ（任意）
-            PlayPcmForDebug(audioData, $"Pre-Translation (Wit.AI) - Level: {audioLevel:F4}");
 
             // 16kHz/mono の raw PCM に変換して送信
             byte[] rawPcmData = ConvertToRawPcm(audioData, DiscordConstants.WITA_API_SAMPLE_RATE, DiscordConstants.WITA_API_CHANNELS);
@@ -619,6 +577,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         }
     }
 
+    /// <summary>
+    /// Wit.AIのストリーミングレスポンスから最終または最初に得られたテキストを抽出します。
+    /// </summary>
+    /// <param name="payload">Wit.AIから返却された連結JSONまたは改行区切りJSON文字列。</param>
+    /// <returns>抽出したテキスト。見つからない場合はnull。</returns>
     private string ParseWitTextFromPayload(string payload) {
         var responses = new List<WitAIResponse>();
         foreach (var part in EnumerateWitResponseParts(payload)) {
@@ -633,6 +596,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         return first?.text;
     }
 
+    /// <summary>
+    /// Wit.AIのレスポンス文字列を個々のJSON文字列に分割して列挙します。
+    /// </summary>
+    /// <param name="payload">連結JSON、改行区切り、または単一JSONの文字列。</param>
+    /// <returns>各要素が完全なJSON文字列の列挙。</returns>
     private IEnumerable<string> EnumerateWitResponseParts(string payload) {
         if (string.IsNullOrWhiteSpace(payload)) yield break;
         string trimmed = payload.Trim();
@@ -659,6 +627,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         // 3) 単一JSON
         yield return trimmed;
     }
+
     /// <summary>
     /// float形式の音声データを生のPCMデータ（16-bit little-endian）に変換します。
     /// </summary>
@@ -837,9 +806,15 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _voiceGatewayManager.StartHeartbeat(interval);
     }
 
+    /// <summary>
+    /// マネージドリソースを解放します。
+    /// </summary>
     public void Dispose() {
         DisposeResources();
     }
+    /// <summary>
+    /// Botの停止とデコーダの破棄など、内部リソースをまとめて解放します。
+    /// </summary>
     private void DisposeResources() {
         StopBot();
         _opusDecoder?.Dispose();
@@ -1000,9 +975,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     }
 
     /// <summary>
-    /// メインGatewayにメッセージを送信します。
+    /// メインGatewayにIdentifyペイロードを送信します。
     /// </summary>
-    /// <param name="message">送信するJSON文字列。</param>
     private async Task SendIdentify() {
         await _networkManager.SendIdentify(discordToken);
     }
@@ -1072,6 +1046,14 @@ public class DiscordVoiceNetworkManager {
     public event AudioBufferReadyDelegate OnAudioBufferReady;
     private readonly Action<Action> _enqueueMainThreadAction;
 
+    /// <summary>
+    /// 無音検出に基づく音声バッファリングクラスを初期化します。
+    /// </summary>
+    /// <param name="silenceThreshold">無音と判定する音量レベルの閾値。</param>
+    /// <param name="silenceDurationMs">無音継続時間のしきい値（ミリ秒）。</param>
+    /// <param name="sampleRate">内部で扱うサンプルレート。</param>
+    /// <param name="channels">チャンネル数。</param>
+    /// <param name="enqueueMainThreadAction">メインスレッドでコールバックを実行するためのキュー関数。</param>
     public DiscordVoiceNetworkManager(float silenceThreshold, int silenceDurationMs, int sampleRate, int channels, Action<Action> enqueueMainThreadAction) {
         this.silenceThreshold = silenceThreshold;
         this.silenceDurationMs = silenceDurationMs;
@@ -1087,7 +1069,7 @@ public class DiscordVoiceNetworkManager {
         if (pcmData == null || pcmData.Length == 0) return;
         
         // 音声レベルを計算
-        float audioLevel = CalculateAudioLevel(pcmData);
+        float audioLevel = DiscordVoiceNetworkManager.CalculateAudioLevel(pcmData);
         bool isSilent = audioLevel < silenceThreshold;
         
         // 🔧 デバッグ: バッファ追加時の音量レベルをログ出力
@@ -1149,19 +1131,20 @@ public class DiscordVoiceNetworkManager {
     }
     
     /// <summary>
-    /// 音声レベルを計算
+    /// PCMデータの音量レベル（RMS）を計算します。
     /// </summary>
-    private float CalculateAudioLevel(float[] pcmData) {
+    /// <param name="pcmData">-1.0〜1.0に正規化されたPCMデータ。</param>
+    /// <returns>RMS音量レベル（無効入力時は0）。</returns>
+    public static float CalculateAudioLevel(float[] pcmData) {
         if (pcmData == null || pcmData.Length == 0) return 0f;
-        
-        float sum = 0f;
+        float sumOfSquares = 0f;
         for (int i = 0; i < pcmData.Length; i++) {
-            sum += pcmData[i] * pcmData[i];  // RMS方式（二乗平均平方根）
+            float sample = pcmData[i];
+            sumOfSquares += sample * sample;
         }
-        
-        return (float)Math.Sqrt(sum / pcmData.Length);
+        return (float)Math.Sqrt(sumOfSquares / pcmData.Length);
     }
-    
+
     /// <summary>
     /// バッファをクリア
     /// </summary>
@@ -1178,7 +1161,6 @@ public class DiscordUser {
 }
 
 // Discord Gateway Data Structures
-[Serializable] public class HelloData { public int heartbeat_interval; }
 [Serializable] public class ReadyData { public string session_id; public DiscordUser user; }
 [Serializable] public class VoiceServerData { public string endpoint; public string token; }
 [Serializable] public class VoiceStateData { public string user_id; public string session_id; }
