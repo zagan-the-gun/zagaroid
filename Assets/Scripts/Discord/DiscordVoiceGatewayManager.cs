@@ -483,3 +483,9 @@ public class VoiceReadyData { public uint ssrc; public string ip; public int por
 
 [Serializable]
 public class VoiceSessionDescriptionData { public byte[] secret_key; public string mode; }
+
+[Serializable]
+public class VoiceSpeakingData { public bool speaking; public uint ssrc; public string user_id; }
+
+[Serializable]
+public class VoiceHelloData { public double heartbeat_interval; }
