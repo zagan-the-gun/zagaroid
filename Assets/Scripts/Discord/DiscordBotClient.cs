@@ -36,7 +36,7 @@ public static class DiscordConstants {
     // Discord Gateway関連
     public const int DISCORD_INTENTS = 32509;
     // 無音検出関連
-    public const float SILENCE_THRESHOLD = 0.001f; // 無音判定の閾値（音量レベル）- 発話冒頭欠けを防ぐため更に下げた
+    public const float SILENCE_THRESHOLD = 0.0005f; // 無音判定の閾値（音量レベル）- 発話冒頭欠けを防ぐため更に下げた
     public const int SILENCE_DURATION_MS = 1000; // 無音継続時間（ミリ秒）- より長く設定
 }
 
@@ -67,6 +67,7 @@ public static class ErrorHandler {
         }
     }
 }
+
 public class DiscordBotClient : MonoBehaviour, IDisposable {
     [Header("Debug Settings")]
     public bool enableDebugLogging = false; // ログ削減のためデフォルトを無効に
@@ -183,7 +184,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             if (!string.IsNullOrEmpty(userId) && userId == targetUserId) {
                 _ = Task.Run(async () => {
                     try {
-                        var pcmData = AdvancedDecodeOpusToPcm(opusData);
+                        var pcmData = DecodeOpusToPcm(opusData);
                         if (pcmData != null) {
                             _audioBuffer?.AddAudioData(pcmData);
                         }
@@ -583,88 +584,80 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <returns>認識されたテキスト文字列。</returns>
     private async Task<string> TranscribeWithWitAI(float[] audioData) {
         try {
-            
-            // 音声データの品質チェック
-            if (audioData == null || audioData.Length == 0) {
-                return "";
-            }
-            
-            // 0.5秒以上の音声データかチェック（16kHzで8000サンプル）
-            int minSamples = DiscordConstants.WITA_API_SAMPLE_RATE / 2; // 0.5秒分
-            if (audioData.Length < minSamples) {
-                // LogMessage($"🔇 Audio data too short for transcription ({audioData.Length} samples < {minSamples} samples)");
-                return "";
-            }
-            
-            // 音声データの音量チェック（無音データの除外）
+            // 最低限の品質チェック（長さ・音量・クライアント準備）
+            if (audioData == null) return "";
+            int minSamples = DiscordConstants.WITA_API_SAMPLE_RATE / 2;
+            if (audioData.Length < minSamples) return "";
             float audioLevel = CalculateAudioLevel(audioData);
-            if (audioLevel <= DiscordConstants.SILENCE_THRESHOLD) {
-                LogMessage($"🔇 Audio level too low for transcription ({audioLevel:F4} <= {DiscordConstants.SILENCE_THRESHOLD})");
-                return "";
-            }
-            
-            if (_httpClient == null || string.IsNullOrEmpty(witaiToken))
-            {
-                // LogMessage("❌ HttpClient is not initialized or witaiToken is missing.");
-                return "";
-            }
-            
-            // PCMデバッグ：翻訳API送信前のPCMデータを再生
+            if (audioLevel <= DiscordConstants.SILENCE_THRESHOLD) return "";
+            if (_httpClient == null || string.IsNullOrEmpty(witaiToken)) return "";
+
+            // 送信前のPCMデバッグ（任意）
             PlayPcmForDebug(audioData, $"Pre-Translation (Wit.AI) - Level: {audioLevel:F4}");
-            
-            // Node.js準拠: 生のPCMデータに変換（48kHz → 16kHz）
+
+            // 16kHz/mono の raw PCM に変換して送信
             byte[] rawPcmData = ConvertToRawPcm(audioData, DiscordConstants.WITA_API_SAMPLE_RATE, DiscordConstants.WITA_API_CHANNELS);
-            using (var content = new ByteArrayContent(rawPcmData))
-            {
-                // Node.js準拠のContent-Type
+            using (var content = new ByteArrayContent(rawPcmData)) {
                 content.Headers.Add("Content-Type", "audio/raw;encoding=signed-integer;bits=16;rate=16k;endian=little");
-                // HTTPリクエストを実行
                 var response = await _httpClient.PostAsync("https://api.wit.ai/speech", content, CancellationToken.None);
-                if (response.IsSuccessStatusCode) {
-                    string jsonResponse = await response.Content.ReadAsStringAsync();
-                    // Node.js準拠: 複数のJSONオブジェクトを配列化
-                    if (!string.IsNullOrWhiteSpace(jsonResponse)) {
-                        try {
-                            // Node.js: output.replace(/}\s*{/g, '},{')}
-                            string jsonArrayString = $"[{jsonResponse.Replace("}\r\n{", "},{").Replace("}\n{", "},{").Replace("} {", "},{")}]";
-                            var dataArray = JsonConvert.DeserializeObject<WitAIResponse[]>(jsonArrayString);
-                            // Node.js準拠: type === "FINAL_UNDERSTANDING"をフィルタリング
-                            var finalUnderstanding = dataArray?.FirstOrDefault(item => item.type == "FINAL_UNDERSTANDING");
-                            if (finalUnderstanding != null && !string.IsNullOrEmpty(finalUnderstanding.text)) {
-                                return finalUnderstanding.text;
-                            }
-                            // フォールバック: 最初のテキストを使用
-                            var firstText = dataArray?.FirstOrDefault(item => !string.IsNullOrEmpty(item.text));
-                            if (firstText != null) {
-                                return firstText.text;
-                            }
-                        } catch (JsonException) {
-                            // 単一のJSONオブジェクトの場合のフォールバック
-                            try {
-                                var witResponse = JsonConvert.DeserializeObject<WitAIResponse>(jsonResponse);
-                                if (!string.IsNullOrEmpty(witResponse?.text)) {
-                                    return witResponse.text;
-                                }
-                            } catch (JsonException) {
-                                LogMessage($"Wit.AI JSON parse error. Raw response: {jsonResponse}");
-                            }
-                        }
-                    }
-                    // 空のレスポンスの場合はログを出力しない（無駄なログを削減）
-                    if (!string.IsNullOrWhiteSpace(jsonResponse)) {
-                        LogMessage($"Wit.AI no text found. Response: {jsonResponse}");
-                    }
-                } else {
+                if (!response.IsSuccessStatusCode) {
                     LogMessage($"Wit.AI HTTP error: {response.StatusCode} - {response.ReasonPhrase}");
+                    return "";
                 }
+
+                string payload = await response.Content.ReadAsStringAsync();
+                if (string.IsNullOrWhiteSpace(payload)) return "";
+
+                string text = ParseWitTextFromPayload(payload);
+                return text ?? "";
             }
         } catch (OperationCanceledException) {
-            // キャンセルされた場合は静かに終了
             return "";
         } catch (Exception ex) {
             LogMessage($"Wit.AI error: {ex.Message}");
+            return "";
         }
-        return "";
+    }
+
+    private string ParseWitTextFromPayload(string payload) {
+        var responses = new List<WitAIResponse>();
+        foreach (var part in EnumerateWitResponseParts(payload)) {
+            try {
+                var item = JsonConvert.DeserializeObject<WitAIResponse>(part);
+                if (item != null) responses.Add(item);
+            } catch { /* ignore */ }
+        }
+        var final = responses.FirstOrDefault(r => r.type == "FINAL_UNDERSTANDING" && !string.IsNullOrEmpty(r.text));
+        if (!string.IsNullOrEmpty(final?.text)) return final.text;
+        var first = responses.FirstOrDefault(r => !string.IsNullOrEmpty(r.text));
+        return first?.text;
+    }
+
+    private IEnumerable<string> EnumerateWitResponseParts(string payload) {
+        if (string.IsNullOrWhiteSpace(payload)) yield break;
+        string trimmed = payload.Trim();
+
+        // 1) 連結JSONを '}{' や改行で分割
+        var splitByBraces = System.Text.RegularExpressions.Regex.Split(trimmed, "\\}\\s*\\{");
+        if (splitByBraces.Length > 1) {
+            for (int i = 0; i < splitByBraces.Length; i++) {
+                string part = splitByBraces[i];
+                if (!part.StartsWith("{")) part = "{" + part;
+                if (!part.EndsWith("}")) part = part + "}";
+                yield return part;
+            }
+            yield break;
+        }
+
+        // 2) 単純に改行で区切られているケース
+        var lines = trimmed.Split(new[] {"\r\n", "\n"}, StringSplitOptions.RemoveEmptyEntries);
+        if (lines.Length > 1) {
+            foreach (var line in lines) yield return line.Trim();
+            yield break;
+        }
+
+        // 3) 単一JSON
+        yield return trimmed;
     }
     /// <summary>
     /// float形式の音声データを生のPCMデータ（16-bit little-endian）に変換します。
@@ -739,7 +732,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// </summary>
     /// <param name="opusData">Opusデータ</param>
     /// <returns>デコードされたPCMデータ（float配列）</returns>
-    private float[] AdvancedDecodeOpusToPcm(byte[] opusData) {
+    private float[] DecodeOpusToPcm(byte[] opusData) {
         try {
             // 基本検証
             if (opusData == null || opusData.Length < 1) {
@@ -755,8 +748,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             // シンプルなデコード（フレームサイズは自動検出に任せる）
             // RTP拡張プレアンブル(0xBE,0xDE)が先頭に残っている場合は確定的に除去（12B）
             byte[] inputOpus = opusData;
-            if (opusData != null && opusData.Length >= 12 && opusData[0] == 0xBE && opusData[1] == 0xDE)
-            {
+            if (opusData != null && opusData.Length >= 12 && opusData[0] == 0xBE && opusData[1] == 0xDE) {
                 var trimmed = new byte[opusData.Length - 12];
                 Array.Copy(opusData, 12, trimmed, 0, trimmed.Length);
                 inputOpus = trimmed;
@@ -769,19 +761,16 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 lock (_opusDecodeLock) {
                     decodedSamples = _opusDecoder.Decode(inputOpus, pcmData, maxFrameSize, false);
                 }
-            } catch (Exception)
-            {
+            } catch (Exception) {
                 // 例外時フォールバック: 先頭に余分なヘッダが含まれている可能性を考慮
-                if (inputOpus != null && inputOpus.Length > 12)
-                {
+                if (inputOpus != null && inputOpus.Length > 12) {
                     var alt = new byte[inputOpus.Length - 12];
                     Array.Copy(inputOpus, 12, alt, 0, alt.Length);
                     short[] pcmAlt = new short[safeBufferSize];
                     lock (_opusDecodeLock) {
                         decodedSamples = _opusDecoder.Decode(alt, pcmAlt, maxFrameSize, false);
                     }
-                    if (decodedSamples > 0)
-                    {
+                    if (decodedSamples > 0) {
                         short[] monoAlt = ConvertStereoToMono(pcmAlt, decodedSamples * DiscordConstants.CHANNELS_STEREO);
                         var resultAlt = ResampleAudioData(monoAlt, DiscordConstants.SAMPLE_RATE_48K, DiscordConstants.SAMPLE_RATE_16K);
                         return resultAlt;
@@ -998,7 +987,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             _ = Task.Run(ConnectToVoiceGateway);
         }
     }
-    
+
     /// <summary>
     /// Discord Voice Gatewayに接続します。
     /// 既存の接続がある場合は一旦切断し、再接続します。
@@ -1009,7 +998,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             return true;
         }, "Voice connection", LogError);
     }
-    
+
     /// <summary>
     /// メインGatewayにメッセージを送信します。
     /// </summary>
@@ -1017,14 +1006,14 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private async Task SendIdentify() {
         await _networkManager.SendIdentify(discordToken);
     }
-    
+
     /// <summary>
     /// 指定されたボイスチャンネルに参加するためのリクエストを送信します。
     /// </summary>
     private async Task JoinVoiceChannel() {
         await _networkManager.SendJoinVoiceChannel(guildId, voiceChannelId);
     }
-    
+
     /// <summary>
     /// ボイスチャンネルからログオフするためのリクエストを送信します。
     /// </summary>
