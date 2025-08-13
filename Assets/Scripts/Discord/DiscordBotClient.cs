@@ -1170,15 +1170,6 @@ public class DiscordVoiceNetworkManager {
     }
 }
 
-// Data structures - 統合版
-[Serializable]
-public class DiscordGatewayPayload {
-    public int op;
-    public object d;
-    public int? s;
-    public string t;
-}
-
 [Serializable]
 public class VoiceGatewayPayload {
     public int op;

@@ -459,3 +459,11 @@ public class DiscordNetworkManager : IDisposable
         LogMessage("✅ DiscordNetworkManager cleanup completed", LogLevel.Info);
     }
 } 
+
+[Serializable]
+public class DiscordGatewayPayload {
+    public int op;
+    public object d;
+    public int? s;
+    public string t;
+}
