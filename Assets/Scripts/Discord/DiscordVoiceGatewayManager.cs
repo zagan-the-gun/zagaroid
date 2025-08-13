@@ -477,3 +477,9 @@ public class VoiceGatewayPayload {
     public int op;
     public object d;
 }
+
+[Serializable]
+public class VoiceReadyData { public uint ssrc; public string ip; public int port; public string[] modes; }
+
+[Serializable]
+public class VoiceSessionDescriptionData { public byte[] secret_key; public string mode; }

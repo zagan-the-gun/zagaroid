@@ -1184,10 +1184,8 @@ public class DiscordUser {
 [Serializable] public class VoiceStateData { public string user_id; public string session_id; }
 
 // Voice Gateway Data Structures
-[Serializable] public class VoiceReadyData { public uint ssrc; public string ip; public int port; public string[] modes; }
 [Serializable] public class VoiceSpeakingData { public bool speaking; public uint ssrc; public string user_id; }
 [Serializable] public class VoiceHelloData { public double heartbeat_interval; }
-[Serializable] public class VoiceSessionDescriptionData { public byte[] secret_key; public string mode; }
 
 // External API Data Structures
 [Serializable] public class WitAIResponse { public string text; public string type; }
