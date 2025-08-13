@@ -471,3 +471,9 @@ public class DiscordVoiceGatewayManager : IDisposable {
         LogMessage("✅ DiscordVoiceGatewayManager cleanup completed", LogLevel.Info);
     }
 } 
+
+[Serializable]
+public class VoiceGatewayPayload {
+    public int op;
+    public object d;
+}

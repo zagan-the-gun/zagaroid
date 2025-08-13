@@ -1171,12 +1171,6 @@ public class DiscordVoiceNetworkManager {
 }
 
 [Serializable]
-public class VoiceGatewayPayload {
-    public int op;
-    public object d;
-}
-
-[Serializable]
 public class DiscordUser {
     public string id;
     public string username;
