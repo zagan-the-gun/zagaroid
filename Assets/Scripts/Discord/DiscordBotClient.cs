@@ -90,7 +90,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private DiscordNetworkManager _networkManager;
     private DiscordVoiceGatewayManager _voiceGatewayManager;
     private DiscordVoiceUdpManager _voiceUdpManager;
-    private string _sessionId;
     // Voice Gateway関連
     private string _voiceToken;
     private string _voiceEndpoint;
@@ -101,11 +100,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     // Discord.js準拠の接続データ
     private string _encryptionMode;
     private string[] _availableModes;
-    // Discord.js VoiceUDPSocket.ts準拠のKeep Alive
-    private System.Timers.Timer _keepAliveTimer;
-    private uint _keepAliveCounter = 0;
-    private const int KEEP_ALIVE_INTERVAL = 5000; // 5秒
-    private const uint MAX_COUNTER_VALUE = uint.MaxValue;
+    // Discord.js VoiceUDPSocket.ts準拠のKeep Alive は UDP マネージャー側で実装
     // 音声処理統計
     private static int _opusErrors = 0;
     // 音声処理関連
@@ -122,10 +117,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private readonly Queue<Action> _mainThreadActions = new Queue<Action>();
     private readonly object _mainThreadActionsLock = new object();
     // 音声認識状態管理
-    private struct OpusPacket {
-        public byte[] data;
-        public string userId;
-    }
     
     // PCMデバッグ機能
     [Header("PCM Debug Settings")]
@@ -421,13 +412,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             return connectionSuccess;
         }, "StartBot", LogError);
     }
-    /// <summary>
-    /// メインGatewayにメッセージを送信します。
-    /// </summary>
-    /// <param name="message">送信するJSON文字列。</param>
-    private async Task SendMessage(string message) {
-        await _networkManager.SendMainMessage(message);
-    }
+    
     /// <summary>
     /// Voice Gatewayにメッセージを送信します。
     /// </summary>
@@ -435,11 +420,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private async Task SendVoiceMessage(string message) {
         await _voiceGatewayManager.SendMessage(message);
     }
-    /// <summary>
-    /// Voice Gatewayから受信した単一のメッセージペイロードを処理します。
-    /// オペレーションコードに基づいて処理を分岐します。
-    /// </summary>
-    /// <param name="message">受信したJSON形式のメッセージ文字列。</param>
 
     /// <summary>
     /// Voice GatewayのHelloメッセージを処理
@@ -938,9 +918,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// ボットの状態をリセットします。
     /// </summary>
     private void ResetBotState() {
-        _keepAliveTimer?.Stop();
-        _keepAliveTimer?.Dispose();
-        _keepAliveTimer = null;
+        
         
         _httpClient?.Dispose();
         _httpClient = null;
@@ -961,47 +939,12 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     }
 
     /// <summary>
-    /// Discordメッセージを処理
-    /// </summary>
-    // メインGatewayのJSON処理は DiscordNetworkManager に移譲済み
-
-    /// <summary>
-    /// メインGatewayのHelloメッセージを処理
-    /// </summary>
-    // Hello は NetworkManager 側で処理し、Identify は OnHelloReceived で送信
-
-    /// <summary>
     /// Voice GatewayにIdentifyペイロードを送信し、音声セッションを確立します。
     /// </summary>
     private async Task SendVoiceIdentify() {
         LogMessage($"🔌 Voice Gateway sending Identify at {DateTime.Now:HH:mm:ss.fff}");
         var identify = DiscordVoiceGatewayManager.VoicePayloadHelper.CreateVoiceIdentifyPayload(guildId, botUserId, _voiceSessionId, _voiceToken);
         await SendVoiceMessage(JsonConvert.SerializeObject(identify));
-    }
-    
-    /// <summary>
-    /// ローカルのIPアドレスを取得します。
-    /// 外部への接続を試みる方法と、ネットワークインターフェースから取得する方法をフォールバックとして使用します。
-    /// </summary>
-    /// <returns>検出されたローカルIPアドレスの文字列。</returns>
-    private string GetLocalIPAddress() {
-        return ErrorHandler.SafeExecute(() => {
-            using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0)) {
-                socket.Connect("8.8.8.8", 65530);
-                IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
-                string ip = endPoint?.Address.ToString() ?? "192.168.1.1";
-
-                return ip;
-            }
-        }, "Primary IP detection", LogError) ?? ErrorHandler.SafeExecute(() => {
-            var host = Dns.GetHostEntry(Dns.GetHostName());
-            foreach (var ip in host.AddressList) {
-                if (ip.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(ip)) {
-                    return ip.ToString();
-                }
-            }
-            return null;
-        }, "Fallback IP detection", LogError) ?? "192.168.1.1";
     }
     
     /// <summary>
@@ -1029,7 +972,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// </summary>
     private async Task HandleReadyEvent(string data) {
         var readyData = JsonConvert.DeserializeObject<ReadyData>(data);
-        _sessionId = readyData.session_id;
         botUserId = readyData.user.id;
         LogMessage($"Bot logged in: {readyData.user.username}");
         if (!string.IsNullOrEmpty(voiceChannelId)) {
