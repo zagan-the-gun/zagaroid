@@ -251,6 +251,8 @@ public class DiscordVoiceGatewayManager : IDisposable {
     private async Task HandleVoiceHello(VoiceGatewayPayload payload) {
         LogMessage($"🔌 Voice Gateway Hello received at {DateTime.Now:HH:mm:ss.fff}", LogLevel.Info);
         var helloData = JsonConvert.DeserializeObject<VoiceHelloData>(payload.d.ToString());
+        // Hello受信時に内部でハートビートを開始
+        StartHeartbeat(helloData.heartbeat_interval);
         OnVoiceHelloReceived?.Invoke(helloData.heartbeat_interval);
     }
     

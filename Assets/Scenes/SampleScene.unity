@@ -742,7 +742,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   enableDebugLogging: 1
-  enablePcmDebug: 1
+  enablePcmDebug: 0
 --- !u!1 &650932504
 GameObject:
   m_ObjectHideFlags: 0
@@ -1535,9 +1535,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eb234b08278d9476587ba0faf12557a8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  mainCanvas: {fileID: 0}
-  logCanvas: {fileID: 0}
-  canvas: {fileID: 1581766722}
   commentTemplate: {fileID: 291405402}
 --- !u!1 &1855857707
 GameObject:

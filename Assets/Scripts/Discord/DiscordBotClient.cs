@@ -293,7 +293,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _voiceGatewayManager.OnVoiceHelloReceived += async (heartbeatInterval) => await HandleVoiceHello(heartbeatInterval);
         _voiceGatewayManager.OnVoiceReadyReceived += async (ssrc, ip, port, modes) => await HandleVoiceReady(ssrc, ip, port, modes);
         _voiceGatewayManager.OnVoiceSessionDescriptionReceived += async (secretKey, mode) => await HandleVoiceSessionDescription(secretKey, mode);
-        _voiceGatewayManager.OnVoiceHeartbeatAckReceived += HandleVoiceHeartbeatAck;
         _voiceGatewayManager.OnVoiceSpeakingReceived += HandleVoiceSpeaking;
         
         // Voice UDP イベントハンドラーを設定
@@ -401,9 +400,10 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// </summary>
     private async Task HandleVoiceHello(double heartbeatInterval) {
         LogMessage($"🔌 Voice Gateway Hello received at {DateTime.Now:HH:mm:ss.fff}");
-        await StartVoiceHeartbeat(heartbeatInterval);
+        // ハートビート開始は VoiceGatewayManager 側で実施
         await SendVoiceIdentify();
     }
+
     /// <summary>
     /// Voice GatewayのReadyメッセージを処理
     /// </summary>
@@ -426,6 +426,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             LogMessage("❌ WARNING: UDP Discovery failed. Voice may not work.", LogLevel.Warning);
         }
     }
+
     /// <summary>
     /// Voice GatewayのSession Descriptionメッセージを処理
     /// </summary>
@@ -441,12 +442,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         LogMessage($"🔐 Encryption mode: {_encryptionMode}, Secret key length: {_secretKey?.Length ?? 0} bytes");
         await StartUdpAudioReceive();
     }
-    /// <summary>
-    /// Voice GatewayのHeartbeat ACKを処理
-    /// </summary>
-    private void HandleVoiceHeartbeatAck() {
-        _voiceGatewayManager.HandleHeartbeatAck();
-    }
+
     /// <summary>
     /// Voice GatewayのSpeakingメッセージを処理（Discord.js準拠）
     /// </summary>
@@ -489,8 +485,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         // DiscordVoiceUdpManagerに委譲
         await _voiceUdpManager.SetupUdpClient(_voiceServerEndpoint, false);
     }
-
-    
 
     /// <summary>
     /// 音声データのリサンプリング処理
@@ -799,19 +793,12 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     }
 
     /// <summary>
-    /// Voice Gatewayへのハートビート送信を定期的に開始します。
-    /// </summary>
-    /// <param name="interval">ハートビートの間隔（ミリ秒）。</param>
-    private async Task StartVoiceHeartbeat(double interval) {
-        _voiceGatewayManager.StartHeartbeat(interval);
-    }
-
-    /// <summary>
     /// マネージドリソースを解放します。
     /// </summary>
     public void Dispose() {
         DisposeResources();
     }
+
     /// <summary>
     /// Botの停止とデコーダの破棄など、内部リソースをまとめて解放します。
     /// </summary>
@@ -878,16 +865,13 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         
         LogMessage("✅ Discord bot stopped");
     }
+
     /// <summary>
     /// ボットの状態をリセットします。
     /// </summary>
     private void ResetBotState() {
-        
-        
         _httpClient?.Dispose();
         _httpClient = null;
-        
-        // SSRCマッピングはUDP層で管理
         
         // AudioBufferのクリーンアップ
         if (_audioBuffer != null) {
