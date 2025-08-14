@@ -290,7 +290,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _voiceGatewayManager.OnConnectionStateChanged += (isConnected) => OnConnectionStateChanged(isConnected, "Voice Gateway");
         
         // Voice Gateway メッセージ処理イベントハンドラーを設定
-        _voiceGatewayManager.OnVoiceHelloReceived += async (heartbeatInterval) => await HandleVoiceHello(heartbeatInterval);
         _voiceGatewayManager.OnVoiceReadyReceived += async (ssrc, ip, port, modes) => await HandleVoiceReady(ssrc, ip, port, modes);
         _voiceGatewayManager.OnVoiceSessionDescriptionReceived += async (secretKey, mode) => await HandleVoiceSessionDescription(secretKey, mode);
         _voiceGatewayManager.OnVoiceSpeakingReceived += HandleVoiceSpeaking;
@@ -393,15 +392,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <param name="message">送信するJSON文字列。</param>
     private async Task SendVoiceMessage(string message) {
         await _voiceGatewayManager.SendMessage(message);
-    }
-
-    /// <summary>
-    /// Voice GatewayのHelloメッセージを処理
-    /// </summary>
-    private async Task HandleVoiceHello(double heartbeatInterval) {
-        LogMessage($"🔌 Voice Gateway Hello received at {DateTime.Now:HH:mm:ss.fff}");
-        // ハートビート開始は VoiceGatewayManager 側で実施
-        await SendVoiceIdentify();
     }
 
     /// <summary>
@@ -885,15 +875,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     public bool IsBotRunning() {
         return _networkManager != null && _networkManager.IsMainConnected;
     }
-
-    /// <summary>
-    /// Voice GatewayにIdentifyペイロードを送信し、音声セッションを確立します。
-    /// </summary>
-    private async Task SendVoiceIdentify() {
-        LogMessage($"🔌 Voice Gateway sending Identify at {DateTime.Now:HH:mm:ss.fff}");
-        var identify = DiscordVoiceGatewayManager.VoicePayloadHelper.CreateVoiceIdentifyPayload(guildId, botUserId, _voiceSessionId, _voiceToken);
-        await SendVoiceMessage(JsonConvert.SerializeObject(identify));
-    }
     
     /// <summary>
     /// メインGatewayからのDispatchイベントを処理します。
@@ -943,6 +924,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _voiceToken = voiceServerData.token;
         _voiceEndpoint = voiceServerData.endpoint;
         if (!string.IsNullOrEmpty(_voiceToken) && !string.IsNullOrEmpty(_voiceEndpoint) && !string.IsNullOrEmpty(_voiceSessionId)) {
+            // Voice Gateway に Identify 情報を事前設定（Hello 直後に自動 Identify 送信される）
+            _voiceGatewayManager.SetIdentity(guildId, botUserId, _voiceSessionId, _voiceToken);
             _ = Task.Run(ConnectToVoiceGateway);
         }
     }

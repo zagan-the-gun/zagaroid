@@ -51,6 +51,12 @@ public class DiscordVoiceGatewayManager : IDisposable {
     private int _missedHeartbeats = 0;
     private int? _ping = null;
     
+    // Voice Identify 用情報
+    private string _guildId;
+    private string _userId;
+    private string _sessionId;
+    private string _token;
+    
     // ログレベル管理
     private enum LogLevel { Debug, Info, Warning, Error }
     private bool _enableDebugLogging = true;
@@ -102,6 +108,18 @@ public class DiscordVoiceGatewayManager : IDisposable {
     public DiscordVoiceGatewayManager(bool enableDebugLogging = true) {
         _enableDebugLogging = enableDebugLogging;
         _cancellationTokenSource = new CancellationTokenSource();
+    }
+    
+    /// <summary>
+    /// Voice Identify に使用する情報を設定
+    /// </summary>
+    public void SetIdentity(string guildId, string userId, string sessionId, string token)
+    {
+        _guildId = guildId;
+        _userId = userId;
+        _sessionId = sessionId;
+        _token = token;
+        LogMessage("🔐 Voice Identify parameters set", LogLevel.Debug);
     }
     
     /// <summary>
@@ -254,6 +272,27 @@ public class DiscordVoiceGatewayManager : IDisposable {
         // Hello受信時に内部でハートビートを開始
         StartHeartbeat(helloData.heartbeat_interval);
         OnVoiceHelloReceived?.Invoke(helloData.heartbeat_interval);
+        
+        // Hello 後に Identify を自動送信（必要情報が揃っている場合）
+        if (!string.IsNullOrEmpty(_guildId) && !string.IsNullOrEmpty(_userId) &&
+            !string.IsNullOrEmpty(_sessionId) && !string.IsNullOrEmpty(_token))
+        {
+            try
+            {
+                var identify = VoicePayloadHelper.CreateVoiceIdentifyPayload(_guildId, _userId, _sessionId, _token);
+                var identifyJson = JsonConvert.SerializeObject(identify);
+                LogMessage($"📤 Sending Voice Identify after Hello", LogLevel.Info);
+                await SendMessage(identifyJson);
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"❌ Failed to send Voice Identify: {ex.Message}", LogLevel.Error);
+            }
+        }
+        else
+        {
+            LogMessage("⚠️ Voice Identify parameters are not fully set; skipping Identify send", LogLevel.Warning);
+        }
     }
     
     /// <summary>
