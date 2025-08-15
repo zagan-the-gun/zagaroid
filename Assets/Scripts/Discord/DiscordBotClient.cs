@@ -658,26 +658,14 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
 
     /// <summary>
     /// UDPによる音声データ受信を開始します。
+    /// 実処理はDiscordVoiceUdpManagerに委譲します。
     /// </summary>
     private async Task StartUdpAudioReceive() {
         try {
-            // Discord.js VoiceUDPSocket.ts準拠の実装
-            await SetupUdpClientForAudio();
-            // Discord.js VoiceUDPSocket.ts準拠のKeep Alive開始
-            StartKeepAlive();
-            // 音声受信開始
-            _voiceUdpManager.StartReceiveAudio();
+            await _voiceUdpManager.StartUdpAudioReceive(_voiceServerEndpoint);
         } catch (Exception ex) {
             LogMessage($"❌ UDP audio receive start error: {ex.Message}");
         }
-    }
-
-    /// <summary>
-    /// 音声受信用にUDPクライアントをセットアップします。
-    /// </summary>
-    private async Task SetupUdpClientForAudio() {
-        // DiscordVoiceUdpManagerに委譲
-        await _voiceUdpManager.SetupUdpClient(_voiceServerEndpoint, true);
     }
 
     /// <summary>
@@ -775,12 +763,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         }
     }
 
-    /// <summary>
-    /// UDP接続を維持するためのKeep-Aliveパケット送信を定期的に開始します。
-    /// </summary>
-    private void StartKeepAlive() {
-        _voiceUdpManager.StartKeepAlive();
-    }
+    // Keep-Aliveの開始はDiscordVoiceUdpManagerに集約したため本メソッドは不要
 
     /// <summary>
     /// マネージドリソースを解放します。

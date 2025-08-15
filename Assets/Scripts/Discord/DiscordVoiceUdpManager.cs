@@ -142,6 +142,28 @@ public class DiscordVoiceUdpManager : IDisposable
             return false;
         }
     }
+
+    /// <summary>
+    /// UDPによる音声受信を開始するための一括セットアップを実行します。
+    /// Discord.js VoiceUDPSocket.tsの手順に基づき、UDPセットアップ、Keep-Alive開始、受信ループ開始までを担当します。
+    /// </summary>
+    /// <param name="voiceServerEndpoint">ボイスサーバーのエンドポイント</param>
+    public async Task StartUdpAudioReceive(IPEndPoint voiceServerEndpoint)
+    {
+        try
+        {
+            // 音声受信用にUDPクライアントをセットアップ（既存があれば再利用）
+            await SetupUdpClient(voiceServerEndpoint, true);
+            // Keep-Alive開始
+            StartKeepAlive();
+            // 音声受信ループ開始
+            StartReceiveAudio();
+        }
+        catch (Exception ex)
+        {
+            LogMessage($"❌ UDP audio receive start error: {ex.Message}", LogLevel.Error);
+        }
+    }
     
     /// <summary>
     /// UDP IP Discoveryを実行
