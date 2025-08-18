@@ -373,27 +373,46 @@ public class DiscordVoiceUdpManager : IDisposable
         LogMessage($"🎧 Starting UDP audio reception loop. UDP Client: {_udpClient != null}, Connected: {_isConnected}", LogLevel.Info);
         LogMessage($"🎧 Voice Server Endpoint: {_voiceServerEndpoint}", LogLevel.Info);
         LogMessage($"🎧 Local Endpoint: {GetLocalEndpoint()}", LogLevel.Info);
-        bool _timeout = false;
-        
+        bool timeoutNotified = false;
+        Task<UdpReceiveResult> receiveTask = null;
+
+        // 最初の受信タスクを発行
+        if (_udpClient != null) {
+            try {
+                receiveTask = _udpClient.ReceiveAsync();
+            } catch (Exception ex) {
+                LogMessage($"UDP receive start error: {ex.Message}", LogLevel.Error);
+            }
+        }
+
         while (_isConnected && _udpClient != null) {
             try {
-                var receiveTask = _udpClient.ReceiveAsync();
-                var timeoutTask = Task.Delay(100); // 100ms timeout
-                var completedTask = await Task.WhenAny(receiveTask, timeoutTask);
+                if (receiveTask == null) {
+                    receiveTask = _udpClient.ReceiveAsync();
+                }
+
+                var completedTask = await Task.WhenAny(receiveTask, Task.Delay(100)); // 100ms timeout
                 if (completedTask == receiveTask) {
-                    var result = await receiveTask;
-                    ProcessAudioPacket(result.Buffer);
-                    _timeout = false;
-                } else if (!_timeout) {
-                    // タイムアウト時に発話終了を検出
+                    var result = await receiveTask; // 完了済み
+                    // 有効な音声パケットを受信した場合のみサイレンス解除
+                    bool isAudio = ProcessAudioPacket(result.Buffer);
+                    if (isAudio) {
+                        timeoutNotified = false;
+                    }
+                    // 次の受信を開始
+                    receiveTask = _udpClient.ReceiveAsync();
+                } else if (!timeoutNotified) {
+                    // タイムアウト時に発話終了を一度だけ通知
                     OnSpeechEndDetected?.Invoke();
-                    _timeout = true;
+                    timeoutNotified = true;
                 }
             } catch (Exception ex) {
                 if (_isConnected) {
                     LogMessage($"UDP receive error: {ex.Message}", LogLevel.Error);
                 }
                 await Task.Delay(1000);
+                // エラー時は受信タスクを再発行させる
+                receiveTask = null;
             }
         }
         LogMessage("🎧 UDP audio reception stopped", LogLevel.Info);
@@ -402,11 +421,11 @@ public class DiscordVoiceUdpManager : IDisposable
     /// <summary>
     /// 音声パケットを処理
     /// </summary>
-    public void ProcessAudioPacket(byte[] packet) {
+    public bool ProcessAudioPacket(byte[] packet) {
         try {
             // 最小パケットサイズチェック
             if (packet.Length < MIN_AUDIO_PACKET_SIZE) {
-                return;
+                return false;
             }
             
             // RTPヘッダーからSSRCを抽出
@@ -428,6 +447,7 @@ public class DiscordVoiceUdpManager : IDisposable
                     if (!string.IsNullOrEmpty(userId)) {
                         // マッピング済みなら即時発行
                         OnAudioPacketReceived?.Invoke(processedOpusData, ssrc, userId);
+                        return true; // 有効な音声
                     } else {
                         // 未マッピングならプレロールに積む（時間基準で古いものは捨てる）
                         lock (_preRollLock) {
@@ -447,12 +467,14 @@ public class DiscordVoiceUdpManager : IDisposable
                                 }
                             }
                         }
+                        return true; // 音声として扱う（SSRC未マップでも音声データ）
                     }
                 }
             }
         } catch (Exception ex) {
             LogMessage($"❌ Audio packet processing error: {ex.Message}", LogLevel.Error);
         }
+        return false; // 音声として扱えなかった
     }
     
     /// <summary>

@@ -36,7 +36,7 @@ public static class DiscordConstants {
     // Discord Gateway関連
     public const int DISCORD_INTENTS = 32509;
     // 無音検出関連
-    public const float SILENCE_THRESHOLD = 0.0005f; // 無音判定の閾値（音量レベル）- 発話冒頭欠けを防ぐため更に下げた
+    public const float SILENCE_THRESHOLD = 0.001f; // 無音判定の閾値（音量レベル）- 発話冒頭欠けを防ぐため更に下げた
     public const int SILENCE_DURATION_MS = 1000; // 無音継続時間（ミリ秒）- より長く設定
 }
 
