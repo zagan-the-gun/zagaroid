@@ -7,6 +7,10 @@ public class CanvasController : MonoBehaviour {
 
     [Header("Comment template")]
     [SerializeField] private GameObject commentTemplate; // 流れるコメントのテンプレート
+    
+    [Header("Scroll settings")]
+    [SerializeField] private float scrollSpeed = 120f; // デフォルトを抑えめに
+    [SerializeField] private float smoothTime = 0.05f; // 少しマイルドに
 
     
 
@@ -82,8 +86,6 @@ public class CanvasController : MonoBehaviour {
         Debug.Log($"[TICKER] initPos=({rectTransform.anchoredPosition.x:F1},{rectTransform.anchoredPosition.y:F1}) textRect=({rectTransform.rect.width:F1}x{rectTransform.rect.height:F1}) canvasSize=({canvasWidth:F1}x{canvasHeight:F1}) anchors(x={rectTransform.anchorMin.x:F2},y={rectTransform.anchorMin.y:F2}) pivot(x={rectTransform.pivot.x:F2},y={rectTransform.pivot.y:F2}) yRange=({yMin:F1}..{yMax:F1}) parent={parentRect.name}");
 
         // より滑らかなアニメーションのための設定
-        float scrollSpeed = 400f; // 超高速スクロール
-        float smoothTime = 0.01f; // 最小限のスムージング時間
         Vector2 velocity = Vector2.zero;
 
         // スクロール処理
