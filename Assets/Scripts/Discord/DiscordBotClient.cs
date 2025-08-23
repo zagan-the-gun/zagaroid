@@ -430,6 +430,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _voiceUdpManager.SetEncryptionMode(_encryptionMode);
         
         LogMessage($"🔐 Encryption mode: {_encryptionMode}, Secret key length: {_secretKey?.Length ?? 0} bytes");
+        // VOICE_EVENT 共通プレフィックスで暗号化方式を明示
+        LogMessage($"[VOICE_EVENT] encryption_mode={_encryptionMode} secret_key_len={_secretKey?.Length ?? 0}");
         await StartUdpAudioReceive();
     }
 
@@ -451,6 +453,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 _targetUserSpeaking = true; // ターゲットユーザーの発話開始
 
                 // プレロールのフラッシュはUDP層で実施済み
+                // VOICE_EVENT 共通プレフィックスで、ターゲットユーザの暗号化方式を明示
+                LogMessage($"[VOICE_EVENT] target_user_id={targetUserId} ssrc={ssrc} encryption_mode={_encryptionMode} secret_key_len={_secretKey?.Length ?? 0}");
             } else {
                 LogMessage($"DEAD BEEF 4 HandleVoiceSpeaking", LogLevel.Debug);
                 _targetUserSpeaking = false; // ターゲットユーザーの発話終了
