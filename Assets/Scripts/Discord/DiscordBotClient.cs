@@ -94,6 +94,9 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     // Voice Gateway関連
     private string _voiceToken;
     private string _voiceEndpoint;
+    // MenZモードのキャッシュ（メインスレッドで更新し、他スレッドから参照）
+    private static volatile bool s_isMenZMode = false;
+    public static bool IsMenZMode() { return s_isMenZMode; }
     private string _voiceSessionId;
     private IPEndPoint _voiceServerEndpoint;
     private uint _ourSSRC;
@@ -321,9 +324,23 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// AudioBufferから音声データが準備完了した時の処理
     /// </summary>
     private void OnAudioBufferReady(float[] audioData, int sampleRate, int channels) {        
-        // PCMデバッグ：複合されたPCMデータを再生
+        // MenZ選択時は字幕AI WebSocket へセグメント送信（FlushはRWC側が自動）
+        if (DiscordBotClient.IsMenZMode()) {
+            EnqueueMainThreadAction(() => {
+                var ws = RealtimeWebSocketClient.Instance ?? FindObjectOfType<RealtimeWebSocketClient>();
+                if (ws == null) {
+                    var go = new GameObject("RealtimeWebSocketClient");
+                    ws = go.AddComponent<RealtimeWebSocketClient>();
+                    ws.Connect();
+                }
+                // READY前でもキューには積まれ、READY後に順序通り送信される
+                ws.EnqueueFloatSegment(audioData);
+            });
+            return;
+        }
+
+        // WitAI選択時は従来フロー（デバッグ再生→音声認識）
         PlayPcmForDebug(audioData, "Combined Audio");
-        
         StartCoroutine(ProcessAudioCoroutine(audioData));
     }
 
@@ -365,6 +382,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             InitializeOpusDecoder();
             InitializeNetworkManager();
             
+            // 旧: MenZ時の事前RWC接続は無効化
+
             // Discord Gatewayへの接続を試行
             bool connectionSuccess = await ConnectToDiscord();
             if (connectionSuccess) {
@@ -803,6 +822,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             targetUserId = centralManager.GetDiscordTargetUserId();
             inputName = centralManager.GetDiscordInputName();
             witaiToken = centralManager.GetDiscordWitaiToken();
+            // MenZモードのキャッシュ
+            try {
+                s_isMenZMode = (centralManager.GetDiscordSubtitleMethod() == 1);
+                UnityEngine.Debug.Log($"[WS-PCM] cache isMenZ={s_isMenZMode}");
+            } catch { s_isMenZMode = false; }
         }
     }
     /// <summary>
@@ -953,12 +977,13 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// UDP受信タイムアウトによる発話終了検出
     /// </summary>
     private void OnSpeechEndDetected() {
-        if (_targetUserSpeaking) {
-            LogMessage($"🔇 Speech end detected via UDP timeout", LogLevel.Info);
-            // _targetUserSpeaking = false;
-            // 発話終了時にバッファされた音声データを処理
-            _audioBuffer?.ProcessBufferedAudio();
-        }
+        LogMessage($"🔇 Speech end detected via UDP timeout", LogLevel.Info);
+        // 発話終了時にバッファされた音声データを処理
+        _audioBuffer?.ProcessBufferedAudio();
+
+        // 発話終了（UDP timeout）ログ
+        LogMessage("[WS-PCM] 発話終了 (UDP timeout) - flush要求", LogLevel.Info);
+
     }
     
     /// <summary>

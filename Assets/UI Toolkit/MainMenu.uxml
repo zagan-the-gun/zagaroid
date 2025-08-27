@@ -65,6 +65,7 @@
                             </ui:VisualElement>
                             <ui:Button text="Launch" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartMenzTranslationButton" style="margin-bottom: 5px;" />
                             <ui:TextField label="MenzTranslation URL" value="ws://127.0.0.1:55001" name="MenZTranslationServerUrlInput" style="margin-bottom: 5px; flex-grow: 1;" />
+                            <ui:TextField label="Realtime Audio WS URL" value="ws://127.0.0.1:60001" name="RealtimeAudioWsUrlInput" style="margin-bottom: 5px; flex-grow: 1;" />
                         </ui:VisualElement>
                     </ui:VisualElement>
                     <ui:VisualElement name="4" style="flex-grow: 1; flex-direction: row;">

@@ -286,6 +286,14 @@ public class CentralManager : MonoBehaviour {
         PlayerPrefs.SetString("MenZTranslationServerUrl", url);
     }
 
+    // Realtime Audio WebSocket (Unity -> SubtitleAI) URL
+    public string GetRealtimeAudioWsUrl() {
+        return PlayerPrefs.GetString("RealtimeAudioWsUrl", "ws://127.0.0.1:60001");
+    }
+    public void SetRealtimeAudioWsUrl(string url) {
+        PlayerPrefs.SetString("RealtimeAudioWsUrl", url);
+    }
+
     public string GetTranslationMode() {
         // "TranslationMode"というキーで保存された文字列を読み込む。存在しない場合はデフォルト値を返す。
         return PlayerPrefs.GetString("TranslationMode", "deepl");

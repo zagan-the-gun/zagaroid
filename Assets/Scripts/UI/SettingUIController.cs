@@ -40,6 +40,7 @@ public class SettingUIController : MonoBehaviour {
     private TextField deepLApiClientKeyInput;
     private DropdownField translationModeDropdown;
     private TextField menZTranslationServerUrlInput;
+    private TextField realtimeAudioWsUrlInput;
     
     private Toggle autoStartDiscordBotToggle;
     private TextField discordTokenInput;
@@ -100,6 +101,7 @@ public class SettingUIController : MonoBehaviour {
         deepLApiClientKeyInput = settingContentRoot.Q<TextField>("DeepLApiClientKeyInput"); // DeepL APIキー
         translationModeDropdown = settingContentRoot.Q<DropdownField>("TranslationModeDropdown"); // 翻訳方式選択
         menZTranslationServerUrlInput = settingContentRoot.Q<TextField>("MenZTranslationServerUrlInput"); // MenZ翻訳サーバーURL
+        realtimeAudioWsUrlInput = settingContentRoot.Q<TextField>("RealtimeAudioWsUrlInput"); // Realtime Audio WS URL
         autoStartDiscordBotToggle = settingContentRoot.Q<Toggle>("AutoStartDiscordBotToggle");
         discordTokenInput = settingContentRoot.Q<TextField>("DiscordTokenInput");
         discordGuildIdInput = settingContentRoot.Q<TextField>("DiscordGuildIdInput");
@@ -302,6 +304,9 @@ public class SettingUIController : MonoBehaviour {
         if (menZTranslationServerUrlInput != null) {
             menZTranslationServerUrlInput.value = CentralManager.Instance.GetMenZTranslationServerUrl();
         }
+        if (realtimeAudioWsUrlInput != null) {
+            realtimeAudioWsUrlInput.value = CentralManager.Instance.GetRealtimeAudioWsUrl();
+        }
 
         if (autoStartDiscordBotToggle != null) {
             autoStartDiscordBotToggle.value = CentralManager.Instance.GetAutoStartDiscordBot();
@@ -330,7 +335,7 @@ public class SettingUIController : MonoBehaviour {
             Debug.Log("Discord字幕方式ドロップダウンの初期化を開始");
             
             // ドロップダウンの選択肢を設定（DiscordBotClient.SubtitleMethodに基づく）
-            var discordChoices = new List<string> { "WitAI", "FasterWhisper" };
+            var discordChoices = new List<string> { "WitAI", "MenZ" };
             discordSubtitleMethodDropdown.choices = discordChoices;
             Debug.Log($"Discord字幕方式ドロップダウンの選択肢を設定しました: {string.Join(", ", discordChoices)}");
             
@@ -414,6 +419,9 @@ public class SettingUIController : MonoBehaviour {
         if (menZTranslationServerUrlInput != null) {
             CentralManager.Instance.SetMenZTranslationServerUrl(menZTranslationServerUrlInput.value);
         }
+        if (realtimeAudioWsUrlInput != null) {
+            CentralManager.Instance.SetRealtimeAudioWsUrl(realtimeAudioWsUrlInput.value);
+        }
 
         if (autoStartDiscordBotToggle != null) {
             CentralManager.Instance.SetAutoStartDiscordBot(autoStartDiscordBotToggle.value);
@@ -440,7 +448,7 @@ public class SettingUIController : MonoBehaviour {
         }
         if (discordSubtitleMethodDropdown != null) {
             // 文字列を整数値に変換して保存
-            var choices = new List<string> { "WitAI", "FasterWhisper" };
+            var choices = new List<string> { "WitAI", "MenZ" };
             int methodIndex = choices.IndexOf(discordSubtitleMethodDropdown.value);
             if (methodIndex >= 0) {
                 CentralManager.Instance.SetDiscordSubtitleMethod(methodIndex);

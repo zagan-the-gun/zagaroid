@@ -12,8 +12,6 @@ public class CanvasController : MonoBehaviour {
     [SerializeField] private float scrollSpeed = 120f; // デフォルトを抑えめに
     [SerializeField] private float smoothTime = 0.05f; // 少しマイルドに
 
-    
-
     void OnEnable() {
         // セントラルマネージャからコメントを受信するイベントを登録
         CentralManager.OnCanvasCommentSend += HandleCanvasCommentSend;
