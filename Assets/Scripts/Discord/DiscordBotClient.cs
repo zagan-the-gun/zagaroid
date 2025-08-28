@@ -326,15 +326,22 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private void OnAudioBufferReady(float[] audioData, int sampleRate, int channels) {        
         // MenZ選択時は字幕AI WebSocket へセグメント送信（FlushはRWC側が自動）
         if (DiscordBotClient.IsMenZMode()) {
+            // MenZモードでもローカルでPCMデバッグ再生できるようにする
+            PlayPcmForDebug(audioData, "Combined Audio");
             EnqueueMainThreadAction(() => {
                 var ws = RealtimeWebSocketClient.Instance ?? FindObjectOfType<RealtimeWebSocketClient>();
                 if (ws == null) {
                     var go = new GameObject("RealtimeWebSocketClient");
                     ws = go.AddComponent<RealtimeWebSocketClient>();
-                    ws.Connect();
                 }
-                // READY前でもキューには積まれ、READY後に順序通り送信される
-                ws.EnqueueFloatSegment(audioData);
+                // 送信可否を判定してフェイルオーバー
+                if (ws.CanSend) {
+                    ws.EnqueueFloatSegment(audioData);
+                } else {
+                    // 再接続を促しつつ、今回セグメントはWit.aiへフォールバック
+                    ws.TryEnsureConnecting();
+                    StartCoroutine(ProcessAudioCoroutine(audioData));
+                }
             });
             return;
         }

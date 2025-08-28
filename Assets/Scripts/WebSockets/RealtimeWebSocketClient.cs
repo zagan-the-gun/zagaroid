@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections;
 using System.Threading;
 using UnityEngine;
 using WebSocketSharp;
@@ -13,6 +14,7 @@ using Newtonsoft.Json.Linq;
 /// </summary>
 public class RealtimeWebSocketClient : MonoBehaviour {
     private const string LOG_PREFIX = "RealtimeWebSocketClient:";
+    [Header("Debug")] public bool enableDebugLogging = false;
     [Header("WebSocket Settings")]
     public string serverUrl = "ws://127.0.0.1:60001";
     public string subprotocol = "pcm16.v1";
@@ -33,6 +35,16 @@ public class RealtimeWebSocketClient : MonoBehaviour {
     // フラッシュ用の送信マーカー（長さ0のフレームを特別扱い）
     private static readonly byte[] FLUSH_MARKER = new byte[0];
     public static RealtimeWebSocketClient Instance { get; private set; }
+    public bool CanSend { get { return isReady && IsWsActive; } }
+
+    private bool IsWsActive {
+        get {
+            try {
+                return ws != null && (ws.ReadyState == WebSocketState.Connecting || ws.ReadyState == WebSocketState.Open);
+            } catch { return false; }
+        }
+    }
+    private Coroutine reconnectCoroutine;
 
     private void Awake() {
         if (Instance != null && Instance != this) {
@@ -50,6 +62,11 @@ public class RealtimeWebSocketClient : MonoBehaviour {
     }
 
     public void Connect() {
+        // 既に接続中 or 接続済みなら二重接続を避ける
+        if (IsWsActive) {
+            Debug.Log($"{LOG_PREFIX} Connect skipped: ReadyState={ws.ReadyState}");
+            return;
+        }
         CleanupInternal();
         // CentralManagerからURLを上書き（存在すれば）
         try {
@@ -74,21 +91,29 @@ public class RealtimeWebSocketClient : MonoBehaviour {
             ws.OnError += (s, e) => {
                 Debug.LogWarning($"{LOG_PREFIX} Error - {e.Message}");
                 isReady = false;
+                ScheduleReconnect();
             };
 
             ws.OnClose += (s, e) => {
                 isReady = false;
                 StopSenderLoop();
                 Debug.Log($"{LOG_PREFIX} Closed (code={e.Code}, reason={e.Reason})");
+                ScheduleReconnect();
             };
 
-            Debug.Log($"{LOG_PREFIX} Connecting to {serverUrl}...");
-            ws.Connect();
+            Debug.Log($"{LOG_PREFIX} Connecting to {serverUrl} (async)...");
+            ws.ConnectAsync();
 
             StartSenderLoop();
         } catch (Exception ex) {
             Debug.LogError($"{LOG_PREFIX} Connect failed - {ex.Message}");
             isReady = false;
+        }
+    }
+
+    public void TryEnsureConnecting() {
+        if (!IsWsActive) {
+            Connect();
         }
     }
 
@@ -209,11 +234,57 @@ public class RealtimeWebSocketClient : MonoBehaviour {
         hasLoggedFirstSend = false;
     }
 
+    private bool IsSocketOpenOrConnecting() {
+        try {
+            if (ws == null) return false;
+            return ws.ReadyState == WebSocketState.Open || ws.ReadyState == WebSocketState.Connecting;
+        } catch { return false; }
+    }
+
+    private void ScheduleReconnect() {
+        if (!gameObject.activeInHierarchy) return;
+        if (reconnectCoroutine != null) return;
+        reconnectCoroutine = StartCoroutine(ReconnectCoroutine());
+    }
+
+    private IEnumerator ReconnectCoroutine() {
+        // 簡易バックオフ
+        float[] delays = new float[] { 1f, 2f, 5f, 5f };
+        int attempt = 0;
+        while (!isReady) {
+            float wait = delays[Mathf.Min(attempt, delays.Length - 1)];
+            if (enableDebugLogging) Debug.Log($"{LOG_PREFIX} Reconnecting in {wait:0.#}s (attempt {attempt + 1})");
+            yield return new WaitForSeconds(wait);
+            // 既にOpen/Connectingならスキップ
+            if (IsSocketOpenOrConnecting()) {
+                // ok待ち
+                yield return new WaitForSeconds(0.5f);
+                if (isReady) break;
+                attempt++;
+                continue;
+            }
+            Connect();
+            // 接続試行後、少し様子を見る
+            yield return new WaitForSeconds(0.5f);
+            if (isReady) break;
+            attempt++;
+            // ループ継続
+        }
+        if (enableDebugLogging) Debug.Log($"{LOG_PREFIX} Reconnect loop finished (ready={isReady})");
+        reconnectCoroutine = null;
+        yield break;
+    }
+
     // 1発話セグメントを投入し、送信枯渇後に flush を送る
     public void EnqueueFloatSegment(float[] monoFloats) {
         if (monoFloats == null) return;
+        // 未接続/非接続状態ではセグメントを破棄してスパムやメモリ増を防止
+        if (!IsSocketOpenOrConnecting()) {
+            if (enableDebugLogging) Debug.Log($"{LOG_PREFIX} Drop segment (socket not open/connecting). samples={monoFloats.Length}");
+            return;
+        }
         var pcm = ConvertFloatToPcm16Le(monoFloats);
-        Debug.Log($"{LOG_PREFIX} EnqueueFloatSegment samples={monoFloats.Length} bytes={pcm.Length} ready={isReady}");
+        if (enableDebugLogging) Debug.Log($"{LOG_PREFIX} EnqueueFloatSegment samples={monoFloats.Length} bytes={pcm.Length} ready={isReady}");
         EnqueuePcmFrame(pcm);
         // セグメント末尾の端数は破棄して境界を明確化
         if (_accumulator.Count > 0) {
@@ -261,7 +332,7 @@ public class RealtimeWebSocketClient : MonoBehaviour {
                 outgoingFrames.Enqueue(frame);
             }
             queueEvent.Set();
-            Debug.Log($"{LOG_PREFIX} Queued frame chunkBytes={chunkBytes} acc_remain={_accumulator.Count}");
+            if (enableDebugLogging) Debug.Log($"{LOG_PREFIX} Queued frame chunkBytes={chunkBytes} acc_remain={_accumulator.Count}");
         }
     }
 
