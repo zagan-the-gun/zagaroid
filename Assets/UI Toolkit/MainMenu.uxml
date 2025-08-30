@@ -2,7 +2,7 @@
     <Style src="project://database/Assets/UI%20Toolkit/MainMenu.uss?fileID=7433441132597879392&amp;guid=b78659c1d90924e1ebbb9d570b622339&amp;type=3#MainMenu" />
     <ui:VisualElement name="root" class="container" style="height: 960px;">
         <ui:VisualElement name="main" style="flex-grow: 1; background-color: rgba(255, 255, 0, 0);" />
-        <ui:VisualElement name="tabs" style="flex-grow: 1; align-items: auto; justify-content: flex-start; flex-direction: row; align-self: stretch; background-color: rgba(255, 0, 0, 0.25); max-height: 30px;">
+        <ui:VisualElement name="tabs" style="flex-grow: 1; align-items: auto; justify-content: flex-start; flex-direction: row; align-self: stretch; background-color: rgba(255, 0, 0, 0); max-height: 30px;">
             <ui:Button text="▼" parse-escape-sequences="true" display-tooltip-when="elided" name="Toggle" />
             <ui:Button text="Log" parse-escape-sequences="true" display-tooltip-when="elided" name="LogButton" />
             <ui:Button text="Setting" parse-escape-sequences="true" display-tooltip-when="elided" name="SettingButton" />
@@ -15,8 +15,9 @@
             </ui:VisualElement>
             <ui:VisualElement name="settingContent" style="flex-grow: 1; display: flex;">
                 <ui:ScrollView style="flex-grow: 1;">
-                    <ui:VisualElement name="1" style="flex-grow: 1; flex-direction: row;">
+                    <ui:VisualElement name="1" style="flex-grow: 1; flex-direction: row; background-color: rgba(255, 255, 255, 0);">
                         <ui:VisualElement name="PanelSubtitleAI" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Label text="翻訳AI設定" class="panel__title" />
                             <ui:Toggle label="Auto launch" name="AutoStartSubtitleAIToggle" style="margin-bottom: 5px;" />
                             <ui:VisualElement name="SubtitleAIExecutionPath" style="flex-grow: 0; flex-direction: row; flex-basis: auto; flex-shrink: 0;">
                                 <ui:VisualElement name="VisualElement" style="flex-grow: 1;">
@@ -30,6 +31,7 @@
                             <ui:FloatField label="Max Display Time(sec)" value="8" name="MaxDisplayTimeInput" />
                         </ui:VisualElement>
                         <ui:VisualElement name="PanelOBSbs" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Label text="OBS設定" class="panel__title" />
                             <ui:TextField picking-mode="Ignore" label="OBS WebSocket Password" value="OBS WebSocket Password" name="ObsWebSocketsPasswordInput" />
                             <ui:TextField label="my subtitle" value="my_subtitle" name="MySubtitleInput" />
                             <ui:TextField picking-mode="Ignore" label="my english subtitle" value="my_subtitle_en" name="MyEnglishSubtitleInput" />
@@ -38,14 +40,17 @@
                     </ui:VisualElement>
                     <ui:VisualElement name="2" style="flex-grow: 1; flex-direction: row;">
                         <ui:VisualElement name="PanelTranslation" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Label text="翻訳エンジン選択" class="panel__title" />
                             <ui:DropdownField label="Translation type" name="TranslationModeDropdown" style="margin-bottom: 5px;" />
                         </ui:VisualElement>
                         <ui:VisualElement name="PanelDeepLApi" class="panel" style="flex-grow: 1; flex-shrink: 1; flex-basis: 1px;">
+                            <ui:Label text="DeepL設定" class="panel__title" />
                             <ui:TextField picking-mode="Ignore" label="DeepL API key" value="asdfasdf" name="DeepLApiClientKeyInput" />
                         </ui:VisualElement>
                     </ui:VisualElement>
                     <ui:VisualElement name="3" style="flex-grow: 1; flex-direction: row;">
                         <ui:VisualElement name="PanelVoiceVox" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Label text="VoiceVox設定" class="panel__title" />
                             <ui:Toggle label="Auto launch" name="AutoStartVoiceVoxToggle" style="margin-bottom: 5px;" />
                             <ui:VisualElement name="VoiceVoxPath" style="flex-grow: 0; flex-direction: row; flex-basis: auto; flex-shrink: 0;">
                                 <ui:VisualElement name="VisualElement" style="flex-grow: 1;">
@@ -56,6 +61,7 @@
                             <ui:Button text="Launch" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartVoiceVoxButton" style="margin-bottom: 5px;" />
                         </ui:VisualElement>
                         <ui:VisualElement name="PanelMenzTranslation" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Label text="Menz翻訳" class="panel__title" />
                             <ui:Toggle label="Auto launch" name="AutoStartMenzTranslationToggle" style="margin-bottom: 5px;" />
                             <ui:VisualElement name="MenzTranslationPath" style="flex-grow: 0; flex-direction: row; flex-basis: auto; flex-shrink: 0;">
                                 <ui:VisualElement style="flex-grow: 1;">
@@ -70,6 +76,7 @@
                     </ui:VisualElement>
                     <ui:VisualElement name="4" style="flex-grow: 1; flex-direction: row;">
                         <ui:VisualElement name="PanelDiscordBot" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Label text="Discord Bot" class="panel__title" />
                             <ui:Toggle label="Auto launch" name="AutoStartDiscordBotToggle" style="margin-bottom: 5px;" />
                             <ui:TextField label="Discord Bot Token" name="DiscordTokenInput" password="true" style="margin-bottom: 5px;" />
                             <ui:TextField label="Guild ID" name="DiscordGuildIdInput" style="margin-bottom: 5px;" />
@@ -85,6 +92,7 @@
                             </ui:VisualElement>
                         </ui:VisualElement>
                         <ui:VisualElement name="PanelTwitch" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Label text="Twitch設定" class="panel__title" />
                             <ui:IntegerField label="FontSize" name="FontSizeInput" />
                         </ui:VisualElement>
                     </ui:VisualElement>

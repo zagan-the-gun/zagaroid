@@ -38,6 +38,11 @@ public class LogUIController : MonoBehaviour {
         // フォントを明示的に設定（UI Toolkit 用）
         if (japaneseFont != null) {
             logTextField.style.unityFontDefinition = FontDefinition.FromFont(japaneseFont);
+            // パネルタイトル（.panel__title）にも同フォントを適用
+            var titleQuery = uiDocument.rootVisualElement.Query<Label>(null, "panel__title");
+            titleQuery.ForEach(lbl => {
+                lbl.style.unityFontDefinition = FontDefinition.FromFont(japaneseFont);
+            });
         } else {
             Debug.LogWarning("LogUIController: 日本語フォントが未設定です。インスペクタで 'Japanese Font' に NotoSansJP などを割り当ててください。");
         }
