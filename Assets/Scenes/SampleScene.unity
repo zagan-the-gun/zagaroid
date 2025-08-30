@@ -742,7 +742,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   enableDebugLogging: 1
-  enablePcmDebug: 1
+  enablePcmDebug: 0
 --- !u!1 &650932504
 GameObject:
   m_ObjectHideFlags: 0

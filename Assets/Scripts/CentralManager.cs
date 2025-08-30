@@ -787,21 +787,49 @@ public class CentralManager : MonoBehaviour {
     }
 
     private void HandleWebSocketMessageFromPort50001(string subtitle, string subtitleText) {
-        Debug.Log($"字幕を受信しました！ Subtitle: {subtitle}, Message: {subtitleText}");
+        Debug.Log($"字幕を受信しました！ Subtitle: {subtitle}, Message(raw): {subtitleText}");
         // 字幕をOBSに送信
         // SendObsSubtitles(subtitle, subtitleText);
 
-        // 英語字幕用テキストソース名取得
-        string myEnglishSubtitle = CentralManager.Instance != null ? CentralManager.Instance.GetMyEnglishSubtitle() : null;
+        // JSON互換: {"text":"..."} 形式ならtextを抽出。失敗時はそのまま使用
+        string extractedText = subtitleText;
+        string extractedSubtitleName = subtitle;
+        // 英語字幕用デフォルト名（JSON無指定時のフォールバック）
+        string defaultEnglishSubtitle = CentralManager.Instance != null ? CentralManager.Instance.GetMyEnglishSubtitle() : null;
+        string extractedEnglishSubtitleName = defaultEnglishSubtitle;
+        try {
+            if (!string.IsNullOrEmpty(subtitleText)) {
+                string trimmed = subtitleText.TrimStart();
+                if (trimmed.StartsWith("{")) {
+                    var obj = Newtonsoft.Json.Linq.JObject.Parse(subtitleText);
+                    var candidate = obj["text"]?.ToString();
+                    if (!string.IsNullOrEmpty(candidate)) {
+                        extractedText = candidate;
+                    }
+                    // 複数クライアント対応: JSON内にsubtitle名があれば優先（無ければchannelも許容）
+                    var subtitleCandidate = obj["subtitle"]?.ToString();
+                    if (string.IsNullOrEmpty(subtitleCandidate)) {
+                        subtitleCandidate = obj["channel"]?.ToString();
+                    }
+                    if (!string.IsNullOrWhiteSpace(subtitleCandidate)) {
+                        extractedSubtitleName = subtitleCandidate;
+                        // 英語字幕はベース名 + "_en" を使用
+                        extractedEnglishSubtitleName = subtitleCandidate + "_en";
+                    }
+                }
+            }
+        } catch (System.Exception ex) {
+            Debug.LogWarning($"字幕JSON解析に失敗しました。プレーンテキストとして扱います。理由: {ex.Message}");
+        }
 
         // 文字数に応じて日本語字幕表示時間を調整する
-        float calculatedDuration = calculateDisplayDuration(subtitleText.Length);
+        float calculatedDuration = calculateDisplayDuration(extractedText.Length);
 
         // 新しい日本語字幕エントリを作成
         CurrentDisplaySubtitle newJpEntry = new CurrentDisplaySubtitle(
-            subtitleText,
-            subtitle,
-            myEnglishSubtitle, // 英語チャンネルも情報として保持
+            extractedText,
+            extractedSubtitleName,
+            extractedEnglishSubtitleName, // 英語チャンネルも情報として保持
             calculatedDuration
         );
 
@@ -809,7 +837,7 @@ public class CentralManager : MonoBehaviour {
         manageJapaneseSubtitleDisplay(newJpEntry);
 
         // 翻訳字幕の送信
-        StartCoroutine(translateSubtitle(myEnglishSubtitle, subtitleText));
+        StartCoroutine(translateSubtitle(extractedEnglishSubtitleName, extractedText));
     }
 
     // 字幕表示時間を計算するヘルパーメソッド
