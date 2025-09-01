@@ -1,13 +1,13 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xmlns="UnityEngine.UIElements.StyleSheet" editor-extension-mode="False">
     <Style src="project://database/Assets/UI%20Toolkit/MainMenu.uss?fileID=7433441132597879392&amp;guid=b78659c1d90924e1ebbb9d570b622339&amp;type=3#MainMenu" />
-    <ui:VisualElement name="root" class="container" style="height: 960px;">
+    <ui:VisualElement name="root" class="container" style="height: 100%; flex-direction: column;">
         <ui:VisualElement name="main" style="flex-grow: 1; background-color: rgba(255, 255, 0, 0);" />
-        <ui:VisualElement name="tabs" style="flex-grow: 1; align-items: auto; justify-content: flex-start; flex-direction: row; align-self: stretch; background-color: rgba(255, 0, 0, 0); max-height: 30px;">
+        <ui:VisualElement name="tabs" style="align-items: auto; justify-content: flex-start; flex-direction: row; align-self: stretch; background-color: rgba(255, 0, 0, 0); height: 30px; flex-shrink: 0;">
             <ui:Button text="▼" parse-escape-sequences="true" display-tooltip-when="elided" name="Toggle" />
             <ui:Button text="Log" parse-escape-sequences="true" display-tooltip-when="elided" name="LogButton" />
             <ui:Button text="Setting" parse-escape-sequences="true" display-tooltip-when="elided" name="SettingButton" />
         </ui:VisualElement>
-        <ui:VisualElement name="contentDisplayArea" style="flex-grow: 1; background-color: rgba(0, 4, 255, 0); max-height: 150px; display: flex;">
+        <ui:VisualElement name="contentDisplayArea" style="flex-grow: 1; background-color: rgba(0, 4, 255, 0); max-height: 150px; display: flex; min-height: 0; overflow: hidden;">
             <ui:VisualElement name="logContent" style="flex-grow: 1; display: none;">
                 <ui:ScrollView>
                     <ui:TextField name="logOutput" picking-mode="Ignore" value="これは非常に長いテキストです。&#10;このテキストが十分に長ければ、TextFieldにスクロールバーが表示されるはずです。&#10;UnityのUI Toolkitでは、TextFieldのmultilineプロパティがtrueに設定されており、&#10;かつテキストがTextFieldの表示領域を超えた場合に自動的に垂直スクロールバーが表示されます。&#10;さらに長いテキストをここに追加し、スクロールバーの動作を確認しましょう。&#10;新しい行を追加するために&#10;改行コード（&#10;）を使用しています。&#10;どんどんとテキストを書き足して、&#10;スクロールバーがいつ出現するかを試してみてください。&#10;" style="flex-grow: 1; max-height: none; flex-wrap: wrap;" />
