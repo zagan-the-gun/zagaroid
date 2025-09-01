@@ -2,7 +2,6 @@ using UnityEngine;
 using System.Collections;
 using TMPro;
 
-
 public class CanvasController : MonoBehaviour {
 
     [Header("Comment template")]
@@ -11,6 +10,11 @@ public class CanvasController : MonoBehaviour {
     [Header("Scroll settings")]
     [SerializeField] private float scrollSpeed = 120f; // デフォルトを抑えめに
     [SerializeField] private float smoothTime = 0.05f; // 少しマイルドに
+
+    [Header("Canvas / Camera binding")]
+    [SerializeField] private Canvas targetCanvas; // コメントを表示する対象Canvas（未指定なら親から自動取得）
+    [SerializeField] private Camera uiRenderCamera; // UIを描画するカメラ（NDI送出カメラを割り当て推奨。未指定ならMainCamera）
+    [SerializeField] private RectTransform commentsParent; // コメント生成先（未指定ならtargetCanvas直下 or 自身）
 
     void OnEnable() {
         // セントラルマネージャからコメントを受信するイベントを登録
@@ -21,6 +25,61 @@ public class CanvasController : MonoBehaviour {
         CentralManager.OnCanvasCommentSend -= HandleCanvasCommentSend;
     }
 
+    void Start() {
+        // Canvasの自動検出
+        if (targetCanvas == null) {
+            targetCanvas = GetComponentInParent<Canvas>();
+        }
+
+        if (targetCanvas != null) {
+            // 画面に表示しつつ、カメラ出力（NDI）にも載るように、ScreenSpace-Cameraへ変更
+            if (targetCanvas.renderMode != RenderMode.ScreenSpaceCamera) {
+                targetCanvas.renderMode = RenderMode.ScreenSpaceCamera;
+            }
+
+            // UI描画カメラの割当（未指定時はMainCamera）。既に設定済みなら上書きしない
+            if (targetCanvas.worldCamera == null) {
+                targetCanvas.worldCamera = uiRenderCamera != null ? uiRenderCamera : Camera.main;
+            }
+
+            // 平面距離は近めに（カメラのNear/Farに収まる値）
+            if (targetCanvas.planeDistance < 0.1f) {
+                targetCanvas.planeDistance = 1.0f;
+            }
+
+            // 必要に応じてソートオーダーも調整（最前面に出したい場合）
+            // targetCanvas.sortingOrder = 1000;
+        } else {
+            Debug.LogWarning("CanvasController: 対象Canvasが見つかりません。親階層にCanvasを配置してください。");
+        }
+
+        // 初期化順の保険：1フレーム後に再確認してカメラを再バインドし、描画を強制更新
+        StartCoroutine(EnsureCameraBindingAtEndOfFrame());
+    }
+
+    private IEnumerator EnsureCameraBindingAtEndOfFrame() {
+        // 他の初期化（カメラ設定やCanvasScalerなど）が終わるのを待つ
+        yield return new WaitForEndOfFrame();
+
+        if (targetCanvas == null) yield break;
+
+        Canvas canvasToConfig = targetCanvas.rootCanvas != null ? targetCanvas.rootCanvas : targetCanvas;
+
+        if (canvasToConfig.renderMode != RenderMode.ScreenSpaceCamera) {
+            canvasToConfig.renderMode = RenderMode.ScreenSpaceCamera;
+        }
+
+        if (canvasToConfig.worldCamera == null) {
+            canvasToConfig.worldCamera = uiRenderCamera != null ? uiRenderCamera : Camera.main;
+        }
+
+        if (canvasToConfig.planeDistance < 0.1f) {
+            canvasToConfig.planeDistance = 1.0f;
+        }
+
+        Canvas.ForceUpdateCanvases();
+    }
+
     // セントラルマネージャーから情報を受け取るイベント
     void HandleCanvasCommentSend(string comment) {
         addComment(comment);
@@ -28,13 +87,14 @@ public class CanvasController : MonoBehaviour {
 
     // スクロール前にTMPオブジェクトの生成
     private void addComment(string comment) {
-        // テンプレートから新しいコメントオブジェクトを生成（自身の親Canvas配下へ）
-        GameObject newComment = Instantiate(commentTemplate, transform);
+        // 生成先を決定（明示指定 > 対象Canvas直下 > 自身）
+        Transform parentTransform = commentsParent != null ? commentsParent : (targetCanvas != null ? targetCanvas.transform : transform);
+        GameObject newComment = Instantiate(commentTemplate, parentTransform);
 
         newComment.SetActive(true); // 新しいコメントを表示
 
-        // テキストを設定
-        TextMeshPro textComponent = newComment.GetComponent<TextMeshPro>();
+        // テキストを設定（UGUI/3D両対応）
+        TMP_Text textComponent = newComment.GetComponent<TMP_Text>();
         if (textComponent != null) {
             textComponent.text = comment;
             // 折り返しを無効にする

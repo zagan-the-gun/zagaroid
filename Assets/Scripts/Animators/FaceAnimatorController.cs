@@ -24,6 +24,9 @@ public class FaceAnimatorController : MonoBehaviour {
     [SerializeField] private bool talkingOnStart = false;
     [SerializeField] private float mouthFpsWhenTalking = 10.0f; // 話中のみ巡回
 
+    [Header("Interaction")]
+    [SerializeField] private bool enableDragAtRuntime = true; // 実行中のドラッグ移動を有効化
+
     private const string LogPrefix = "[FaceAnimator]";
 
     private bool isTalking;
@@ -33,7 +36,6 @@ public class FaceAnimatorController : MonoBehaviour {
 
     private bool isBlinking;
     private Coroutine blinkLoopCoroutine;
-    private Coroutine blinkOnceCoroutine;
 
     private bool warnedMissingEyesOnce;
     private bool warnedMissingMouthOnce;
@@ -62,6 +64,20 @@ public class FaceAnimatorController : MonoBehaviour {
 
         SetTalking(talkingOnStart);
         mouthFrameDuration = mouthFpsWhenTalking > 0 ? 1.0f / mouthFpsWhenTalking : 0f;
+
+        // 実行時ドラッグの自動付与（UI の RectTransform 前提）
+        if (enableDragAtRuntime) {
+            RectTransform rectTransform = transform as RectTransform;
+            if (rectTransform != null) {
+                var drag = gameObject.GetComponent<UIDragMove>();
+                if (drag == null) {
+                    drag = gameObject.AddComponent<UIDragMove>();
+                }
+                drag.SetTarget(rectTransform);
+            } else {
+                Debug.LogWarning($"{LogPrefix} RectTransform が見つかりません。UI要素に配置されていないためドラッグは無効です。");
+            }
+        }
     }
 
     void OnEnable() {
@@ -110,11 +126,7 @@ public class FaceAnimatorController : MonoBehaviour {
         }
     }
 
-    // 公開API: 即時まばたき
-    public void BlinkNow() {
-        if (blinkOnceCoroutine != null) return; // 実行中は重複起動しない
-        blinkOnceCoroutine = StartCoroutine(BlinkOnceRoutine());
-    }
+    // 即時まばたきAPIは未使用のため削除
 
     private void StartBlinkLoop() {
         if (blinkLoopCoroutine != null) return;
@@ -125,10 +137,6 @@ public class FaceAnimatorController : MonoBehaviour {
         if (blinkLoopCoroutine != null) {
             StopCoroutine(blinkLoopCoroutine);
             blinkLoopCoroutine = null;
-        }
-        if (blinkOnceCoroutine != null) {
-            StopCoroutine(blinkOnceCoroutine);
-            blinkOnceCoroutine = null;
         }
         isBlinking = false;
     }
@@ -185,7 +193,6 @@ public class FaceAnimatorController : MonoBehaviour {
 
         SetEyesFrameSafe(0);
         isBlinking = false;
-        blinkOnceCoroutine = null;
     }
 
     private void SetEyesFrameSafe(int index) {
