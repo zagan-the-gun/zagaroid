@@ -49,8 +49,8 @@ public class SettingUIController : MonoBehaviour {
     private TextField discordTextChannelIdInput;
     private TextField discordTargetUserIdInput;
     private TextField discordInputNameInput;
-    private DropdownField discordSubtitleMethodDropdown;
-    private TextField discordWitaiTokenInput;
+    private DropdownField subtitleMethodDropdown;
+    private TextField witaiTokenInput;
 
     private Button startDiscordBotButton; // Discord BOT手動起動ボタン
     private Button stopDiscordBotButton; // Discord BOT停止ボタン
@@ -109,8 +109,8 @@ public class SettingUIController : MonoBehaviour {
         discordTextChannelIdInput = settingContentRoot.Q<TextField>("DiscordTextChannelIdInput");
         discordTargetUserIdInput = settingContentRoot.Q<TextField>("DiscordTargetUserIdInput");
         discordInputNameInput = settingContentRoot.Q<TextField>("DiscordInputNameInput");
-        discordSubtitleMethodDropdown = settingContentRoot.Q<DropdownField>("DiscordSubtitleMethodDropdown");
-        discordWitaiTokenInput = settingContentRoot.Q<TextField>("DiscordWitaiTokenInput");
+        subtitleMethodDropdown = settingContentRoot.Q<DropdownField>("SubtitleMethodDropdown");
+        witaiTokenInput = settingContentRoot.Q<TextField>("WitaiTokenInput");
         
         startDiscordBotButton = settingContentRoot.Q<Button>("StartDiscordBotButton"); // Discord BOT手動起動ボタン
         stopDiscordBotButton = settingContentRoot.Q<Button>("StopDiscordBotButton"); // Discord BOT停止ボタン
@@ -331,27 +331,18 @@ public class SettingUIController : MonoBehaviour {
         if (discordInputNameInput != null) {
             discordInputNameInput.value = CentralManager.Instance.GetDiscordInputName();
         }
-        if (discordSubtitleMethodDropdown != null) {
+        if (subtitleMethodDropdown != null) {
             Debug.Log("Discord字幕方式ドロップダウンの初期化を開始");
-            
-            // ドロップダウンの選択肢を設定（DiscordBotClient.SubtitleMethodに基づく）
-            var discordChoices = new List<string> { "WitAI", "MenZ" };
-            discordSubtitleMethodDropdown.choices = discordChoices;
-            Debug.Log($"Discord字幕方式ドロップダウンの選択肢を設定しました: {string.Join(", ", discordChoices)}");
-            
-            // 現在の設定値を取得（整数値を文字列に変換）
-            int currentMethodIndex = CentralManager.Instance.GetDiscordSubtitleMethod();
-            string currentMethodName = discordChoices[Mathf.Clamp(currentMethodIndex, 0, discordChoices.Count - 1)];
-            Debug.Log($"現在のDiscord字幕方式: {currentMethodIndex} ({currentMethodName})");
-            
-            // 値を設定
-            discordSubtitleMethodDropdown.value = currentMethodName;
-            Debug.Log($"Discord字幕方式ドロップダウンの値を設定しました: '{discordSubtitleMethodDropdown.value}'");
+            var choices = new List<string> { "WitAI", "MenZ" };
+            subtitleMethodDropdown.choices = choices;
+            string saved = CentralManager.Instance.GetDiscordSubtitleMethodString();
+            if (!choices.Contains(saved)) saved = "WitAI";
+            subtitleMethodDropdown.value = saved;
+            Debug.Log($"Discord字幕方式: '{subtitleMethodDropdown.value}'");
         }
-        if (discordWitaiTokenInput != null) {
-            discordWitaiTokenInput.value = CentralManager.Instance.GetDiscordWitaiToken();
+        if (witaiTokenInput != null) {
+            witaiTokenInput.value = CentralManager.Instance.GetDiscordWitaiToken();
         }
-        
 
         Debug.Log("設定UIに値をロードしました。");
     }
@@ -446,18 +437,12 @@ public class SettingUIController : MonoBehaviour {
         if (discordInputNameInput != null) {
             CentralManager.Instance.SetDiscordInputName(discordInputNameInput.value);
         }
-        if (discordSubtitleMethodDropdown != null) {
-            // 文字列を整数値に変換して保存
-            var choices = new List<string> { "WitAI", "MenZ" };
-            int methodIndex = choices.IndexOf(discordSubtitleMethodDropdown.value);
-            if (methodIndex >= 0) {
-                CentralManager.Instance.SetDiscordSubtitleMethod(methodIndex);
-            }
+        if (subtitleMethodDropdown != null) {
+            CentralManager.Instance.SetDiscordSubtitleMethodString(subtitleMethodDropdown.value);
         }
-        if (discordWitaiTokenInput != null) {
-            CentralManager.Instance.SetDiscordWitaiToken(discordWitaiTokenInput.value);
-        }
-        
+        if (witaiTokenInput != null) {
+            CentralManager.Instance.SetDiscordWitaiToken(witaiTokenInput.value);
+        }        
 
         // PlayerPrefsの変更をディスクに書き込む
         // CentralManager の OnDisable/OnDestroy で自動的に保存されるため、

@@ -32,3 +32,13 @@
     pointer-events: none;
     z-index: 2;
 }
+
+/* DropdownFieldのポップアップがScrollView内でクリップされないようにする */
+.unity-scroll-view__content-viewport {
+    overflow: visible;
+}
+.unity-scroll-view__content-container {
+    overflow: visible;
+}
+
+/* 追加対策は撤去し、最小限のクリップ回避のみ残す */

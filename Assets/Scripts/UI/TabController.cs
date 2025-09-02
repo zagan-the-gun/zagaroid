@@ -10,8 +10,10 @@ public class TabController : MonoBehaviour{
     private VisualElement mainContainer;
     private UnityEngine.UIElements.Button logButton;
     private UnityEngine.UIElements.Button settingButton;
+    private UnityEngine.UIElements.Button objectButton;
     private VisualElement logContent;
     private VisualElement settingContent;
+    private VisualElement objectContent;
     
     // 追加: トグル用要素
     private UnityEngine.UIElements.Button toggleButton;
@@ -41,21 +43,33 @@ public class TabController : MonoBehaviour{
         mainContainer = uiRoot.Q<VisualElement>("main");
         logButton = uiRoot.Q<UnityEngine.UIElements.Button>("LogButton");
         settingButton = uiRoot.Q<UnityEngine.UIElements.Button>("SettingButton");
+        objectButton = uiRoot.Q<UnityEngine.UIElements.Button>("ObjectButton");
         logContent = uiRoot.Q<VisualElement>("logContent");
         settingContent = uiRoot.Q<VisualElement>("settingContent");
+        objectContent = uiRoot.Q<VisualElement>("objectContent");
         toggleButton = uiRoot.Q<UnityEngine.UIElements.Button>("Toggle");
         tabsContainer = uiRoot.Q<VisualElement>("tabs");
         contentDisplayArea = uiRoot.Q<VisualElement>("contentDisplayArea");
 
         // ボタンにイベントリスナーを追加
-        logButton.clicked += () => ShowContent(logContent, settingContent);
-        settingButton.clicked += () => ShowContent(settingContent, logContent);
+        logButton.clicked += () => {
+            ShowOnly(logContent);
+        };
+        settingButton.clicked += () => {
+            ShowOnly(settingContent);
+            SetExpanded(true); // 設定タブを開いたら展開して操作可能にする
+        };
+        objectButton.clicked += () => {
+            ShowOnly(objectContent);
+            SetExpanded(true); // 設定タブを開いたら展開して操作可能にする
+        };
+
         if (toggleButton != null) {
             toggleButton.clicked += ToggleDrawer;
         }
 
         // 初期表示はLogにする
-        ShowContent(logContent, settingContent);
+        ShowOnly(logContent);
 
         // 初期は閉じた状態（Tabs を下、Content 非表示）
         AutoDiscoverRefs();
@@ -70,6 +84,19 @@ public class TabController : MonoBehaviour{
     private void ShowContent(VisualElement contentToShow, VisualElement contentToHide) {
         contentToShow.style.display = DisplayStyle.Flex; // または DisplayStyle.Gridなど適切なもの
         contentToHide.style.display = DisplayStyle.None;
+    }
+
+    /// <summary>
+    /// 渡された要素のみ表示し、同階の他コンテンツは全て非表示にします。
+    /// </summary>
+    private void ShowOnly(VisualElement target) {
+        if (target == null) return;
+        // 同列の候補: logContent / settingContent / objectContent
+        VisualElement[] all = new VisualElement[] { logContent, settingContent, objectContent };
+        foreach (var ve in all) {
+            if (ve == null) continue;
+            ve.style.display = (ve == target) ? DisplayStyle.Flex : DisplayStyle.None;
+        }
     }
 
     // トグルボタン押下で開閉を切り替え

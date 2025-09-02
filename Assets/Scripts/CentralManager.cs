@@ -385,11 +385,35 @@ public class CentralManager : MonoBehaviour {
         PlayerPrefs.SetString("DiscordInputName", value);
     }
 
+    // 旧: int保存 (0: WitAI, 1: MenZ) → 新: string保存 ("WitAI" / "MenZ")
+    private const string DiscordSubtitleMethodKey = "DiscordSubtitleMethod"; // legacy int
+    private const string DiscordSubtitleMethodStrKey = "DiscordSubtitleMethodStr"; // new string
+
     public int GetDiscordSubtitleMethod() {
-        return PlayerPrefs.GetInt("DiscordSubtitleMethod", 0); // 0 = WitAI
+        // 互換維持: 既存コード用に残す（内部は新形式から変換）
+        string mode = GetDiscordSubtitleMethodString();
+        return mode == "MenZ" ? 1 : 0;
     }
     public void SetDiscordSubtitleMethod(int value) {
-        PlayerPrefs.SetInt("DiscordSubtitleMethod", value);
+        // 互換維持: 新形式へ反映
+        SetDiscordSubtitleMethodString(value == 1 ? "MenZ" : "WitAI");
+    }
+
+    public string GetDiscordSubtitleMethodString() {
+        // 新キーがあればそれを返す
+        if (PlayerPrefs.HasKey(DiscordSubtitleMethodStrKey)) {
+            var v = PlayerPrefs.GetString(DiscordSubtitleMethodStrKey, "WitAI");
+            return (v == "MenZ") ? "MenZ" : "WitAI";
+        }
+        // 旧キーからの移行
+        int legacy = PlayerPrefs.GetInt(DiscordSubtitleMethodKey, 0);
+        string mapped = legacy == 1 ? "MenZ" : "WitAI";
+        PlayerPrefs.SetString(DiscordSubtitleMethodStrKey, mapped);
+        return mapped;
+    }
+    public void SetDiscordSubtitleMethodString(string value) {
+        string normalized = (value == "MenZ") ? "MenZ" : "WitAI";
+        PlayerPrefs.SetString(DiscordSubtitleMethodStrKey, normalized);
     }
 
     public string GetDiscordWitaiToken() {

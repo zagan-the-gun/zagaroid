@@ -1253,8 +1253,8 @@ MonoBehaviour:
   - {fileID: 21300000, guid: a590080242d734d0c882c8c034660b2e, type: 3}
   blinkIntervalMinSeconds: 3
   blinkIntervalMaxSeconds: 6
-  blinkHalfCloseSeconds: 0.05
-  blinkClosedSeconds: 0.08
+  blinkHalfCloseSeconds: 0.1
+  blinkClosedSeconds: 0.16
   talkingOnStart: 0
   mouthFpsWhenTalking: 10
   enableDragAtRuntime: 1
@@ -1682,7 +1682,6 @@ GameObject:
   - component: {fileID: 1581766728}
   - component: {fileID: 1581766727}
   - component: {fileID: 1581766729}
-  - component: {fileID: 1581766731}
   m_Layer: 5
   m_Name: StreamCanvas
   m_TagString: Untagged
@@ -1815,22 +1814,6 @@ MonoBehaviour:
   targetCanvas: {fileID: 1581766725}
   uiRenderCamera: {fileID: 1855857710}
   commentsParent: {fileID: 1581766726}
---- !u!114 &1581766731
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1581766722}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a26b7f15063a14dc5a507818ec0bb95f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  enable: 1
-  triggerKey: 290
-  logOnLeftClick: 1
-  logPrefix: '[ZAGARO][UIRaycast]'
 --- !u!1 &1855857707
 GameObject:
   m_ObjectHideFlags: 0

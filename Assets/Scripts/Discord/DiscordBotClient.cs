@@ -831,7 +831,12 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             witaiToken = centralManager.GetDiscordWitaiToken();
             // MenZモードのキャッシュ
             try {
-                s_isMenZMode = (centralManager.GetDiscordSubtitleMethod() == 1);
+                try {
+                    var mode = centralManager.GetDiscordSubtitleMethodString();
+                    s_isMenZMode = (mode == "MenZ");
+                } catch {
+                    s_isMenZMode = (centralManager.GetDiscordSubtitleMethod() == 1);
+                }
                 UnityEngine.Debug.Log($"[WS-PCM] cache isMenZ={s_isMenZMode}");
             } catch { s_isMenZMode = false; }
         }

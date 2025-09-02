@@ -6,18 +6,19 @@
             <ui:Button text="▼" parse-escape-sequences="true" display-tooltip-when="elided" name="Toggle" />
             <ui:Button text="Log" parse-escape-sequences="true" display-tooltip-when="elided" name="LogButton" />
             <ui:Button text="Setting" parse-escape-sequences="true" display-tooltip-when="elided" name="SettingButton" />
+            <ui:Button text="Object" parse-escape-sequences="true" display-tooltip-when="elided" name="ObjectButton" />
         </ui:VisualElement>
-        <ui:VisualElement name="contentDisplayArea" style="flex-grow: 1; background-color: rgba(0, 4, 255, 0); max-height: 150px; display: flex; min-height: 0; overflow: hidden;">
+        <ui:VisualElement name="contentDisplayArea" style="flex-grow: 1; background-color: rgba(0, 4, 255, 0); max-height: 150px; display: flex; min-height: 0; overflow: visible;">
             <ui:VisualElement name="logContent" style="flex-grow: 1; display: none;">
                 <ui:ScrollView>
                     <ui:TextField name="logOutput" picking-mode="Ignore" value="これは非常に長いテキストです。&#10;このテキストが十分に長ければ、TextFieldにスクロールバーが表示されるはずです。&#10;UnityのUI Toolkitでは、TextFieldのmultilineプロパティがtrueに設定されており、&#10;かつテキストがTextFieldの表示領域を超えた場合に自動的に垂直スクロールバーが表示されます。&#10;さらに長いテキストをここに追加し、スクロールバーの動作を確認しましょう。&#10;新しい行を追加するために&#10;改行コード（&#10;）を使用しています。&#10;どんどんとテキストを書き足して、&#10;スクロールバーがいつ出現するかを試してみてください。&#10;" style="flex-grow: 1; max-height: none; flex-wrap: wrap;" />
                 </ui:ScrollView>
             </ui:VisualElement>
-            <ui:VisualElement name="settingContent" style="flex-grow: 1; display: flex;">
-                <ui:ScrollView style="flex-grow: 1; background-color: rgba(0, 0, 0, 0);">
+            <ui:VisualElement name="settingContent" style="flex-grow: 1; display: none;">
+                <ui:ScrollView style="flex-grow: 1; background-color: rgba(0, 0, 0, 0); overflow: visible;">
                     <ui:VisualElement name="1" style="flex-grow: 1; flex-direction: row; background-color: rgba(255, 255, 255, 0);">
                         <ui:VisualElement name="PanelSubtitleAI" class="panel" style="flex-grow: 1; flex-basis: 1px;">
-                            <ui:Label text="翻訳AI設定" class="panel__title" />
+                            <ui:Label text="字幕AI設定" class="panel__title" />
                             <ui:Toggle label="Auto launch" name="AutoStartSubtitleAIToggle" style="margin-bottom: 5px;" />
                             <ui:VisualElement name="SubtitleAIExecutionPath" style="flex-grow: 0; flex-direction: row; flex-basis: auto; flex-shrink: 0;">
                                 <ui:VisualElement name="VisualElement" style="flex-grow: 1;">
@@ -30,38 +31,8 @@
                             <ui:FloatField label="Min Display Time(sec)" value="4" name="MinDisplayTimeInput" />
                             <ui:FloatField label="Max Display Time(sec)" value="8" name="MaxDisplayTimeInput" />
                         </ui:VisualElement>
-                        <ui:VisualElement name="PanelOBSbs" class="panel" style="flex-grow: 1; flex-basis: 1px;">
-                            <ui:Label text="OBS設定" class="panel__title" />
-                            <ui:TextField picking-mode="Ignore" label="OBS WebSocket Password" value="OBS WebSocket Password" name="ObsWebSocketsPasswordInput" />
-                            <ui:TextField label="my subtitle" value="my_subtitle" name="MySubtitleInput" />
-                            <ui:TextField picking-mode="Ignore" label="my english subtitle" value="my_subtitle_en" name="MyEnglishSubtitleInput" />
-                            <ui:TextField label="friend subtitle" value="friend_subtitle" name="FriendSubtitleInput" />
-                        </ui:VisualElement>
-                    </ui:VisualElement>
-                    <ui:VisualElement name="2" style="flex-grow: 1; flex-direction: row;">
-                        <ui:VisualElement name="PanelTranslation" class="panel" style="flex-grow: 1; flex-basis: 1px;">
-                            <ui:Label text="翻訳エンジン選択" class="panel__title" />
-                            <ui:DropdownField label="Translation type" name="TranslationModeDropdown" style="margin-bottom: 5px;" />
-                        </ui:VisualElement>
-                        <ui:VisualElement name="PanelDeepLApi" class="panel" style="flex-grow: 1; flex-shrink: 1; flex-basis: 1px;">
-                            <ui:Label text="DeepL設定" class="panel__title" />
-                            <ui:TextField picking-mode="Ignore" label="DeepL API key" value="asdfasdf" name="DeepLApiClientKeyInput" />
-                        </ui:VisualElement>
-                    </ui:VisualElement>
-                    <ui:VisualElement name="3" style="flex-grow: 1; flex-direction: row;">
-                        <ui:VisualElement name="PanelVoiceVox" class="panel" style="flex-grow: 1; flex-basis: 1px;">
-                            <ui:Label text="VoiceVox設定" class="panel__title" />
-                            <ui:Toggle label="Auto launch" name="AutoStartVoiceVoxToggle" style="margin-bottom: 5px;" />
-                            <ui:VisualElement name="VoiceVoxPath" style="flex-grow: 0; flex-direction: row; flex-basis: auto; flex-shrink: 0;">
-                                <ui:VisualElement name="VisualElement" style="flex-grow: 1;">
-                                    <ui:TextField label="VoiceVox Path" value="/" name="VoiceVoxExecutionPathInput" style="margin-bottom: 5px; margin-right: 5px; flex-grow: 0;" />
-                                </ui:VisualElement>
-                                <ui:Button text="..." name="BrowseVoiceVoxPathButton" style="flex-grow: 0;" />
-                            </ui:VisualElement>
-                            <ui:Button text="Launch" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartVoiceVoxButton" style="margin-bottom: 5px;" />
-                        </ui:VisualElement>
                         <ui:VisualElement name="PanelMenzTranslation" class="panel" style="flex-grow: 1; flex-basis: 1px;">
-                            <ui:Label text="Menz翻訳" class="panel__title" />
+                            <ui:Label text="翻訳AI設定" name="Label" class="panel__title" />
                             <ui:Toggle label="Auto launch" name="AutoStartMenzTranslationToggle" style="margin-bottom: 5px;" />
                             <ui:VisualElement name="MenzTranslationPath" style="flex-grow: 0; flex-direction: row; flex-basis: auto; flex-shrink: 0;">
                                 <ui:VisualElement style="flex-grow: 1;">
@@ -74,9 +45,49 @@
                             <ui:TextField label="Realtime Audio WS URL" value="ws://127.0.0.1:60001" name="RealtimeAudioWsUrlInput" style="margin-bottom: 5px; flex-grow: 1;" />
                         </ui:VisualElement>
                     </ui:VisualElement>
+                    <ui:VisualElement name="2" style="flex-grow: 1; flex-direction: row; background-color: rgba(255, 255, 255, 0);">
+                        <ui:VisualElement name="PanelDeepLApi" class="panel" style="flex-grow: 1; flex-shrink: 1; flex-basis: 1px;">
+                            <ui:Label text="字幕API設定" class="panel__title" />
+                            <ui:TextField picking-mode="Ignore" label="DeepL API key" value="asdfasdf" name="DeepLApiClientKeyInput" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="PanelDeepLApi" class="panel" style="flex-grow: 1; flex-shrink: 1; flex-basis: 1px;">
+                            <ui:Label text="翻訳API設定" class="panel__title" />
+                            <ui:TextField label="Wit.ai Token" name="WitaiTokenInput" style="margin-bottom: 5px;" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                    <ui:VisualElement name="3" style="flex-grow: 1; flex-direction: row;">
+                        <ui:VisualElement name="PanelTranslation" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Label text="翻訳エンジン選択" class="panel__title" />
+                            <ui:DropdownField label="Translation type" name="TranslationModeDropdown" style="margin-bottom: 5px;" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="PanelSubtitle" class="panel" style="flex-grow: 1; flex-basis: 1px; z-index: 1;">
+                            <ui:Label text="字幕エンジン選択" class="panel__title" />
+                            <ui:DropdownField label="Subtitle Method" name="SubtitleMethodDropdown" style="margin-bottom: 5px;" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
                     <ui:VisualElement name="4" style="flex-grow: 1; flex-direction: row;">
+                        <ui:VisualElement name="PanelOBSbs" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Label text="OBS設定" class="panel__title" />
+                            <ui:TextField picking-mode="Ignore" label="OBS WebSocket Password" value="OBS WebSocket Password" name="ObsWebSocketsPasswordInput" />
+                            <ui:TextField label="my subtitle" value="my_subtitle" name="MySubtitleInput" />
+                            <ui:TextField picking-mode="Ignore" label="my english subtitle" value="my_subtitle_en" name="MyEnglishSubtitleInput" />
+                            <ui:TextField label="friend subtitle" value="friend_subtitle" name="FriendSubtitleInput" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="PanelVoiceVox" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Label text="VoiceVox設定" class="panel__title" />
+                            <ui:Toggle label="Auto launch" name="AutoStartVoiceVoxToggle" style="margin-bottom: 5px;" />
+                            <ui:VisualElement name="VoiceVoxPath" style="flex-grow: 0; flex-direction: row; flex-basis: auto; flex-shrink: 0;">
+                                <ui:VisualElement name="VisualElement" style="flex-grow: 1;">
+                                    <ui:TextField label="VoiceVox Path" value="/" name="VoiceVoxExecutionPathInput" style="margin-bottom: 5px; margin-right: 5px; flex-grow: 0;" />
+                                </ui:VisualElement>
+                                <ui:Button text="..." name="BrowseVoiceVoxPathButton" style="flex-grow: 0;" />
+                            </ui:VisualElement>
+                            <ui:Button text="Launch" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartVoiceVoxButton" style="margin-bottom: 5px;" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                    <ui:VisualElement name="5" style="flex-grow: 1; flex-direction: row;">
                         <ui:VisualElement name="PanelDiscordBot" class="panel" style="flex-grow: 1; flex-basis: 1px;">
-                            <ui:Label text="Discord Bot" class="panel__title" />
+                            <ui:Label text="Discord Bot" name="Label" class="panel__title" />
                             <ui:Toggle label="Auto launch" name="AutoStartDiscordBotToggle" style="margin-bottom: 5px;" />
                             <ui:TextField label="Discord Bot Token" name="DiscordTokenInput" password="true" style="margin-bottom: 5px;" />
                             <ui:TextField label="Guild ID" name="DiscordGuildIdInput" style="margin-bottom: 5px;" />
@@ -84,8 +95,6 @@
                             <ui:TextField label="Text Channel ID" name="DiscordTextChannelIdInput" style="margin-bottom: 5px;" />
                             <ui:TextField label="Target User ID" name="DiscordTargetUserIdInput" style="margin-bottom: 5px;" />
                             <ui:TextField label="Input Name" value="Discord" name="DiscordInputNameInput" style="margin-bottom: 5px;" />
-                            <ui:DropdownField label="Subtitle Method" name="DiscordSubtitleMethodDropdown" style="margin-bottom: 5px;" />
-                            <ui:TextField label="Wit.ai Token" name="DiscordWitaiTokenInput" style="margin-bottom: 5px;" />
                             <ui:VisualElement style="flex-grow: 1; flex-direction: row; flex-wrap: nowrap; flex-shrink: 1;">
                                 <ui:Button text="Start" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartDiscordBotButton" style="margin-bottom: 5px; margin-right: 5px; flex-grow: 1;" />
                                 <ui:Button text="Stop" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StopDiscordBotButton" style="margin-bottom: 5px; flex-grow: 1;" />
@@ -94,6 +103,41 @@
                         <ui:VisualElement name="PanelTwitch" class="panel" style="flex-grow: 1; flex-basis: 1px;">
                             <ui:Label text="Twitch設定" class="panel__title" />
                             <ui:IntegerField label="FontSize" name="FontSizeInput" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                    <ui:Button text="Save" name="SaveSettingsButton" style="margin-top: 10px;" />
+                </ui:ScrollView>
+            </ui:VisualElement>
+            <ui:VisualElement name="objectContent" style="flex-grow: 1; display: flex;">
+                <ui:ScrollView style="flex-grow: 1; background-color: rgba(0, 0, 0, 0); overflow: visible;">
+                    <ui:VisualElement name="1" style="flex-grow: 1; flex-direction: row; background-color: rgba(255, 255, 255, 0);">
+                        <ui:VisualElement name="PanelKSK" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Label text="ksk設定" name="Label" class="panel__title" />
+                            <ui:Toggle label="Auto launch" name="AutoStartSubtitleAIToggle" style="margin-bottom: 5px;" />
+                            <ui:VisualElement name="SubtitleAIExecutionPath" style="flex-grow: 0; flex-direction: row; flex-basis: auto; flex-shrink: 0;">
+                                <ui:VisualElement name="VisualElement" style="flex-grow: 1;">
+                                    <ui:TextField label="SubtitleAI Path" value="/" name="SubtitleAIExecutionPathInput" style="margin-bottom: 5px; margin-right: 5px; flex-grow: 0;" />
+                                </ui:VisualElement>
+                                <ui:Button text="..." name="BrowseSubtitleAIPathButton" style="flex-grow: 0;" />
+                            </ui:VisualElement>
+                            <ui:Button text="Launch" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartSubtitleAIButton" style="margin-bottom: 5px;" />
+                            <ui:IntegerField label="Char Per Sec(char)" value="4" name="CharactersPerSecondInput" />
+                            <ui:FloatField label="Min Display Time(sec)" value="4" name="MinDisplayTimeInput" />
+                            <ui:FloatField label="Max Display Time(sec)" value="8" name="MaxDisplayTimeInput" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="PanelWipe" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Label text="WipeAI設定" name="Label" class="panel__title" />
+                            <ui:Toggle label="Auto launch" name="AutoStartSubtitleAIToggle" style="margin-bottom: 5px;" />
+                            <ui:VisualElement name="SubtitleAIExecutionPath" style="flex-grow: 0; flex-direction: row; flex-basis: auto; flex-shrink: 0;">
+                                <ui:VisualElement name="VisualElement" style="flex-grow: 1;">
+                                    <ui:TextField label="SubtitleAI Path" value="/" name="SubtitleAIExecutionPathInput" style="margin-bottom: 5px; margin-right: 5px; flex-grow: 0;" />
+                                </ui:VisualElement>
+                                <ui:Button text="..." name="BrowseSubtitleAIPathButton" style="flex-grow: 0;" />
+                            </ui:VisualElement>
+                            <ui:Button text="Launch" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartSubtitleAIButton" style="margin-bottom: 5px;" />
+                            <ui:IntegerField label="Char Per Sec(char)" value="4" name="CharactersPerSecondInput" />
+                            <ui:FloatField label="Min Display Time(sec)" value="4" name="MinDisplayTimeInput" />
+                            <ui:FloatField label="Max Display Time(sec)" value="8" name="MaxDisplayTimeInput" />
                         </ui:VisualElement>
                     </ui:VisualElement>
                     <ui:Button text="Save" name="SaveSettingsButton" style="margin-top: 10px;" />
