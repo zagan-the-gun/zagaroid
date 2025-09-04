@@ -129,7 +129,6 @@ public class TabController : MonoBehaviour{
                 tabsContainer.style.top = 0;
                 tabsContainer.style.left = 0;
                 tabsContainer.style.right = 0;
-                tabsContainer.style.height = 30;
             }
             if (contentDisplayArea != null) {
                 contentDisplayArea.style.marginTop = 30; // タブの高さ分下げる
@@ -153,7 +152,6 @@ public class TabController : MonoBehaviour{
                 tabsContainer.style.top = new StyleLength(StyleKeyword.Null);
                 tabsContainer.style.left = new StyleLength(StyleKeyword.Null);
                 tabsContainer.style.right = new StyleLength(StyleKeyword.Null);
-                tabsContainer.style.height = new StyleLength(StyleKeyword.Null);
             }
             if (contentDisplayArea != null) {
                 contentDisplayArea.style.marginTop = 0;
