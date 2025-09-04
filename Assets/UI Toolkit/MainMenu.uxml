@@ -111,20 +111,17 @@
             <ui:VisualElement name="objectContent" style="flex-grow: 1; display: flex;">
                 <ui:ScrollView style="flex-grow: 1; background-color: rgba(0, 0, 0, 0); overflow: visible;">
                     <ui:VisualElement name="1" style="flex-grow: 1; flex-direction: row; background-color: rgba(255, 255, 255, 0);">
+                        <ui:VisualElement name="PanelZagan" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Label text="zagan設定" name="Label" class="panel__title" />
+                            <ui:TextField label="my subtitle" value="my_subtitle" name="MySubtitleInput" />
+                            <ui:TextField picking-mode="Ignore" label="my english subtitle" value="my_subtitle_en" name="MyEnglishSubtitleInput" />
+                        </ui:VisualElement>
                         <ui:VisualElement name="PanelKSK" class="panel" style="flex-grow: 1; flex-basis: 1px;">
                             <ui:Label text="ksk設定" name="Label" class="panel__title" />
-                            <ui:Toggle label="Auto launch" name="AutoStartSubtitleAIToggle" style="margin-bottom: 5px;" />
-                            <ui:VisualElement name="SubtitleAIExecutionPath" style="flex-grow: 0; flex-direction: row; flex-basis: auto; flex-shrink: 0;">
-                                <ui:VisualElement name="VisualElement" style="flex-grow: 1;">
-                                    <ui:TextField label="SubtitleAI Path" value="/" name="SubtitleAIExecutionPathInput" style="margin-bottom: 5px; margin-right: 5px; flex-grow: 0;" />
-                                </ui:VisualElement>
-                                <ui:Button text="..." name="BrowseSubtitleAIPathButton" style="flex-grow: 0;" />
-                            </ui:VisualElement>
-                            <ui:Button text="Launch" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartSubtitleAIButton" style="margin-bottom: 5px;" />
-                            <ui:IntegerField label="Char Per Sec(char)" value="4" name="CharactersPerSecondInput" />
-                            <ui:FloatField label="Min Display Time(sec)" value="4" name="MinDisplayTimeInput" />
-                            <ui:FloatField label="Max Display Time(sec)" value="8" name="MaxDisplayTimeInput" />
+                            <ui:TextField label="friend subtitle" value="friend_subtitle" name="FriendSubtitleInput" />
                         </ui:VisualElement>
+                    </ui:VisualElement>
+                    <ui:VisualElement name="2" style="flex-grow: 1; flex-direction: row; background-color: rgba(255, 255, 255, 0);">
                         <ui:VisualElement name="PanelWipe" class="panel" style="flex-grow: 1; flex-basis: 1px;">
                             <ui:Label text="WipeAI設定" name="Label" class="panel__title" />
                             <ui:Toggle label="Auto launch" name="AutoStartSubtitleAIToggle" style="margin-bottom: 5px;" />

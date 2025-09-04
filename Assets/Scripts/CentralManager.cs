@@ -576,6 +576,19 @@ public class CentralManager : MonoBehaviour {
         OnObsSubtitlesSend?.Invoke(subtitle, subtitleText);
     }
 
+    // リップシンク用イベント
+    public delegate void LipSyncLevelDelegate(float level01);
+    public static event LipSyncLevelDelegate OnLipSyncLevel;
+    public static void SendLipSyncLevel(float level01) {
+        OnLipSyncLevel?.Invoke(level01);
+    }
+
+    public delegate void SpeakingChangedDelegate(bool speaking);
+    public static event SpeakingChangedDelegate OnSpeakingChanged;
+    public static void SendSpeakingChanged(bool speaking) {
+        OnSpeakingChanged?.Invoke(speaking);
+    }
+
     void OnDisable() {
         UnityTwitchChatController.OnTwitchMessageReceived -= HandleTwitchMessageReceived;
         DiscordBotClient.OnVoiceRecognized -= HandleDiscordVoiceRecognized;

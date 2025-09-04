@@ -1056,6 +1056,10 @@ public class DiscordVoiceNetworkManager {
     /// <summary>
     /// 音声データをバッファに追加
     /// </summary>
+    // リップシンク通知の定数
+    private const float LevelScaleTo01 = 4.0f;   // RMS→[0,1]に引き上げる係数
+    private const bool EnableVoiceBufferLog = false; // ログ多すぎ防止
+
     public void AddAudioData(float[] pcmData) {
         if (pcmData == null || pcmData.Length == 0) return;
         
@@ -1063,8 +1067,20 @@ public class DiscordVoiceNetworkManager {
         float audioLevel = DiscordVoiceNetworkManager.CalculateAudioLevel(pcmData);
         bool isSilent = audioLevel < silenceThreshold;
         
-        // 🔧 デバッグ: バッファ追加時の音量レベルをログ出力
-        UnityEngine.Debug.Log($"VOICE_BUFFER: Adding audio chunk - level={audioLevel:F6}, threshold={silenceThreshold:F6}, silent={isSilent}, samples={pcmData.Length}");
+        // リップシンク用: 正規化のみして通知（シンプル）
+        float normalizedLevel = UnityEngine.Mathf.Clamp01(audioLevel * LevelScaleTo01);
+
+        // レベル通知（メインスレッド経由）
+        if (_enqueueMainThreadAction != null) {
+            _enqueueMainThreadAction(() => CentralManager.SendLipSyncLevel(normalizedLevel));
+        } else {
+            CentralManager.SendLipSyncLevel(normalizedLevel);
+        }
+        
+        // 🔧 デバッグ: バッファ追加時の音量レベルをログ出力（抑制可能）
+        if (EnableVoiceBufferLog) {
+            UnityEngine.Debug.Log($"VOICE_BUFFER: Adding audio chunk - level={audioLevel:F6}, threshold={silenceThreshold:F6}, silent={isSilent}, samples={pcmData.Length}");
+        }
         
         // 音声データをバッファに追加
         audioChunks.Add(pcmData);
