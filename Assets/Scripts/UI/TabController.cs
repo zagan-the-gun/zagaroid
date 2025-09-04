@@ -121,8 +121,19 @@ public class TabController : MonoBehaviour{
             contentDisplayArea.style.flexGrow = 1;
             // UXML で max-height:150px が指定されているため、制限を解除
             contentDisplayArea.style.maxHeight = StyleKeyword.None;
-            // Tabs を最上部へ
-            MoveElementToIndex(root, tabsContainer, 0);
+            // Tabs を描画順の末尾へ（重なり順で最前面にする）
+            MoveElementToIndex(root, tabsContainer, int.MaxValue);
+            // タブを絶対配置で上固定し、最前面化
+            if (tabsContainer != null) {
+                tabsContainer.style.position = Position.Absolute;
+                tabsContainer.style.top = 0;
+                tabsContainer.style.left = 0;
+                tabsContainer.style.right = 0;
+                tabsContainer.style.height = 30;
+            }
+            if (contentDisplayArea != null) {
+                contentDisplayArea.style.marginTop = 30; // タブの高さ分下げる
+            }
             if (mainContainer != null) mainContainer.style.display = DisplayStyle.None; // Content を最大化
             if (toggleButton != null) toggleButton.text = "▼";
             isCollapsed = false;
@@ -136,6 +147,17 @@ public class TabController : MonoBehaviour{
         } else {
             // 非表示: Content を閉じる、Tabs を一番下に、ボタンは「▲」
             contentDisplayArea.style.display = DisplayStyle.None;
+            // 絶対配置解除し、相対配置へ戻す
+            if (tabsContainer != null) {
+                tabsContainer.style.position = Position.Relative;
+                tabsContainer.style.top = new StyleLength(StyleKeyword.Null);
+                tabsContainer.style.left = new StyleLength(StyleKeyword.Null);
+                tabsContainer.style.right = new StyleLength(StyleKeyword.Null);
+                tabsContainer.style.height = new StyleLength(StyleKeyword.Null);
+            }
+            if (contentDisplayArea != null) {
+                contentDisplayArea.style.marginTop = 0;
+            }
             // Tabs を最下部へ（末尾に挿入）
             MoveElementToIndex(root, tabsContainer, int.MaxValue);
             if (mainContainer != null) {
