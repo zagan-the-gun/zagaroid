@@ -33,14 +33,18 @@ public class SettingUIController : MonoBehaviour {
     private FloatField maxDisplayTimeInput;
 
     private TextField obsWebSocketsPasswordInput;
+    private TextField myNameInput;
     private TextField mySubtitleInput;
     private TextField myEnglishSubtitleInput;
+    private TextField friendNameInput;
     private TextField friendSubtitleInput;
 
     private TextField deepLApiClientKeyInput;
     private DropdownField translationModeDropdown;
     private TextField menZTranslationServerUrlInput;
     private TextField realtimeAudioWsUrlInput;
+    private TextField wipeAINameInput;
+    private TextField wipeAISubtitleInput;
     
     private Toggle autoStartDiscordBotToggle;
     private TextField discordTokenInput;
@@ -95,13 +99,17 @@ public class SettingUIController : MonoBehaviour {
         maxDisplayTimeInput = settingContentRoot.Q<FloatField>("MaxDisplayTimeInput");
 
         obsWebSocketsPasswordInput = settingContentRoot.Q<TextField>("ObsWebSocketsPasswordInput");
-        mySubtitleInput = settingContentRoot.Q<TextField>("MySubtitleInput");
-        myEnglishSubtitleInput = settingContentRoot.Q<TextField>("MyEnglishSubtitleInput");
-        friendSubtitleInput = settingContentRoot.Q<TextField>("FriendSubtitleInput");
+        myNameInput = uiDocument.rootVisualElement.Q<TextField>("MyNameInput");
+        mySubtitleInput = uiDocument.rootVisualElement.Q<TextField>("MySubtitleInput");
+        myEnglishSubtitleInput = uiDocument.rootVisualElement.Q<TextField>("MyEnglishSubtitleInput");
+        friendNameInput = uiDocument.rootVisualElement.Q<TextField>("FriendNameInput");
+        friendSubtitleInput = uiDocument.rootVisualElement.Q<TextField>("FriendSubtitleInput");
         deepLApiClientKeyInput = settingContentRoot.Q<TextField>("DeepLApiClientKeyInput"); // DeepL APIキー
         translationModeDropdown = settingContentRoot.Q<DropdownField>("TranslationModeDropdown"); // 翻訳方式選択
         menZTranslationServerUrlInput = settingContentRoot.Q<TextField>("MenZTranslationServerUrlInput"); // MenZ翻訳サーバーURL
         realtimeAudioWsUrlInput = settingContentRoot.Q<TextField>("RealtimeAudioWsUrlInput"); // Realtime Audio WS URL
+        wipeAISubtitleInput = uiDocument.rootVisualElement.Q<TextField>("WipeAISubtitleInput");
+        wipeAINameInput = uiDocument.rootVisualElement.Q<TextField>("WipeAINameInput");
         autoStartDiscordBotToggle = settingContentRoot.Q<Toggle>("AutoStartDiscordBotToggle");
         discordTokenInput = settingContentRoot.Q<TextField>("DiscordTokenInput");
         discordGuildIdInput = settingContentRoot.Q<TextField>("DiscordGuildIdInput");
@@ -114,7 +122,7 @@ public class SettingUIController : MonoBehaviour {
         
         startDiscordBotButton = settingContentRoot.Q<Button>("StartDiscordBotButton"); // Discord BOT手動起動ボタン
         stopDiscordBotButton = settingContentRoot.Q<Button>("StopDiscordBotButton"); // Discord BOT停止ボタン
-        saveSettingsButton = settingContentRoot.Q<Button>("SaveSettingsButton"); // 設定を保存ボタン
+        saveSettingsButton = settingContentRoot.Q<Button>("SaveSettingsButton"); // 互換保持（未使用でも可）
 
         // UI要素が見つからない場合のエラーチェック
         // if (deepLApiClientKeyInput == null) Debug.LogError("SettingUIController: 'DeepLApiClientKeyInput' TextFieldが見つかりません。");
@@ -161,9 +169,9 @@ public class SettingUIController : MonoBehaviour {
             stopDiscordBotButton.clicked += OnStopDiscordBotClicked;
         }
 
-        if (saveSettingsButton != null) {
-            saveSettingsButton.clicked += SaveSettingsFromUI;
-        }
+        uiDocument.rootVisualElement
+            .Query<Button>("SaveSettingsButton")
+            .ForEach(b => b.clicked += SaveSettingsFromUI);
 
         // DiscordBotの状態変更イベントを登録
         DiscordBotClient.OnDiscordBotStateChanged += OnDiscordBotStateChanged;
@@ -206,9 +214,9 @@ public class SettingUIController : MonoBehaviour {
             stopDiscordBotButton.clicked -= OnStopDiscordBotClicked;
         }
 
-        if (saveSettingsButton != null) {
-            saveSettingsButton.clicked -= SaveSettingsFromUI;
-        }
+        uiDocument.rootVisualElement
+            .Query<Button>("SaveSettingsButton")
+            .ForEach(b => b.clicked -= SaveSettingsFromUI);
 
         // DiscordBotの状態変更イベントを解除
         DiscordBotClient.OnDiscordBotStateChanged -= OnDiscordBotStateChanged;
@@ -255,11 +263,17 @@ public class SettingUIController : MonoBehaviour {
             obsWebSocketsPasswordInput.value = CentralManager.Instance.GetObsWebSocketsPassword();
         }
 
+        if (myNameInput != null) {
+            myNameInput.value = CentralManager.Instance.GetMyName();
+        }
         if (mySubtitleInput != null) {
             mySubtitleInput.value = CentralManager.Instance.GetMySubtitle();
         }
         if (myEnglishSubtitleInput != null) {
             myEnglishSubtitleInput.value = CentralManager.Instance.GetMyEnglishSubtitle();
+        }
+        if (friendNameInput != null) {
+            friendNameInput.value = CentralManager.Instance.GetFriendName();
         }
         if (friendSubtitleInput != null) {
             friendSubtitleInput.value = CentralManager.Instance.GetFriendSubtitle();
@@ -306,6 +320,12 @@ public class SettingUIController : MonoBehaviour {
         }
         if (realtimeAudioWsUrlInput != null) {
             realtimeAudioWsUrlInput.value = CentralManager.Instance.GetRealtimeAudioWsUrl();
+        }
+        if (wipeAISubtitleInput != null) {
+            wipeAISubtitleInput.value = CentralManager.Instance.GetWipeAISubtitle();
+        }
+        if (wipeAINameInput != null) {
+            wipeAINameInput.value = CentralManager.Instance.GetWipeAIName();
         }
 
         if (autoStartDiscordBotToggle != null) {
@@ -389,11 +409,17 @@ public class SettingUIController : MonoBehaviour {
             CentralManager.Instance.SetObsWebSocketsPassword(obsWebSocketsPasswordInput.value);
         }
 
+        if (myNameInput != null) {
+            CentralManager.Instance.SetMyName(myNameInput.value);
+        }
         if (mySubtitleInput != null) {
             CentralManager.Instance.SetMySubtitle(mySubtitleInput.value);
         }
         if (myEnglishSubtitleInput != null) {
             CentralManager.Instance.SetMyEnglishSubtitle(myEnglishSubtitleInput.value);
+        }
+        if (friendNameInput != null) {
+            CentralManager.Instance.SetFriendName(friendNameInput.value);
         }
         if (friendSubtitleInput != null) {
             CentralManager.Instance.SetFriendSubtitle(friendSubtitleInput.value);
@@ -413,6 +439,17 @@ public class SettingUIController : MonoBehaviour {
         if (realtimeAudioWsUrlInput != null) {
             CentralManager.Instance.SetRealtimeAudioWsUrl(realtimeAudioWsUrlInput.value);
         }
+        if (wipeAISubtitleInput != null) {
+            CentralManager.Instance.SetWipeAISubtitle(wipeAISubtitleInput.value);
+        }
+        if (wipeAINameInput != null) {
+            CentralManager.Instance.SetWipeAIName(wipeAINameInput.value);
+        }
+
+        // 変更があればWSサービスのパスを更新
+        // if (MultiPortWebSocketServer.Instance != null) {
+        //     MultiPortWebSocketServer.Instance.ReloadWipeServicePath();
+        // }
 
         if (autoStartDiscordBotToggle != null) {
             CentralManager.Instance.SetAutoStartDiscordBot(autoStartDiscordBotToggle.value);

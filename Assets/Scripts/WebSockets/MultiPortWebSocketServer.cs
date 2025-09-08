@@ -10,12 +10,15 @@ public class MultiPortWebSocketServer : MonoBehaviour {
     private WebSocketServer wss1; // ポート50001
     private WebSocketServer wss2; // ポート50002
     private readonly Dictionary<int, Action<string, string>> messageHandlers = new Dictionary<int, Action<string, string>>();
+    private string _wipeServicePath = "/wipe_subtitle"; // 動的に切替可能
 
     public static MultiPortWebSocketServer Instance { get; private set; }
 
     // ポートごとのイベント定義
     public static event Action<string, string> OnMessageReceivedFromPort50001;
     public static event Action<string, string> OnMessageReceivedFromPort50002;
+    // Wipe用の受信イベント（messageのみ）
+    public static event Action<string> OnWipeMessageReceived;
 
     private readonly Queue<Action> _executionQueue = new Queue<Action>();
 
@@ -45,6 +48,10 @@ public class MultiPortWebSocketServer : MonoBehaviour {
             if (port == 50001) {
             // if (port == 50000) {
                 server.AddWebSocketService<EchoService1>("/");
+                // 設定からWipeパスを取得
+                string configured = CentralManager.Instance != null ? CentralManager.Instance.GetWipeAISubtitle() : "wipe_subtitle";
+                _wipeServicePath = "/" + (string.IsNullOrEmpty(configured) ? "wipe_subtitle" : configured.Trim('/'));
+                server.AddWebSocketService<WipeService>(_wipeServicePath);
                 wss1 = server; // インスタンスを保存
             } else if (port == 50002) {
                 server.AddWebSocketService<EchoService2>("/");
@@ -136,6 +143,42 @@ public class MultiPortWebSocketServer : MonoBehaviour {
         });
     }
 
+    // Wipe用メッセージのメインスレッドディスパッチ
+    private void HandleWipeMessageOnMainThread(string message) {
+        Enqueue(() => {
+            OnWipeMessageReceived?.Invoke(message);
+        });
+    }
+
+    // Wipe: 全クライアントへブロードキャスト
+    public void BroadcastToWipeClients(string message) {
+        try {
+            if (wss1 == null) return;
+            var host = wss1.WebSocketServices[_wipeServicePath]; 
+            host?.Sessions.Broadcast(message);
+        } catch (Exception ex) {
+            Debug.LogError($"[WS][WIPE] ブロードキャストエラー: {ex.Message}");
+        }
+    }
+
+    // 設定変更に応じて /wipe_subtitle サービスのパスを更新
+    public void ReloadWipeServicePath() {
+        try {
+            if (wss1 == null) return;
+            string configured = CentralManager.Instance != null ? CentralManager.Instance.GetWipeAISubtitle() : "wipe_subtitle";
+            string newPath = "/" + (string.IsNullOrEmpty(configured) ? "wipe_subtitle" : configured.Trim('/'));
+            if (newPath == _wipeServicePath) return;
+
+            // 旧サービスを削除して新規に追加
+            try { wss1.RemoveWebSocketService(_wipeServicePath); } catch {}
+            wss1.AddWebSocketService<WipeService>(newPath);
+            _wipeServicePath = newPath;
+            Debug.Log($"[WS][WIPE] サービスパスを更新: {_wipeServicePath}");
+        } catch (Exception ex) {
+            Debug.LogError($"[WS][WIPE] パス更新エラー: {ex.Message}");
+        }
+    }
+
     // private IEnumerator InvokeOnMainThread(Action action) {
     //     yield return null;
     //     action?.Invoke();
@@ -160,6 +203,30 @@ public class MultiPortWebSocketServer : MonoBehaviour {
 
         protected override void OnError(ErrorEventArgs e) {
             Debug.LogError($"EchoService1: エラー (ポート 50001) - {e.Message}");
+        }
+    }
+
+    // /wipe_subtitle 用のサービス (内部クラス)
+    private class WipeService : WebSocketBehavior {
+        protected override void OnOpen() {
+            // ブロードキャスト運用のため、個別登録処理は不要
+        }
+
+        protected override void OnMessage(MessageEventArgs e) {
+            try {
+                // 受信をメインスレッドでハンドリング（messageのみ）
+                Instance?.HandleWipeMessageOnMainThread(e.Data);
+            } catch (Exception ex) {
+                Debug.LogError($"[WS][WIPE] OnMessage エラー: {ex.Message}");
+            }
+        }
+
+        protected override void OnClose(CloseEventArgs e) {
+            // ブロードキャスト運用のため、個別登録解除処理は不要
+        }
+
+        protected override void OnError(ErrorEventArgs e) {
+            Debug.LogError($"[WS][WIPE] エラー: {e.Message}");
         }
     }
 

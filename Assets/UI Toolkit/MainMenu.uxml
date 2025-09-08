@@ -27,9 +27,6 @@
                                 <ui:Button text="..." name="BrowseSubtitleAIPathButton" style="flex-grow: 0;" />
                             </ui:VisualElement>
                             <ui:Button text="Launch" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartSubtitleAIButton" style="margin-bottom: 5px;" />
-                            <ui:IntegerField label="Char Per Sec(char)" value="4" name="CharactersPerSecondInput" />
-                            <ui:FloatField label="Min Display Time(sec)" value="4" name="MinDisplayTimeInput" />
-                            <ui:FloatField label="Max Display Time(sec)" value="8" name="MaxDisplayTimeInput" />
                         </ui:VisualElement>
                         <ui:VisualElement name="PanelMenzTranslation" class="panel" style="flex-grow: 1; flex-basis: 1px;">
                             <ui:Label text="翻訳AI設定" name="Label" class="panel__title" />
@@ -69,9 +66,9 @@
                         <ui:VisualElement name="PanelOBSbs" class="panel" style="flex-grow: 1; flex-basis: 1px;">
                             <ui:Label text="OBS設定" class="panel__title" />
                             <ui:TextField picking-mode="Ignore" label="OBS WebSocket Password" value="OBS WebSocket Password" name="ObsWebSocketsPasswordInput" />
-                            <ui:TextField label="my subtitle" value="my_subtitle" name="MySubtitleInput" />
-                            <ui:TextField picking-mode="Ignore" label="my english subtitle" value="my_subtitle_en" name="MyEnglishSubtitleInput" />
-                            <ui:TextField label="friend subtitle" value="friend_subtitle" name="FriendSubtitleInput" />
+                            <ui:IntegerField label="Char Per Sec(char)" value="4" name="CharactersPerSecondInput" />
+                            <ui:FloatField label="Min Display Time(sec)" value="4" name="MinDisplayTimeInput" />
+                            <ui:FloatField label="Max Display Time(sec)" value="8" name="MaxDisplayTimeInput" />
                         </ui:VisualElement>
                         <ui:VisualElement name="PanelVoiceVox" class="panel" style="flex-grow: 1; flex-basis: 1px;">
                             <ui:Label text="VoiceVox設定" class="panel__title" />
@@ -86,6 +83,15 @@
                         </ui:VisualElement>
                     </ui:VisualElement>
                     <ui:VisualElement name="5" style="flex-grow: 1; flex-direction: row;">
+                        <ui:VisualElement name="PanelWebSocketsServer" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Label text="WebSockets設定" class="panel__title" />
+                            <ui:IntegerField label="Port" value="50001" name="WebSocketsServerPortInput" />
+                        </ui:VisualElement>
+                        <ui:VisualElement name="PanelVoiceVox" class="panel" style="flex-grow: 1; flex-basis: 1px;">
+                            <ui:Label class="panel__title" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                    <ui:VisualElement name="6" style="flex-grow: 1; flex-direction: row;">
                         <ui:VisualElement name="PanelDiscordBot" class="panel" style="flex-grow: 1; flex-basis: 1px;">
                             <ui:Label text="Discord Bot" name="Label" class="panel__title" />
                             <ui:Toggle label="Auto launch" name="AutoStartDiscordBotToggle" style="margin-bottom: 5px;" />
@@ -113,11 +119,13 @@
                     <ui:VisualElement name="1" style="flex-grow: 1; flex-direction: row; background-color: rgba(255, 255, 255, 0);">
                         <ui:VisualElement name="PanelZagan" class="panel" style="flex-grow: 1; flex-basis: 1px;">
                             <ui:Label text="zagan設定" name="Label" class="panel__title" />
+                            <ui:TextField label="my name" value="my name" name="MyNameInput" />
                             <ui:TextField label="my subtitle" value="my_subtitle" name="MySubtitleInput" />
                             <ui:TextField picking-mode="Ignore" label="my english subtitle" value="my_subtitle_en" name="MyEnglishSubtitleInput" />
                         </ui:VisualElement>
                         <ui:VisualElement name="PanelKSK" class="panel" style="flex-grow: 1; flex-basis: 1px;">
                             <ui:Label text="ksk設定" name="Label" class="panel__title" />
+                            <ui:TextField label="friend name" value="friend name" name="FriendNameInput" />
                             <ui:TextField label="friend subtitle" value="friend_subtitle" name="FriendSubtitleInput" />
                         </ui:VisualElement>
                     </ui:VisualElement>
@@ -132,9 +140,8 @@
                                 <ui:Button text="..." name="BrowseSubtitleAIPathButton" style="flex-grow: 0;" />
                             </ui:VisualElement>
                             <ui:Button text="Launch" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartSubtitleAIButton" style="margin-bottom: 5px;" />
-                            <ui:IntegerField label="Char Per Sec(char)" value="4" name="CharactersPerSecondInput" />
-                            <ui:FloatField label="Min Display Time(sec)" value="4" name="MinDisplayTimeInput" />
-                            <ui:FloatField label="Max Display Time(sec)" value="8" name="MaxDisplayTimeInput" />
+                            <ui:TextField label="wipe subtitle" value="wipe_subtitle" name="WipeAISubtitleInput" />
+                            <ui:TextField label="wipe name" value="wipe name" name="WipeAINameInput" />
                         </ui:VisualElement>
                     </ui:VisualElement>
                     <ui:Button text="Save" name="SaveSettingsButton" style="margin-top: 10px;" />

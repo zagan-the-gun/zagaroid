@@ -1,6 +1,6 @@
 using UnityEngine;
 // using System.IO;
-// using Newtonsoft.Json;
+using Newtonsoft.Json;
 using System.Collections.Generic;
 using System.Collections;
 using System.Collections.Generic; // Queue<T> を使うため
@@ -91,6 +91,7 @@ public class CentralManager : MonoBehaviour {
         if (MultiPortWebSocketServer.Instance != null) {
             MultiPortWebSocketServer.OnMessageReceivedFromPort50001 += HandleWebSocketMessageFromPort50001;
             MultiPortWebSocketServer.OnMessageReceivedFromPort50002 += HandleWebSocketMessageFromPort50002;
+            MultiPortWebSocketServer.OnWipeMessageReceived += HandleWipeMessageReceived;
         } else {
             Debug.LogError("MultiPortWebSocketServer のインスタンスが見つかりません。");
         }
@@ -292,6 +293,34 @@ public class CentralManager : MonoBehaviour {
     }
     public void SetRealtimeAudioWsUrl(string url) {
         PlayerPrefs.SetString("RealtimeAudioWsUrl", url);
+    }
+
+    // 表示名（私 / 友人 / WipeAI）
+    public string GetMyName() {
+        return PlayerPrefs.GetString("MyName", "");
+    }
+    public void SetMyName(string value) {
+        PlayerPrefs.SetString("MyName", value);
+    }
+    public string GetFriendName() {
+        return PlayerPrefs.GetString("FriendName", "");
+    }
+    public void SetFriendName(string value) {
+        PlayerPrefs.SetString("FriendName", value);
+    }
+    public string GetWipeAIName() {
+        return PlayerPrefs.GetString("WipeAIName", "");
+    }
+    public void SetWipeAIName(string value) {
+        PlayerPrefs.SetString("WipeAIName", value);
+    }
+
+    // Wipe AI: subtitle チャンネル名
+    public string GetWipeAISubtitle() {
+        return PlayerPrefs.GetString("WipeAISubtitle", "wipe_subtitle");
+    }
+    public void SetWipeAISubtitle(string value) {
+        PlayerPrefs.SetString("WipeAISubtitle", value);
     }
 
     public string GetTranslationMode() {
@@ -576,6 +605,27 @@ public class CentralManager : MonoBehaviour {
         OnObsSubtitlesSend?.Invoke(subtitle, subtitleText);
     }
 
+    // Wipe向け送信API
+    public void SendWipeRequest(object payload) {
+        try {
+            string json = (payload is string s) ? s : JsonConvert.SerializeObject(payload);
+            MultiPortWebSocketServer.Instance?.BroadcastToWipeClients(json);
+        } catch (System.Exception ex) {
+            Debug.LogError($"Wipe送信エラー: {ex.Message}");
+        }
+    }
+
+    // Wipe向け：字幕送信用ヘルパー
+    public void SendWipeSubtitle(string text, string speaker = "viewer") {
+        if (string.IsNullOrEmpty(text)) return;
+        var payload = new {
+            type = "subtitle",
+            text = text,
+            speaker = speaker
+        };
+        SendWipeRequest(payload);
+    }
+
     // リップシンク用イベント
     public delegate void LipSyncLevelDelegate(float level01);
     public static event LipSyncLevelDelegate OnLipSyncLevel;
@@ -597,6 +647,7 @@ public class CentralManager : MonoBehaviour {
         if (MultiPortWebSocketServer.Instance != null) {
             MultiPortWebSocketServer.OnMessageReceivedFromPort50001 -= HandleWebSocketMessageFromPort50001;
             MultiPortWebSocketServer.OnMessageReceivedFromPort50002 -= HandleWebSocketMessageFromPort50002;
+            MultiPortWebSocketServer.OnWipeMessageReceived -= HandleWipeMessageReceived;
         }
         
         // DiscordBotの停止処理を追加
@@ -617,6 +668,7 @@ public class CentralManager : MonoBehaviour {
         if (MultiPortWebSocketServer.Instance != null) {
             MultiPortWebSocketServer.OnMessageReceivedFromPort50001 -= HandleWebSocketMessageFromPort50001;
             MultiPortWebSocketServer.OnMessageReceivedFromPort50002 -= HandleWebSocketMessageFromPort50002;
+            MultiPortWebSocketServer.OnWipeMessageReceived -= HandleWipeMessageReceived;
         }
         
         // DiscordBotの停止処理を追加
@@ -646,6 +698,9 @@ public class CentralManager : MonoBehaviour {
 
             // コメントスクロールを開始
             SendCanvasMessage(chatMessage);
+
+            // Wipe AI へ字幕として送信（視聴者）
+            SendWipeSubtitle(chatMessage, "viewer");
         }
     }
 
@@ -669,7 +724,8 @@ public class CentralManager : MonoBehaviour {
             recognizedText,
             subtitleChannel,
             "", // 英語字幕チャンネルを一時的に空文字列に
-            calculatedDuration
+            calculatedDuration,
+            false // Wipe由来ではない
         );
 
         manageJapaneseSubtitleDisplay(newEntry);
@@ -692,6 +748,37 @@ public class CentralManager : MonoBehaviour {
     private void HandleDiscordBotStateChanged(bool isRunning) {
         Debug.Log($"DiscordBot状態変更: {(isRunning ? "起動" : "停止")}");
         // 必要に応じてUIの更新やその他の処理を行う
+    }
+
+    // /wipe_subtitle からの受信を処理
+    private void HandleWipeMessageReceived(string message) {
+        Debug.Log($"[WIPE] 受信: {message}");
+        try {
+            var obj = Newtonsoft.Json.Linq.JObject.Parse(message);
+            string type = obj.Value<string>("type");
+
+            if (type == "comment") {
+                string comment = obj.Value<string>("comment");
+                if (string.IsNullOrEmpty(comment)) return;
+
+                // WipeAI専用のOBS字幕チャンネルへ表示
+                string wipeSubtitleChannel = GetWipeAISubtitle();
+                if (!string.IsNullOrEmpty(wipeSubtitleChannel)) {
+                    float duration = calculateDisplayDuration(comment.Length);
+                    // Wipe由来の字幕はWipe転送しない（ループ防止）
+                    CurrentDisplaySubtitle entry = new CurrentDisplaySubtitle(
+                        comment,
+                        wipeSubtitleChannel,
+                        "", // 英語字幕は未使用
+                        duration,
+                        false
+                    );
+                    manageJapaneseSubtitleDisplay(entry);
+                }
+            }
+        } catch (System.Exception ex) {
+            Debug.LogError($"[WIPE] 解析エラー: {ex.Message}");
+        }
     }
 
     // コメントをVoiceVoxで喋らせる
@@ -808,6 +895,9 @@ public class CentralManager : MonoBehaviour {
 
         // コメントスクロールを開始
         SendCanvasMessage(chatMessage);
+
+        // Wipe AI へ字幕として送信（視聴者）
+        SendWipeSubtitle(chatMessage, "viewer");
     }
 
     // メッセージが日本語を含まないか確認
@@ -862,12 +952,13 @@ public class CentralManager : MonoBehaviour {
         // 文字数に応じて日本語字幕表示時間を調整する
         float calculatedDuration = calculateDisplayDuration(extractedText.Length);
 
-        // 新しい日本語字幕エントリを作成
+        // 新しい日本語字幕エントリを作成（Wipe由来ではない）
         CurrentDisplaySubtitle newJpEntry = new CurrentDisplaySubtitle(
             extractedText,
             extractedSubtitleName,
             extractedEnglishSubtitleName, // 英語チャンネルも情報として保持
-            calculatedDuration
+            calculatedDuration,
+            false
         );
 
         // 日本語字幕の表示ロジックを管理
@@ -921,6 +1012,25 @@ public class CentralManager : MonoBehaviour {
 
         // 日本語字幕をOBSに送信
         SendObsSubtitles(jpEntry.japaneseSubtitle, jpEntry.japaneseText);
+
+        // Wipe AI にも常時転送（Wipe由来は除外）
+        if (!jpEntry.IsFromWipe) {
+            // 字幕の出所に応じてspeaker名を設定（my/friend以外は送信しない）
+            string mySubtitle = GetMySubtitle();
+            string friendSubtitle = GetFriendSubtitle();
+
+            if (!string.IsNullOrEmpty(mySubtitle) &&
+                string.Equals(jpEntry.japaneseSubtitle?.Trim(), mySubtitle.Trim(), System.StringComparison.OrdinalIgnoreCase)) {
+                var speaker = GetMyName();
+                if (string.IsNullOrEmpty(speaker)) speaker = "streamer";
+                SendWipeSubtitle(jpEntry.japaneseText, speaker);
+            } else if (!string.IsNullOrEmpty(friendSubtitle) &&
+                string.Equals(jpEntry.japaneseSubtitle?.Trim(), friendSubtitle.Trim(), System.StringComparison.OrdinalIgnoreCase)) {
+                var speaker = GetFriendName();
+                if (string.IsNullOrEmpty(speaker)) speaker = "streamer";
+                SendWipeSubtitle(jpEntry.japaneseText, speaker);
+            }
+        }
 
         Debug.Log($"日本語字幕表示開始: 『{jpEntry.japaneseText}』, 残り時間: {jpEntry.remainingDuration:F2}秒");
     }
@@ -1043,14 +1153,16 @@ public class CurrentDisplaySubtitle {
     public float displayDuration; // この日本語字幕の表示時間（秒）
     public float remainingDuration; // この日本語字幕の残り表示時間（秒）
     public bool IsCombined { get; private set; } = false; // 結合状態を管理
+    public bool IsFromWipe { get; private set; } = false; // この字幕がWipe由来か
 
-    public CurrentDisplaySubtitle(string jpText, string jpSubtitle, string enSubtitle, float duration) {
+    public CurrentDisplaySubtitle(string jpText, string jpSubtitle, string enSubtitle, float duration, bool isFromWipe = false) {
         japaneseText = jpText;
         japaneseSubtitle = jpSubtitle;
         englishSubtitle = enSubtitle; // 英語チャンネルもここで設定
         displayDuration = duration;
         remainingDuration = duration;
         IsCombined = false; // 初期状態は非結合
+        IsFromWipe = isFromWipe;
     }
     
     /// <summary>
