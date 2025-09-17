@@ -626,6 +626,17 @@ public class CentralManager : MonoBehaviour {
         SendWipeRequest(payload);
     }
 
+    // Wipe向け：チャット送信用ヘルパー（type=comment、textキーは維持）
+    public void SendWipeComment(string text, string speaker) {
+        if (string.IsNullOrEmpty(text)) return;
+        var payload = new {
+            type = "comment",
+            text = text,
+            speaker = speaker
+        };
+        SendWipeRequest(payload);
+    }
+
     // リップシンク用イベント
     public delegate void LipSyncLevelDelegate(float level01);
     public static event LipSyncLevelDelegate OnLipSyncLevel;
@@ -699,8 +710,8 @@ public class CentralManager : MonoBehaviour {
             // コメントスクロールを開始
             SendCanvasMessage(chatMessage);
 
-            // Wipe AI へ字幕として送信（視聴者）
-            SendWipeSubtitle(chatMessage, "viewer");
+            // Wipe AI へチャットとして送信（発言者ユーザ名）
+            SendWipeComment(chatMessage, user);
         }
     }
 
@@ -774,6 +785,11 @@ public class CentralManager : MonoBehaviour {
                         false
                     );
                     manageJapaneseSubtitleDisplay(entry);
+
+                    // WipeAIの字幕もVoiceVoxで読み上げ
+                    string wipeName = GetWipeAIName();
+                    if (string.IsNullOrEmpty(wipeName)) wipeName = "WipeAI";
+                    StartCoroutine(speakComment(wipeName, comment));
                 }
             }
         } catch (System.Exception ex) {
@@ -896,8 +912,8 @@ public class CentralManager : MonoBehaviour {
         // コメントスクロールを開始
         SendCanvasMessage(chatMessage);
 
-        // Wipe AI へ字幕として送信（視聴者）
-        SendWipeSubtitle(chatMessage, "viewer");
+        // Wipe AI へチャットとして送信（発言者ユーザ名）
+        SendWipeComment(chatMessage, user);
     }
 
     // メッセージが日本語を含まないか確認
