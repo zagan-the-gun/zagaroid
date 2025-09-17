@@ -99,8 +99,6 @@
                             <ui:TextField label="Guild ID" name="DiscordGuildIdInput" style="margin-bottom: 5px;" />
                             <ui:TextField label="Voice Channel ID" name="DiscordVoiceChannelIdInput" style="margin-bottom: 5px;" />
                             <ui:TextField label="Text Channel ID" name="DiscordTextChannelIdInput" style="margin-bottom: 5px;" />
-                            <ui:TextField label="Target User ID" name="DiscordTargetUserIdInput" style="margin-bottom: 5px;" />
-                            <ui:TextField label="Input Name" value="Discord" name="DiscordInputNameInput" style="margin-bottom: 5px;" />
                             <ui:VisualElement style="flex-grow: 1; flex-direction: row; flex-wrap: nowrap; flex-shrink: 1;">
                                 <ui:Button text="Start" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartDiscordBotButton" style="margin-bottom: 5px; margin-right: 5px; flex-grow: 1;" />
                                 <ui:Button text="Stop" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StopDiscordBotButton" style="margin-bottom: 5px; flex-grow: 1;" />
@@ -127,6 +125,7 @@
                             <ui:Label text="ksk設定" name="Label" class="panel__title" />
                             <ui:TextField label="friend name" value="friend name" name="FriendNameInput" />
                             <ui:TextField label="friend subtitle" value="friend_subtitle" name="FriendSubtitleInput" />
+                            <ui:TextField label="Discord User ID" name="DiscordTargetUserIdInput" style="margin-bottom: 5px;" />
                         </ui:VisualElement>
                     </ui:VisualElement>
                     <ui:VisualElement name="2" style="flex-grow: 1; flex-direction: row; background-color: rgba(255, 255, 255, 0);">

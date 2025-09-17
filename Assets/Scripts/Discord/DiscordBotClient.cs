@@ -827,7 +827,9 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             guildId = centralManager.GetDiscordGuildId();
             voiceChannelId = centralManager.GetDiscordVoiceChannelId();
             targetUserId = centralManager.GetDiscordTargetUserId();
-            inputName = centralManager.GetDiscordInputName();
+            // 入力名はFriendNameに統一（未設定時は "Discord" を使用）
+            inputName = centralManager.GetFriendName();
+            if (string.IsNullOrEmpty(inputName)) inputName = "Discord";
             witaiToken = centralManager.GetDiscordWitaiToken();
             // MenZモードのキャッシュ
             try {

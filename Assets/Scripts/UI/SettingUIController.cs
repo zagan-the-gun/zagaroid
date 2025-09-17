@@ -52,7 +52,6 @@ public class SettingUIController : MonoBehaviour {
     private TextField discordVoiceChannelIdInput;
     private TextField discordTextChannelIdInput;
     private TextField discordTargetUserIdInput;
-    private TextField discordInputNameInput;
     private DropdownField subtitleMethodDropdown;
     private TextField witaiTokenInput;
 
@@ -115,8 +114,7 @@ public class SettingUIController : MonoBehaviour {
         discordGuildIdInput = settingContentRoot.Q<TextField>("DiscordGuildIdInput");
         discordVoiceChannelIdInput = settingContentRoot.Q<TextField>("DiscordVoiceChannelIdInput");
         discordTextChannelIdInput = settingContentRoot.Q<TextField>("DiscordTextChannelIdInput");
-        discordTargetUserIdInput = settingContentRoot.Q<TextField>("DiscordTargetUserIdInput");
-        discordInputNameInput = settingContentRoot.Q<TextField>("DiscordInputNameInput");
+        discordTargetUserIdInput = uiDocument.rootVisualElement.Q<TextField>("DiscordTargetUserIdInput");
         subtitleMethodDropdown = settingContentRoot.Q<DropdownField>("SubtitleMethodDropdown");
         witaiTokenInput = settingContentRoot.Q<TextField>("WitaiTokenInput");
         
@@ -348,9 +346,6 @@ public class SettingUIController : MonoBehaviour {
         if (discordTargetUserIdInput != null) {
             discordTargetUserIdInput.value = CentralManager.Instance.GetDiscordTargetUserId();
         }
-        if (discordInputNameInput != null) {
-            discordInputNameInput.value = CentralManager.Instance.GetDiscordInputName();
-        }
         if (subtitleMethodDropdown != null) {
             Debug.Log("Discord字幕方式ドロップダウンの初期化を開始");
             var choices = new List<string> { "WitAI", "MenZ" };
@@ -470,9 +465,6 @@ public class SettingUIController : MonoBehaviour {
         }
         if (discordTargetUserIdInput != null) {
             CentralManager.Instance.SetDiscordTargetUserId(discordTargetUserIdInput.value);
-        }
-        if (discordInputNameInput != null) {
-            CentralManager.Instance.SetDiscordInputName(discordInputNameInput.value);
         }
         if (subtitleMethodDropdown != null) {
             CentralManager.Instance.SetDiscordSubtitleMethodString(subtitleMethodDropdown.value);
