@@ -95,13 +95,17 @@ public class FaceAnimatorController : MonoBehaviour {
         // リップシンクイベント購読
         CentralManager.OnLipSyncLevel += HandleLipSyncLevel;
         // 発話状態はレベルから自己判定に変更（SpeakingChangedは購読しない）
+        // 顔表示イベント購読（CentralManagerのみ）
+        CentralManager.FaceVisibilityChanged += HandleFaceVisibilityChanged;
+        // 初期状態はONにしておき、通知に従って切替
+        SetFaceVisible(true);
     }
 
     void OnDisable() {
         StopBlinkLoop();
         // リップシンクイベント購読解除
         CentralManager.OnLipSyncLevel -= HandleLipSyncLevel;
-        
+        CentralManager.FaceVisibilityChanged -= HandleFaceVisibilityChanged;
     }
 
     void Update() {
@@ -268,6 +272,17 @@ public class FaceAnimatorController : MonoBehaviour {
     private WaitForSecondsRealtime WaitForSecondsRealtimeSafe(float seconds) {
         if (seconds <= 0f) return new WaitForSecondsRealtime(0f);
         return new WaitForSecondsRealtime(seconds);
+    }
+
+    // --- 表示制御（要件対応） ---
+    private void HandleFaceVisibilityChanged(bool visible) {
+        SetFaceVisible(visible);
+    }
+
+    private void SetFaceVisible(bool visible) {
+        if (baseFaceImage != null) baseFaceImage.enabled = visible;
+        if (eyesImage != null) eyesImage.enabled = visible;
+        if (mouthImage != null) mouthImage.enabled = visible;
     }
 }
 
