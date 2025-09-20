@@ -8,6 +8,11 @@ using System.Linq; // 文字数計算にLinqを使う場合
 
 
 public class CentralManager : MonoBehaviour {
+    // --- 顔表示制御（他クラスはCentralManager経由で購読） ---
+    public static event System.Action<bool> FaceVisibilityChanged; // true=表示, false=非表示
+    public static void SetFaceVisible(bool visible) {
+        FaceVisibilityChanged?.Invoke(visible);
+    }
     // シングルトンインスタンス
     public static CentralManager Instance { get; private set; }
 
@@ -86,7 +91,9 @@ public class CentralManager : MonoBehaviour {
         // DiscordBotからの音声認識結果を受信するイベントを登録
         DiscordBotClient.OnVoiceRecognized += HandleDiscordVoiceRecognized;
         DiscordBotClient.OnDiscordLog += HandleDiscordLog;
+        // 顔表示制御に必要な最小通知のみBOTから受けてCentralManagerでハンドル
         DiscordBotClient.OnDiscordBotStateChanged += HandleDiscordBotStateChanged;
+        DiscordBotClient.OnDiscordLoggedIn += HandleDiscordLoggedIn;
         // MultiPortWebSocketServerの情報を受信するイベントを登録
         if (MultiPortWebSocketServer.Instance != null) {
             MultiPortWebSocketServer.OnMessageReceivedFromPort50001 += HandleWebSocketMessageFromPort50001;
@@ -655,6 +662,7 @@ public class CentralManager : MonoBehaviour {
         DiscordBotClient.OnVoiceRecognized -= HandleDiscordVoiceRecognized;
         DiscordBotClient.OnDiscordLog -= HandleDiscordLog;
         DiscordBotClient.OnDiscordBotStateChanged -= HandleDiscordBotStateChanged;
+        DiscordBotClient.OnDiscordLoggedIn -= HandleDiscordLoggedIn;
         if (MultiPortWebSocketServer.Instance != null) {
             MultiPortWebSocketServer.OnMessageReceivedFromPort50001 -= HandleWebSocketMessageFromPort50001;
             MultiPortWebSocketServer.OnMessageReceivedFromPort50002 -= HandleWebSocketMessageFromPort50002;
@@ -758,7 +766,18 @@ public class CentralManager : MonoBehaviour {
     // DiscordBotの状態変更を受け取る
     private void HandleDiscordBotStateChanged(bool isRunning) {
         Debug.Log($"DiscordBot状態変更: {(isRunning ? "起動" : "停止")}");
-        // 必要に応じてUIの更新やその他の処理を行う
+        // 要件: 起動時は顔OFF、停止時は顔ON
+        if (isRunning) {
+            SetFaceVisible(false);
+        } else {
+            SetFaceVisible(true);
+        }
+    }
+
+    // DiscordBotのログイン完了（READY）を受け取る
+    private void HandleDiscordLoggedIn() {
+        Debug.Log("DiscordBot READY 受信: ログイン確認");
+        // 顔表示はターゲット在席時のみ。READYでは何もしない。
     }
 
     // /wipe_subtitle からの受信を処理

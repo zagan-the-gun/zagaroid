@@ -87,6 +87,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     public static event DiscordLogDelegate OnDiscordLog;
     public delegate void DiscordBotStateChangedDelegate(bool isRunning);
     public static event DiscordBotStateChangedDelegate OnDiscordBotStateChanged;
+    public delegate void DiscordLoggedInDelegate();
+    public static event DiscordLoggedInDelegate OnDiscordLoggedIn;
     // 接続関連
     private DiscordNetworkManager _networkManager;
     private DiscordVoiceGatewayManager _voiceGatewayManager;
@@ -394,7 +396,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             // Discord Gatewayへの接続を試行
             bool connectionSuccess = await ConnectToDiscord();
             if (connectionSuccess) {
-                OnDiscordBotStateChanged?.Invoke(true);
+                EnqueueMainThreadAction(() => OnDiscordBotStateChanged?.Invoke(true));
                 LogMessage("✅ Discord bot started successfully");
             } else {
                 LogMessage("❌ Discord bot failed to start - connection failed");
@@ -876,7 +878,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _voiceUdpManager = null;
         
         ResetBotState();
-        OnDiscordBotStateChanged?.Invoke(false);
+        EnqueueMainThreadAction(() => OnDiscordBotStateChanged?.Invoke(false));
         
         LogMessage("✅ Discord bot stopped");
     }
@@ -928,6 +930,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         var readyData = JsonConvert.DeserializeObject<ReadyData>(data);
         botUserId = readyData.user.id;
         LogMessage($"Bot logged in: {readyData.user.username}");
+        EnqueueMainThreadAction(() => OnDiscordLoggedIn?.Invoke());
         if (!string.IsNullOrEmpty(voiceChannelId)) {
             await JoinVoiceChannel();
         }
@@ -939,6 +942,24 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private async Task HandleVoiceStateUpdateEvent(string data) {
         var voiceStateData = JsonConvert.DeserializeObject<VoiceStateData>(data);
         _voiceSessionId = voiceStateData.session_id;
+
+        try {
+            // ターゲットユーザのVC在席確認
+            if (!string.IsNullOrEmpty(targetUserId) && voiceStateData != null && voiceStateData.user_id == targetUserId) {
+                // 指定のボイスチャンネルに居るか
+                if (!string.IsNullOrEmpty(voiceChannelId) && voiceStateData.channel_id == voiceChannelId) {
+                    LogMessage($"Target user in watched VC: channel_id={voiceStateData.channel_id}", LogLevel.Info);
+                    EnqueueMainThreadAction(() => CentralManager.SetFaceVisible(true));
+                } else {
+                    // 退席 or 別チャンネルへ移動
+                    string ch = string.IsNullOrEmpty(voiceStateData.channel_id) ? "(none)" : voiceStateData.channel_id;
+                    LogMessage($"Target user not in watched VC (current={ch}) -> hide face", LogLevel.Info);
+                    EnqueueMainThreadAction(() => CentralManager.SetFaceVisible(false));
+                }
+            }
+        } catch (Exception ex) {
+            LogMessage($"VoiceState presence check error: {ex.Message}", LogLevel.Warning);
+        }
     }
     
     /// <summary>
@@ -1172,7 +1193,7 @@ public class DiscordUser {
 // Discord Gateway Data Structures
 [Serializable] public class ReadyData { public string session_id; public DiscordUser user; }
 [Serializable] public class VoiceServerData { public string endpoint; public string token; }
-[Serializable] public class VoiceStateData { public string user_id; public string session_id; }
+[Serializable] public class VoiceStateData { public string user_id; public string session_id; public string channel_id; }
 
 // Voice Gateway Data Structures
 
