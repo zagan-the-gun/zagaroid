@@ -41,7 +41,6 @@ public class SettingUIController : MonoBehaviour {
 
     private TextField deepLApiClientKeyInput;
     private DropdownField translationModeDropdown;
-    private TextField menZTranslationServerUrlInput;
     private TextField realtimeAudioWsUrlInput;
     private TextField wipeAINameInput;
     private TextField wipeAISubtitleInput;
@@ -105,7 +104,6 @@ public class SettingUIController : MonoBehaviour {
         friendSubtitleInput = uiDocument.rootVisualElement.Q<TextField>("FriendSubtitleInput");
         deepLApiClientKeyInput = settingContentRoot.Q<TextField>("DeepLApiClientKeyInput"); // DeepL APIキー
         translationModeDropdown = settingContentRoot.Q<DropdownField>("TranslationModeDropdown"); // 翻訳方式選択
-        menZTranslationServerUrlInput = settingContentRoot.Q<TextField>("MenZTranslationServerUrlInput"); // MenZ翻訳サーバーURL
         realtimeAudioWsUrlInput = settingContentRoot.Q<TextField>("RealtimeAudioWsUrlInput"); // Realtime Audio WS URL
         wipeAISubtitleInput = uiDocument.rootVisualElement.Q<TextField>("WipeAISubtitleInput");
         wipeAINameInput = uiDocument.rootVisualElement.Q<TextField>("WipeAINameInput");
@@ -291,7 +289,7 @@ public class SettingUIController : MonoBehaviour {
             }
             
             // ドロップダウンの選択肢を設定
-            var choices = new List<string> { "deepl", "menz" };
+            var choices = new List<string> { "deepl", "NMT" }; // deepl: DeepL翻訳, NMT: MenZ翻訳
             translationModeDropdown.choices = choices;
             Debug.Log($"ドロップダウンの選択肢を設定しました: {string.Join(", ", choices)}");
             
@@ -313,9 +311,6 @@ public class SettingUIController : MonoBehaviour {
             Debug.LogError("translationModeDropdownがnullです！");
         }
 
-        if (menZTranslationServerUrlInput != null) {
-            menZTranslationServerUrlInput.value = CentralManager.Instance.GetMenZTranslationServerUrl();
-        }
         if (realtimeAudioWsUrlInput != null) {
             realtimeAudioWsUrlInput.value = CentralManager.Instance.GetRealtimeAudioWsUrl();
         }
@@ -348,9 +343,11 @@ public class SettingUIController : MonoBehaviour {
         }
         if (subtitleMethodDropdown != null) {
             Debug.Log("Discord字幕方式ドロップダウンの初期化を開始");
-            var choices = new List<string> { "WitAI", "MenZ" };
+            var choices = new List<string> { "WitAI", "STT" }; // WitAI: Wit.ai音声認識, STT: MenZ字幕AI
             subtitleMethodDropdown.choices = choices;
             string saved = CentralManager.Instance.GetDiscordSubtitleMethodString();
+            // 後方互換: "MenZ" → "STT" に変換（GetDiscordSubtitleMethodStringで変換済みのはずだが念のため）
+            if (saved == "MenZ") saved = "STT";
             if (!choices.Contains(saved)) saved = "WitAI";
             subtitleMethodDropdown.value = saved;
             Debug.Log($"Discord字幕方式: '{subtitleMethodDropdown.value}'");
@@ -428,9 +425,6 @@ public class SettingUIController : MonoBehaviour {
             CentralManager.Instance.SetTranslationMode(translationModeDropdown.value);
         }
 
-        if (menZTranslationServerUrlInput != null) {
-            CentralManager.Instance.SetMenZTranslationServerUrl(menZTranslationServerUrlInput.value);
-        }
         if (realtimeAudioWsUrlInput != null) {
             CentralManager.Instance.SetRealtimeAudioWsUrl(realtimeAudioWsUrlInput.value);
         }

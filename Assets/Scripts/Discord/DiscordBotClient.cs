@@ -96,9 +96,9 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     // Voice Gateway関連
     private string _voiceToken;
     private string _voiceEndpoint;
-    // MenZモードのキャッシュ（メインスレッドで更新し、他スレッドから参照）
+    // STTモード（MenZ字幕AI）のキャッシュ（メインスレッドで更新し、他スレッドから参照）
     private static volatile bool s_isMenZMode = false;
-    public static bool IsMenZMode() { return s_isMenZMode; }
+    public static bool IsMenZMode() { return s_isMenZMode; } // 互換性のため名前は維持
     private string _voiceSessionId;
     private IPEndPoint _voiceServerEndpoint;
     private uint _ourSSRC;
@@ -326,9 +326,9 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// AudioBufferから音声データが準備完了した時の処理
     /// </summary>
     private void OnAudioBufferReady(float[] audioData, int sampleRate, int channels) {        
-        // MenZ選択時は字幕AI WebSocket へセグメント送信（FlushはRWC側が自動）
+        // STT（MenZ字幕AI）選択時は字幕AI WebSocket へセグメント送信（FlushはRWC側が自動）
         if (DiscordBotClient.IsMenZMode()) {
-            // MenZモードでもローカルでPCMデバッグ再生できるようにする
+            // STTモードでもローカルでPCMデバッグ再生できるようにする
             PlayPcmForDebug(audioData, "Combined Audio");
             EnqueueMainThreadAction(() => {
                 var ws = RealtimeWebSocketClient.Instance ?? FindObjectOfType<RealtimeWebSocketClient>();
@@ -380,6 +380,9 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             return;
         }
         
+        // Opusエラーカウンターをリセット（再起動時に新セッション開始）
+        _opusErrors = 0;
+        
         await ErrorHandler.SafeExecuteAsync<bool>(async () => {
             LoadSettingsFromCentralManager();
             if (string.IsNullOrEmpty(discordToken)) {
@@ -391,7 +394,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             InitializeOpusDecoder();
             InitializeNetworkManager();
             
-            // 旧: MenZ時の事前RWC接続は無効化
+            // 旧: STT（MenZ字幕AI）時の事前RWC接続は無効化
 
             // Discord Gatewayへの接続を試行
             bool connectionSuccess = await ConnectToDiscord();
@@ -735,18 +738,23 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                     decodedSamples = _opusDecoder.Decode(inputOpus, pcmData, maxFrameSize, false);
                 }
             } catch (Exception) {
-                // 例外時フォールバック: 先頭に余分なヘッダが含まれている可能性を考慮
-                if (inputOpus != null && inputOpus.Length > 12) {
-                    var alt = new byte[inputOpus.Length - 12];
-                    Array.Copy(inputOpus, 12, alt, 0, alt.Length);
-                    short[] pcmAlt = new short[safeBufferSize];
-                    lock (_opusDecodeLock) {
-                        decodedSamples = _opusDecoder.Decode(alt, pcmAlt, maxFrameSize, false);
-                    }
-                    if (decodedSamples > 0) {
-                        short[] monoAlt = ConvertStereoToMono(pcmAlt, decodedSamples * DiscordConstants.CHANNELS_STEREO);
-                        var resultAlt = ResampleAudioData(monoAlt, DiscordConstants.SAMPLE_RATE_48K, DiscordConstants.SAMPLE_RATE_16K);
-                        return resultAlt;
+                // 例外時: FEC (Forward Error Correction) でデコード試行
+                // Opusは前のパケットから失われたフレームを復元できる
+                if (inputOpus != null && inputOpus.Length > 0) {
+                    try {
+                        short[] pcmFec = new short[safeBufferSize];
+                        int fecSamples;
+                        lock (_opusDecodeLock) {
+                            // FECモード: fec=true でデコード試行
+                            fecSamples = _opusDecoder.Decode(null, pcmFec, maxFrameSize, true);
+                        }
+                        if (fecSamples > 0) {
+                            short[] monoFec = ConvertStereoToMono(pcmFec, fecSamples * DiscordConstants.CHANNELS_STEREO);
+                            var resultFec = ResampleAudioData(monoFec, DiscordConstants.SAMPLE_RATE_48K, DiscordConstants.SAMPLE_RATE_16K);
+                            return resultFec;
+                        }
+                    } catch {
+                        // FECも失敗したら無視
                     }
                 }
                 throw;
@@ -789,8 +797,12 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             return result;
             
         } catch (Exception ex) {
-            LogMessage($"❌ Opus decode exception: {ex.Message}");
             _opusErrors++;
+            // エラーログは最初の数回のみ
+            if (_opusErrors <= 3)
+            {
+                LogMessage($"❌ Opus decode exception: {ex.Message}");
+            }
             return null;
         }
     }
@@ -833,15 +845,15 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             inputName = centralManager.GetFriendName();
             if (string.IsNullOrEmpty(inputName)) inputName = "Discord";
             witaiToken = centralManager.GetDiscordWitaiToken();
-            // MenZモードのキャッシュ
+            // STT（MenZ字幕AI）モードのキャッシュ
             try {
                 try {
                     var mode = centralManager.GetDiscordSubtitleMethodString();
-                    s_isMenZMode = (mode == "MenZ");
+                    s_isMenZMode = (mode == "STT" || mode == "MenZ"); // 後方互換
                 } catch {
                     s_isMenZMode = (centralManager.GetDiscordSubtitleMethod() == 1);
                 }
-                UnityEngine.Debug.Log($"[WS-PCM] cache isMenZ={s_isMenZMode}");
+                UnityEngine.Debug.Log($"[WS-PCM] cache isSTT={s_isMenZMode}");
             } catch { s_isMenZMode = false; }
         }
     }

@@ -1623,7 +1623,7 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1525242974
+--- !u!1 &1515543470
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -1631,38 +1631,37 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 1525242976}
-  - component: {fileID: 1525242975}
+  - component: {fileID: 1515543472}
+  - component: {fileID: 1515543471}
   m_Layer: 0
-  m_Name: MenZTranslationClient
+  m_Name: TranslationController
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1525242975
+--- !u!114 &1515543471
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1525242974}
+  m_GameObject: {fileID: 1515543470}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a1b2c3d4e5f6789012345678901234ab, type: 3}
+  m_Script: {fileID: 11500000, guid: d6a8173247ad84d708a8a011f7437b28, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  MENZ_TRANSLATION_URL: 
---- !u!4 &1525242976
+--- !u!4 &1515543472
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1525242974}
+  m_GameObject: {fileID: 1515543470}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 6.49545, y: 2.5605016, z: 126.945206}
+  m_LocalPosition: {x: 1129.6287, y: 588.73553, z: 39.26697}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2254,5 +2253,5 @@ SceneRoots:
   - {fileID: 1409242769}
   - {fileID: 331803387}
   - {fileID: 276906190}
-  - {fileID: 1525242976}
   - {fileID: 487978540}
+  - {fileID: 1515543472}

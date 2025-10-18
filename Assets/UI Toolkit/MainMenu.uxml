@@ -14,7 +14,7 @@
                     <ui:TextField name="logOutput" picking-mode="Ignore" value="これは非常に長いテキストです。&#10;このテキストが十分に長ければ、TextFieldにスクロールバーが表示されるはずです。&#10;UnityのUI Toolkitでは、TextFieldのmultilineプロパティがtrueに設定されており、&#10;かつテキストがTextFieldの表示領域を超えた場合に自動的に垂直スクロールバーが表示されます。&#10;さらに長いテキストをここに追加し、スクロールバーの動作を確認しましょう。&#10;新しい行を追加するために&#10;改行コード（&#10;）を使用しています。&#10;どんどんとテキストを書き足して、&#10;スクロールバーがいつ出現するかを試してみてください。&#10;" style="flex-grow: 1; max-height: none; flex-wrap: wrap;" />
                 </ui:ScrollView>
             </ui:VisualElement>
-            <ui:VisualElement name="settingContent" style="flex-grow: 1; display: none;">
+            <ui:VisualElement name="settingContent" style="flex-grow: 1; display: flex;">
                 <ui:ScrollView style="flex-grow: 1; background-color: rgba(0, 0, 0, 0); overflow: visible;">
                     <ui:VisualElement name="1" style="flex-grow: 1; flex-direction: row; background-color: rgba(255, 255, 255, 0);">
                         <ui:VisualElement name="PanelSubtitleAI" class="panel" style="flex-grow: 1; flex-basis: 1px;">
@@ -38,17 +38,16 @@
                                 <ui:Button text="..." name="BrowseMenzTranslationPathButton" style="flex-grow: 0;" />
                             </ui:VisualElement>
                             <ui:Button text="Launch" parse-escape-sequences="true" display-tooltip-when-elided="true" name="StartMenzTranslationButton" style="margin-bottom: 5px;" />
-                            <ui:TextField label="MenzTranslation URL" value="ws://127.0.0.1:55001" name="MenZTranslationServerUrlInput" style="margin-bottom: 5px; flex-grow: 1;" />
                             <ui:TextField label="Realtime Audio WS URL" value="ws://127.0.0.1:60001" name="RealtimeAudioWsUrlInput" style="margin-bottom: 5px; flex-grow: 1;" />
                         </ui:VisualElement>
                     </ui:VisualElement>
                     <ui:VisualElement name="2" style="flex-grow: 1; flex-direction: row; background-color: rgba(255, 255, 255, 0);">
                         <ui:VisualElement name="PanelDeepLApi" class="panel" style="flex-grow: 1; flex-shrink: 1; flex-basis: 1px;">
-                            <ui:Label text="字幕API設定" class="panel__title" />
+                            <ui:Label text="翻訳API設定" class="panel__title" />
                             <ui:TextField picking-mode="Ignore" label="DeepL API key" value="asdfasdf" name="DeepLApiClientKeyInput" />
                         </ui:VisualElement>
-                        <ui:VisualElement name="PanelDeepLApi" class="panel" style="flex-grow: 1; flex-shrink: 1; flex-basis: 1px;">
-                            <ui:Label text="翻訳API設定" class="panel__title" />
+                        <ui:VisualElement name="PanelWitAI" class="panel" style="flex-grow: 1; flex-shrink: 1; flex-basis: 1px;">
+                            <ui:Label text="音声認識API設定" class="panel__title" />
                             <ui:TextField label="Wit.ai Token" name="WitaiTokenInput" style="margin-bottom: 5px;" />
                         </ui:VisualElement>
                     </ui:VisualElement>
@@ -58,8 +57,8 @@
                             <ui:DropdownField label="Translation type" name="TranslationModeDropdown" style="margin-bottom: 5px;" />
                         </ui:VisualElement>
                         <ui:VisualElement name="PanelSubtitle" class="panel" style="flex-grow: 1; flex-basis: 1px; z-index: 1;">
-                            <ui:Label text="字幕エンジン選択" class="panel__title" />
-                            <ui:DropdownField label="Subtitle Method" name="SubtitleMethodDropdown" style="margin-bottom: 5px;" />
+                            <ui:Label text="音声認識エンジン選択" class="panel__title" />
+                            <ui:DropdownField label="Speech Recognition" name="SubtitleMethodDropdown" style="margin-bottom: 5px;" />
                         </ui:VisualElement>
                     </ui:VisualElement>
                     <ui:VisualElement name="4" style="flex-grow: 1; flex-direction: row;">
@@ -112,7 +111,7 @@
                     <ui:Button text="Save" name="SaveSettingsButton" style="margin-top: 10px;" />
                 </ui:ScrollView>
             </ui:VisualElement>
-            <ui:VisualElement name="objectContent" style="flex-grow: 1; display: flex;">
+            <ui:VisualElement name="objectContent" style="flex-grow: 1; display: none;">
                 <ui:ScrollView style="flex-grow: 1; background-color: rgba(0, 0, 0, 0); overflow: visible;">
                     <ui:VisualElement name="1" style="flex-grow: 1; flex-direction: row; background-color: rgba(255, 255, 255, 0);">
                         <ui:VisualElement name="PanelZagan" class="panel" style="flex-grow: 1; flex-basis: 1px;">

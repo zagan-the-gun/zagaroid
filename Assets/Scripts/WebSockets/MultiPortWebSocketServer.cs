@@ -5,6 +5,7 @@ using WebSocketSharp;
 using WebSocketSharp.Server;
 using System.Collections.Generic;
 using System.Collections;
+using Newtonsoft.Json.Linq;
 
 public class MultiPortWebSocketServer : MonoBehaviour {
     private WebSocketServer wss1; // ポート50001
@@ -23,6 +24,9 @@ public class MultiPortWebSocketServer : MonoBehaviour {
     private readonly Queue<Action> _executionQueue = new Queue<Action>();
 
     public string mySubtitle;
+
+    // 翻訳クライアント（NMT）が接続されているかのフラグ
+    private static bool isTranslationClientConnected = false;
 
     private void Awake() {
         if (Instance == null) {
@@ -52,6 +56,8 @@ public class MultiPortWebSocketServer : MonoBehaviour {
                 string configured = CentralManager.Instance != null ? CentralManager.Instance.GetWipeAISubtitle() : "wipe_subtitle";
                 _wipeServicePath = "/" + (string.IsNullOrEmpty(configured) ? "wipe_subtitle" : configured.Trim('/'));
                 server.AddWebSocketService<WipeService>(_wipeServicePath);
+                // 翻訳AI専用パス
+                server.AddWebSocketService<TranslationService>("/translate_text");
                 wss1 = server; // インスタンスを保存
             } else if (port == 50002) {
                 server.AddWebSocketService<EchoService2>("/");
@@ -122,25 +128,90 @@ public class MultiPortWebSocketServer : MonoBehaviour {
         }
     }
 
-    // 各 WebSocketBehavior からメッセージを受け取り、対応するポートのイベントを発行する
+    // 各 WebSocketBehavior からメッセージを受け取り、MCPフォーマットに応じてルーティング
     public void HandleMessage(int port, string user, string message) {
-        // ログを削減: メッセージ受信の詳細ログを削除
         Enqueue(() => {
-            // ログを削減: メインスレッドでの処理ログを削除
             if (port == 50001) {
-            // if (port == 50000) {
-                OnMessageReceivedFromPort50001?.Invoke(user, message);
+                // MCPフォーマットの判定とルーティング
+                if (IsMcpFormat(message)) {
+                    RouteMcpMessage(message);
+                } else {
+                    // レガシー形式は既存処理
+                    OnMessageReceivedFromPort50001?.Invoke(user, message);
+                }
             } else if (port == 50002) {
                 OnMessageReceivedFromPort50002?.Invoke(user, message);
             }
-
-            // (既存のポート固有のハンドラも呼び出す場合)
-            // if (messageHandlers.TryGetValue(port, out var handler)) {
-            //     handler?.Invoke(user, message);
-            // } else {
-            //     Debug.LogWarning($"MultiPortWebSocketServer: ポート {port} にハンドラが登録されていません");
-            // }
         });
+    }
+
+    /// <summary>
+    /// MCPフォーマットかどうかを判定
+    /// </summary>
+    private bool IsMcpFormat(string message) {
+        try {
+            if (string.IsNullOrEmpty(message)) return false;
+            string trimmed = message.TrimStart();
+            if (!trimmed.StartsWith("{")) return false;
+            
+            var obj = JObject.Parse(message);
+            return obj["jsonrpc"]?.ToString() == "2.0";
+        } catch {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// MCPメッセージをmethodに応じてルーティング
+    /// </summary>
+    private void RouteMcpMessage(string message) {
+        try {
+            var obj = JObject.Parse(message);
+            string method = obj["method"]?.ToString();
+            string id = obj["id"]?.ToString();
+            
+            // methodが存在する場合（リクエストまたは通知）
+            if (!string.IsNullOrEmpty(method)) {
+                switch (method) {
+                    case "notifications/subtitle":
+                    case "notifications_subtitle":
+                        // 字幕通知 → 既存の処理
+                        OnMessageReceivedFromPort50001?.Invoke(mySubtitle, message);
+                        Debug.Log($"[MCP] 字幕通知を受信: {method}");
+                        break;
+                        
+                    case "translate_text":
+                        // 翻訳リクエスト（通常は発生しない、zagaroidがクライアント側なので）
+                        Debug.LogWarning($"[MCP] 予期しない翻訳リクエストを受信: {method}");
+                        break;
+                        
+                    default:
+                        Debug.LogWarning($"[MCP] 未対応のmethod: {method}");
+                        break;
+                }
+            }
+            // idだけ存在する場合（レスポンス）
+            else if (!string.IsNullOrEmpty(id)) {
+                bool hasResult = obj["result"] != null;
+                bool hasError = obj["error"] != null;
+                
+                if (hasResult || hasError) {
+                    // 翻訳レスポンス → TranslationController
+                    if (TranslationController.Instance != null) {
+                        TranslationController.Instance.OnWebSocketMessage(message);
+                        Debug.Log($"[MCP] 翻訳レスポンスをTranslationControllerへ転送");
+                    } else {
+                        Debug.LogWarning("[MCP] TranslationControllerが見つかりません");
+                    }
+                } else {
+                    Debug.LogWarning("[MCP] resultもerrorもないレスポンス");
+                }
+            } else {
+                Debug.LogWarning("[MCP] methodもidもないメッセージ");
+            }
+        } catch (Exception ex) {
+            Debug.LogError($"[MCP] ルーティングエラー: {ex.Message}");
+        }
     }
 
     // Wipe用メッセージのメインスレッドディスパッチ
@@ -159,6 +230,49 @@ public class MultiPortWebSocketServer : MonoBehaviour {
         } catch (Exception ex) {
             Debug.LogError($"[WS][WIPE] ブロードキャストエラー: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// 翻訳クライアント（NMT）にメッセージを送信（ブロードキャスト）
+    /// </summary>
+    public void SendToTranslationClient(string message) {
+        if (!isTranslationClientConnected) {
+            throw new Exception("翻訳クライアントが接続されていません");
+        }
+        
+        try {
+            if (wss1 == null) {
+                throw new Exception("WebSocketサーバーが初期化されていません");
+            }
+            
+            var host = wss1.WebSocketServices["/translate_text"];
+            if (host == null) {
+                throw new Exception("翻訳サービスが見つかりません");
+            }
+            
+            host.Sessions.Broadcast(message);
+            Debug.Log("[MCP] 翻訳クライアントにメッセージを送信");
+        } catch (Exception ex) {
+            Debug.LogError($"[MCP] 翻訳クライアントへの送信エラー: {ex.Message}");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 翻訳クライアントの接続状態を設定（TranslationServiceから呼ばれる）
+    /// </summary>
+    public static void SetTranslationClientConnectionState(bool connected) {
+        isTranslationClientConnected = connected;
+        
+        // TranslationControllerに通知
+        if (Instance != null) {
+            Instance.Enqueue(() => {
+                if (TranslationController.Instance != null) {
+                    TranslationController.Instance.SetNmtConnectionState(connected);
+                }
+            });
+        }
+        Debug.Log($"[MCP] 翻訳クライアント接続状態: {(connected ? "接続" : "切断")}");
     }
 
     // 設定変更に応じて /wipe_subtitle サービスのパスを更新
@@ -184,25 +298,22 @@ public class MultiPortWebSocketServer : MonoBehaviour {
     //     action?.Invoke();
     // }
 
-    // ポート50001用のエコーサービス (内部クラス)
+    // ポート50001用のエコーサービス (内部クラス) - 字幕AI用
     private class EchoService1 : WebSocketBehavior {
         protected override void OnMessage(MessageEventArgs e) {
-            // ログを削減: EchoService1の受信ログを削除
             Instance?.HandleMessage(50001, MultiPortWebSocketServer.Instance.mySubtitle, e.Data);
-            // Instance?.HandleMessage(50000, MultiPortWebSocketServer.Instance.mySubtitle, e.Data);
-            // ポート50001ではエコーバックなし
         }
 
         protected override void OnOpen() {
-            // ログを削減: EchoService1の接続ログを削除
+            Debug.Log("[MCP] 字幕クライアント接続");
         }
 
         protected override void OnClose(CloseEventArgs e) {
-            // ログを削減: EchoService1の切断ログを削除
+            Debug.Log("[MCP] 字幕クライアント切断");
         }
 
         protected override void OnError(ErrorEventArgs e) {
-            Debug.LogError($"EchoService1: エラー (ポート 50001) - {e.Message}");
+            Debug.LogError($"EchoService1: エラー (ポート 50001 /) - {e.Message}");
         }
     }
 
@@ -227,6 +338,36 @@ public class MultiPortWebSocketServer : MonoBehaviour {
 
         protected override void OnError(ErrorEventArgs e) {
             Debug.LogError($"[WS][WIPE] エラー: {e.Message}");
+        }
+    }
+
+    // /translate_text 用のサービス (内部クラス) - 翻訳AI専用
+    private class TranslationService : WebSocketBehavior {
+        protected override void OnOpen() {
+            Debug.Log("[MCP] 翻訳クライアント接続");
+            
+            // 翻訳クライアントの接続を通知
+            SetTranslationClientConnectionState(true);
+        }
+
+        protected override void OnMessage(MessageEventArgs e) {
+            try {
+                // 翻訳レスポンスをメインスレッドで処理
+                Instance?.HandleMessage(50001, "translation", e.Data);
+            } catch (Exception ex) {
+                Debug.LogError($"[MCP][Translation] OnMessage エラー: {ex.Message}");
+            }
+        }
+
+        protected override void OnClose(CloseEventArgs e) {
+            Debug.Log("[MCP] 翻訳クライアント切断");
+            
+            // 翻訳クライアントの接続解除を通知
+            SetTranslationClientConnectionState(false);
+        }
+
+        protected override void OnError(ErrorEventArgs e) {
+            Debug.LogError($"[MCP][Translation] エラー: {e.Message}");
         }
     }
 

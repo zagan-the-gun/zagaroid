@@ -28,12 +28,12 @@ public class DiscordVoiceUdpManager : IDisposable
     private const int MIN_AUDIO_PACKET_SIZE = 60;        // 音声パケット最小サイズ  
     private const int DISCORD_HEADER_SIZE = 12;          // Discordヘッダーサイズ
     
-    // 暗号化関連の定数（このクラス専用）
+    // 暗号化モードの優先順位（上から順に試行）
     private static readonly string[] SUPPORTED_ENCRYPTION_MODES = { 
-        "xsalsa20_poly1305", 
-        "xsalsa20_poly1305_suffix"
-        // "aead_xchacha20_poly1305_rtpsize", // 未実装のため除外
-        // "aead_aes256_gcm_rtpsize" // 未実装のため除外
+        "aead_aes256_gcm_rtpsize",         // AES-256-GCM
+        "aead_xchacha20_poly1305_rtpsize", // XChaCha20-Poly1305（最新）
+        "xsalsa20_poly1305_suffix",        // XSalsa20-Poly1305 suffix
+        "xsalsa20_poly1305",               // XSalsa20-Poly1305（従来）
     };
     private const string DEFAULT_ENCRYPTION_MODE = "xsalsa20_poly1305";
     
@@ -484,7 +484,7 @@ public class DiscordVoiceUdpManager : IDisposable
         try {
             // RTPヘッダーを抽出
             var rtpHeader = ExtractRtpHeader(packet);
-            int headerLen = IsRtpsizeMode(_encryptionMode) ? GetUnencryptedHeaderLength(packet) : RTP_HEADER_SIZE;
+            // int headerLen = IsRtpsizeMode(_encryptionMode) ? GetUnencryptedHeaderLength(packet) : RTP_HEADER_SIZE;
             
             // 暗号化された音声データを抽出
             var encryptedData = ExtractEncryptedData(packet);
@@ -564,6 +564,18 @@ public class DiscordVoiceUdpManager : IDisposable
         if (decryptedPayload == null || decryptedPayload.Length == 0) {
             return null;
         }
+        
+        // rtpsizeモード（XChaCha20, AES-GCM）の場合、復号後に8バイトの余分なヘッダーが残っている
+        // パケット解析結果: XSalsa20は0x78で始まるが、rtpsizeモードは0x32などで始まり、8バイト目から0x78が始まる
+        // この8バイトはDiscord独自のメタデータ（おそらくRTP拡張情報）
+        if (IsRtpsizeMode(_encryptionMode) && decryptedPayload.Length >= 9)
+        {
+            // 先頭8バイトをスキップしてOpusデータを抽出
+            byte[] trimmed = new byte[decryptedPayload.Length - 8];
+            Array.Copy(decryptedPayload, 8, trimmed, 0, trimmed.Length);
+            return trimmed;
+        }
+        
         return decryptedPayload;
     }
     
@@ -687,6 +699,11 @@ public class DiscordVoiceUdpManager : IDisposable
     /// SSRC とユーザーIDのマッピングを設定
     /// </summary>
     public void SetSSRCMapping(uint ssrc, string userId) {
+        // 既存の同一ユーザーの古いSSRCを除去（切替耐性）
+        var stale = _ssrcToUserMap.Where(kv => kv.Value == userId && kv.Key != ssrc).Select(kv => kv.Key).ToList();
+        foreach (var old in stale) {
+            _ssrcToUserMap.Remove(old);
+        }
         _ssrcToUserMap[ssrc] = userId;
         LogMessage($"👤 SSRC mapping set: {ssrc} -> {userId}", LogLevel.Debug);
 

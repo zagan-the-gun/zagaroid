@@ -286,14 +286,6 @@ public class CentralManager : MonoBehaviour {
         PlayerPrefs.SetInt("AutoStartSubtitleAI", value ? 1 : 0);
     }
 
-    public string GetMenZTranslationServerUrl() {
-        // "MenZTranslationServerUrl"というキーで保存された文字列を読み込む。存在しない場合はデフォルト値を返す。
-        return PlayerPrefs.GetString("MenZTranslationServerUrl", "ws://127.0.0.1:55001");
-    }
-    public void SetMenZTranslationServerUrl(string url) {
-        PlayerPrefs.SetString("MenZTranslationServerUrl", url);
-    }
-
     // Realtime Audio WebSocket (Unity -> SubtitleAI) URL
     public string GetRealtimeAudioWsUrl() {
         return PlayerPrefs.GetString("RealtimeAudioWsUrl", "ws://127.0.0.1:60001");
@@ -330,12 +322,21 @@ public class CentralManager : MonoBehaviour {
         PlayerPrefs.SetString("WipeAISubtitle", value);
     }
 
+    // 翻訳方式の設定管理はTranslationControllerに移動しました
+    // 互換性のため、ラッパーメソッドを残します
     public string GetTranslationMode() {
-        // "TranslationMode"というキーで保存された文字列を読み込む。存在しない場合はデフォルト値を返す。
-        return PlayerPrefs.GetString("TranslationMode", "deepl");
+        return TranslationController.Instance != null 
+            ? TranslationController.Instance.GetTranslationMode() 
+            : "deepl";
     }
+    
     public void SetTranslationMode(string mode) {
-        PlayerPrefs.SetString("TranslationMode", mode);
+        if (TranslationController.Instance != null) {
+            TranslationController.Instance.SetTranslationMode(mode);
+        } else {
+            // フォールバック（通常は発生しない）
+            PlayerPrefs.SetString("TranslationMode", mode);
+        }
     }
 
     // VoiceVox関連の設定メソッド
@@ -421,34 +422,38 @@ public class CentralManager : MonoBehaviour {
         PlayerPrefs.SetString("DiscordInputName", value);
     }
 
-    // 旧: int保存 (0: WitAI, 1: MenZ) → 新: string保存 ("WitAI" / "MenZ")
+    // 旧: int保存 (0: WitAI, 1: MenZ/STT) → 新: string保存 ("WitAI" / "STT")
     private const string DiscordSubtitleMethodKey = "DiscordSubtitleMethod"; // legacy int
     private const string DiscordSubtitleMethodStrKey = "DiscordSubtitleMethodStr"; // new string
 
     public int GetDiscordSubtitleMethod() {
         // 互換維持: 既存コード用に残す（内部は新形式から変換）
         string mode = GetDiscordSubtitleMethodString();
-        return mode == "MenZ" ? 1 : 0;
+        return mode == "STT" ? 1 : 0;
     }
     public void SetDiscordSubtitleMethod(int value) {
         // 互換維持: 新形式へ反映
-        SetDiscordSubtitleMethodString(value == 1 ? "MenZ" : "WitAI");
+        SetDiscordSubtitleMethodString(value == 1 ? "STT" : "WitAI");
     }
 
     public string GetDiscordSubtitleMethodString() {
         // 新キーがあればそれを返す
         if (PlayerPrefs.HasKey(DiscordSubtitleMethodStrKey)) {
             var v = PlayerPrefs.GetString(DiscordSubtitleMethodStrKey, "WitAI");
-            return (v == "MenZ") ? "MenZ" : "WitAI";
+            // 後方互換: "MenZ" → "STT" に変換
+            if (v == "MenZ") v = "STT";
+            return (v == "STT") ? "STT" : "WitAI";
         }
         // 旧キーからの移行
         int legacy = PlayerPrefs.GetInt(DiscordSubtitleMethodKey, 0);
-        string mapped = legacy == 1 ? "MenZ" : "WitAI";
+        string mapped = legacy == 1 ? "STT" : "WitAI";
         PlayerPrefs.SetString(DiscordSubtitleMethodStrKey, mapped);
         return mapped;
     }
     public void SetDiscordSubtitleMethodString(string value) {
-        string normalized = (value == "MenZ") ? "MenZ" : "WitAI";
+        // 後方互換: "MenZ" → "STT" に変換
+        if (value == "MenZ") value = "STT";
+        string normalized = (value == "STT") ? "STT" : "WitAI";
         PlayerPrefs.SetString(DiscordSubtitleMethodStrKey, normalized);
     }
 
@@ -859,67 +864,18 @@ public class CentralManager : MonoBehaviour {
 
     // 翻訳を実行
     private IEnumerator translate(string user, string chatMessage) {
-        string originalMessage = chatMessage; // 元のメッセージを保持
-        string translationMode = GetTranslationMode();
-        Debug.Log($"Twitchコメント翻訳方式: {translationMode}");
-
-        bool firstTranslationSucceeded = false;
-
-        if (translationMode == "menz") {
-            // MenZ翻訳サーバーを使用
-            MenZTranslationClient menZClient = FindObjectOfType<MenZTranslationClient>();
-            if (menZClient != null) {
-                yield return StartCoroutine(menZClient.PostTranslate(originalMessage, "JA", "", (result) => {
-                    if (!string.IsNullOrEmpty(result)) {
-                        Debug.Log($"MenZ翻訳結果: {result}");
-                        chatMessage = result;
-                        firstTranslationSucceeded = true;
-                    }
-                }));
-            }
-
-            // MenZ翻訳に失敗した場合はDeepLにフォールバック
-            if (!firstTranslationSucceeded) {
-                Debug.LogWarning("MenZ翻訳に失敗しました。DeepLにフォールバックします。");
-                yield return StartCoroutine(_deepLApiClient.PostTranslate(originalMessage, "JA", (deepLResult) => {
-                    if (!string.IsNullOrEmpty(deepLResult)) {
-                        Debug.Log($"DeepL翻訳結果（フォールバック）: {deepLResult}");
-                        chatMessage = deepLResult;
-                    } else {
-                        Debug.LogWarning("DeepL翻訳（フォールバック）も失敗しました。元のメッセージを使用します。");
-                        chatMessage = originalMessage;
-                    }
-                }));
-            }
+        // TranslationControllerに翻訳を委譲（フォールバック処理も含む）
+        if (TranslationController.Instance != null) {
+            yield return StartCoroutine(TranslationController.Instance.Translate(
+                chatMessage, 
+                "ja", 
+                user, 
+                (translatedText) => {
+                    chatMessage = translatedText ?? chatMessage; // nullの場合は元のメッセージを使用
+                }
+            ));
         } else {
-            // DeepLを使用（デフォルト）
-            yield return StartCoroutine(_deepLApiClient.PostTranslate(originalMessage, "JA", (result) => {
-                if (!string.IsNullOrEmpty(result)) {
-                    Debug.Log($"DeepL翻訳結果: {result}");
-                    chatMessage = result;
-                    firstTranslationSucceeded = true;
-                }
-            }));
-
-            // DeepL翻訳に失敗した場合はMenZにフォールバック
-            if (!firstTranslationSucceeded) {
-                Debug.LogWarning("DeepL翻訳に失敗しました。MenZ翻訳にフォールバックします。");
-                MenZTranslationClient menZClient = FindObjectOfType<MenZTranslationClient>();
-                if (menZClient != null) {
-                    yield return StartCoroutine(menZClient.PostTranslate(originalMessage, "JA", "", (menZResult) => {
-                        if (!string.IsNullOrEmpty(menZResult)) {
-                            Debug.Log($"MenZ翻訳結果（フォールバック）: {menZResult}");
-                            chatMessage = menZResult;
-                        } else {
-                            Debug.LogWarning("MenZ翻訳（フォールバック）も失敗しました。元のメッセージを使用します。");
-                            chatMessage = originalMessage;
-                        }
-                    }));
-                } else {
-                    Debug.LogWarning("MenZTranslationClientが見つかりません。元のメッセージを使用します。");
-                    chatMessage = originalMessage;
-                }
-            }
+            Debug.LogWarning("[CentralManager] TranslationControllerが見つかりません。翻訳をスキップします。");
         }
 
         // コメント読み上げを開始
@@ -948,6 +904,36 @@ public class CentralManager : MonoBehaviour {
         return true; // 日本語が含まれていない
     }
 
+    // MCP: speaker名からsubtitle名へのマッピング
+    private string GetSubtitleFromSpeaker(string speaker) {
+        if (string.IsNullOrEmpty(speaker)) return "";
+
+        // 設定から各名前と字幕チャンネルを取得
+        string myName = GetMyName();
+        string friendName = GetFriendName();
+        string wipeAIName = GetWipeAIName();
+
+        // speaker名と一致するチャンネルを返す（大文字小文字を無視）
+        if (!string.IsNullOrEmpty(myName) && 
+            string.Equals(speaker.Trim(), myName.Trim(), System.StringComparison.OrdinalIgnoreCase)) {
+            return GetMySubtitle();
+        }
+        
+        if (!string.IsNullOrEmpty(friendName) && 
+            string.Equals(speaker.Trim(), friendName.Trim(), System.StringComparison.OrdinalIgnoreCase)) {
+            return GetFriendSubtitle();
+        }
+        
+        if (!string.IsNullOrEmpty(wipeAIName) && 
+            string.Equals(speaker.Trim(), wipeAIName.Trim(), System.StringComparison.OrdinalIgnoreCase)) {
+            return GetWipeAISubtitle();
+        }
+
+        // 一致しない場合はMySubtitleをデフォルトとして返す
+        Debug.LogWarning($"[MCP] 不明なspeaker名: {speaker}, デフォルトの字幕チャンネルを使用します");
+        return GetMySubtitle();
+    }
+
     private void HandleWebSocketMessageFromPort50001(string subtitle, string subtitleText) {
         Debug.Log($"字幕を受信しました！ Subtitle: {subtitle}, Message(raw): {subtitleText}");
         // 字幕をOBSに送信
@@ -956,27 +942,71 @@ public class CentralManager : MonoBehaviour {
         // JSON互換: {"text":"..."} 形式ならtextを抽出。失敗時はそのまま使用
         string extractedText = subtitleText;
         string extractedSubtitleName = subtitle;
+        string extractedLanguage = "auto"; // デフォルトは自動判定
         // 英語字幕用デフォルト名（JSON無指定時のフォールバック）
         string defaultEnglishSubtitle = CentralManager.Instance != null ? CentralManager.Instance.GetMyEnglishSubtitle() : null;
         string extractedEnglishSubtitleName = defaultEnglishSubtitle;
+        
         try {
             if (!string.IsNullOrEmpty(subtitleText)) {
                 string trimmed = subtitleText.TrimStart();
                 if (trimmed.StartsWith("{")) {
                     var obj = Newtonsoft.Json.Linq.JObject.Parse(subtitleText);
-                    var candidate = obj["text"]?.ToString();
-                    if (!string.IsNullOrEmpty(candidate)) {
-                        extractedText = candidate;
-                    }
-                    // 複数クライアント対応: JSON内にsubtitle名があれば優先（無ければchannelも許容）
-                    var subtitleCandidate = obj["subtitle"]?.ToString();
-                    if (string.IsNullOrEmpty(subtitleCandidate)) {
-                        subtitleCandidate = obj["channel"]?.ToString();
-                    }
-                    if (!string.IsNullOrWhiteSpace(subtitleCandidate)) {
-                        extractedSubtitleName = subtitleCandidate;
-                        // 英語字幕はベース名 + "_en" を使用
-                        extractedEnglishSubtitleName = subtitleCandidate + "_en";
+                    
+                    // MCP形式チェック: jsonrpc: "2.0" があるか
+                    var jsonrpcVersion = obj["jsonrpc"]?.ToString();
+                    if (jsonrpcVersion == "2.0") {
+                        // MCP準拠フォーマット
+                        Debug.Log("[MCP] MCP準拠形式を検出しました");
+                        
+                        var method = obj["method"]?.ToString();
+                        var paramsObj = obj["params"] as Newtonsoft.Json.Linq.JObject;
+                        
+                        // methodの検証（notifications/subtitle を期待）
+                        if (method != "notifications/subtitle") {
+                            Debug.LogWarning($"[MCP] 未対応のmethod: {method}. 'notifications/subtitle' を期待しています。");
+                        }
+                        
+                        if (paramsObj != null) {
+                            // text, speaker, type, language を抽出
+                            extractedText = paramsObj["text"]?.ToString();
+                            var speaker = paramsObj["speaker"]?.ToString();
+                            var type = paramsObj["type"]?.ToString();
+                            var language = paramsObj["language"]?.ToString();
+                            
+                            if (!string.IsNullOrEmpty(language)) {
+                                extractedLanguage = language;
+                            }
+                            
+                            // speakerからsubtitle名を取得
+                            if (!string.IsNullOrEmpty(speaker)) {
+                                extractedSubtitleName = GetSubtitleFromSpeaker(speaker);
+                                // 英語字幕はベース名 + "_en" を使用
+                                if (!string.IsNullOrEmpty(extractedSubtitleName)) {
+                                    extractedEnglishSubtitleName = extractedSubtitleName + "_en";
+                                }
+                            }
+                            
+                            Debug.Log($"[MCP] パース結果 - method: {method}, speaker: {speaker}, type: {type}, language: {language}, subtitle: {extractedSubtitleName}");
+                        } else {
+                            Debug.LogWarning("[MCP] params が見つかりません");
+                        }
+                    } else {
+                        // 既存のJSON形式（ゆかコネNeo/オリジナル）
+                        var candidate = obj["text"]?.ToString();
+                        if (!string.IsNullOrEmpty(candidate)) {
+                            extractedText = candidate;
+                        }
+                        // 複数クライアント対応: JSON内にsubtitle名があれば優先（無ければchannelも許容）
+                        var subtitleCandidate = obj["subtitle"]?.ToString();
+                        if (string.IsNullOrEmpty(subtitleCandidate)) {
+                            subtitleCandidate = obj["channel"]?.ToString();
+                        }
+                        if (!string.IsNullOrWhiteSpace(subtitleCandidate)) {
+                            extractedSubtitleName = subtitleCandidate;
+                            // 英語字幕はベース名 + "_en" を使用
+                            extractedEnglishSubtitleName = subtitleCandidate + "_en";
+                        }
                     }
                 }
             }
@@ -1111,67 +1141,19 @@ public class CentralManager : MonoBehaviour {
     private IEnumerator translateSubtitle(string subtitle, string subtitleText) {
         Debug.Log("字幕の翻訳開始");
         
-        string originalSubtitleText = subtitleText; // 元の字幕テキストを保持
-        string translationMode = GetTranslationMode();
-        Debug.Log($"翻訳方式: {translationMode}");
-
-        bool firstTranslationSucceeded = false;
-
-        if (translationMode == "menz") {
-            // MenZ翻訳サーバーを使用
-            MenZTranslationClient menZClient = FindObjectOfType<MenZTranslationClient>();
-            if (menZClient != null) {
-                yield return StartCoroutine(menZClient.PostTranslate(originalSubtitleText, "EN", "", (result) => {
-                    if (!string.IsNullOrEmpty(result)) {
-                        Debug.Log($"MenZ翻訳結果: {result}");
-                        subtitleText = result;
-                        firstTranslationSucceeded = true;
-                    }
-                }));
-            }
-
-            // MenZ翻訳に失敗した場合はDeepLにフォールバック
-            if (!firstTranslationSucceeded) {
-                Debug.LogWarning("MenZ翻訳に失敗しました。DeepLにフォールバックします。");
-                yield return StartCoroutine(_deepLApiClient.PostTranslate(originalSubtitleText, "EN", (deepLResult) => {
-                    if (!string.IsNullOrEmpty(deepLResult)) {
-                        Debug.Log($"DeepL翻訳結果（フォールバック）: {deepLResult}");
-                        subtitleText = deepLResult;
-                    } else {
-                        Debug.LogWarning("DeepL翻訳（フォールバック）も失敗しました。英語字幕は空欄にします。");
-                        subtitleText = "";
-                    }
-                }));
-            }
+        // TranslationControllerに翻訳を委譲（フォールバック処理も含む）
+        if (TranslationController.Instance != null) {
+            yield return StartCoroutine(TranslationController.Instance.Translate(
+                subtitleText, 
+                "en", 
+                subtitle, 
+                (translatedText) => {
+                    subtitleText = translatedText ?? ""; // nullの場合は空文字
+                }
+            ));
         } else {
-            // DeepLを使用（デフォルト）
-            yield return StartCoroutine(_deepLApiClient.PostTranslate(originalSubtitleText, "EN", (result) => {
-                if (!string.IsNullOrEmpty(result)) {
-                    Debug.Log($"DeepL翻訳結果: {result}");
-                    subtitleText = result;
-                    firstTranslationSucceeded = true;
-                }
-            }));
-
-            // DeepL翻訳に失敗した場合はMenZにフォールバック
-            if (!firstTranslationSucceeded) {
-                Debug.LogWarning("DeepL翻訳に失敗しました。MenZ翻訳にフォールバックします。");
-                MenZTranslationClient menZClient = FindObjectOfType<MenZTranslationClient>();
-                if (menZClient != null) {
-                    yield return StartCoroutine(menZClient.PostTranslate(originalSubtitleText, "EN", "", (menZResult) => {
-                        if (!string.IsNullOrEmpty(menZResult)) {
-                            Debug.Log($"MenZ翻訳結果（フォールバック）: {menZResult}");
-                            subtitleText = menZResult;
-                        } else {
-                            Debug.LogWarning("MenZ翻訳（フォールバック）も失敗しました。英語字幕は空欄にします。");
-                            subtitleText = "";
-                        }
-                    }));
-                } else {
-                    Debug.LogWarning("MenZTranslationClientが見つかりません。英語字幕は空欄にします。");
-                    subtitleText = "";
-                }
-            }
+            Debug.LogWarning("[CentralManager] TranslationControllerが見つかりません。翻訳をスキップします。");
+            subtitleText = "";
         }
 
         Debug.Log($"翻訳字幕: {subtitleText}");
