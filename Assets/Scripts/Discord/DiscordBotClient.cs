@@ -486,6 +486,9 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 // プレロールのフラッシュはUDP層で実施済み
                 // VOICE_EVENT 共通プレフィックスで、ターゲットユーザの暗号化方式を明示
                 LogMessage($"[VOICE_EVENT] target_user_id={targetUserId} ssrc={ssrc} encryption_mode={_encryptionMode} secret_key_len={_secretKey?.Length ?? 0}");
+
+                // 発話検出時に顔を表示（VOICE_STATE_UPDATEより先に字幕が出るケースの補完）
+                EnqueueMainThreadAction(() => CentralManager.SetFaceVisible(true));
             } else {
                 LogMessage($"DEAD BEEF 4 HandleVoiceSpeaking", LogLevel.Debug);
                 _targetUserSpeaking = false; // ターゲットユーザーの発話終了
