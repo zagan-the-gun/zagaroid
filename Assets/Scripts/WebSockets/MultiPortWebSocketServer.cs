@@ -24,6 +24,7 @@ public class MultiPortWebSocketServer : MonoBehaviour {
     private readonly Queue<Action> _executionQueue = new Queue<Action>();
 
     public string mySubtitle;
+    public string friendSubtitle;
 
     // 翻訳クライアント（NMT）が接続されているかのフラグ
     private static bool isTranslationClientConnected = false;
@@ -44,6 +45,7 @@ public class MultiPortWebSocketServer : MonoBehaviour {
         // InitializeServer(50000);
         InitializeServer(50002);
         mySubtitle = CentralManager.Instance != null ? CentralManager.Instance.GetMySubtitle() : null;
+        friendSubtitle = CentralManager.Instance != null ? CentralManager.Instance.GetFriendSubtitle() : null;
     }
 
     private void InitializeServer(int port) {
@@ -132,11 +134,11 @@ public class MultiPortWebSocketServer : MonoBehaviour {
     public void HandleMessage(int port, string user, string message) {
         Enqueue(() => {
             if (port == 50001) {
-                // MCPフォーマットの判定とルーティング
+                // MCPフォーマットはサーバ側でmethod/idを判定して適切にルーティング
                 if (IsMcpFormat(message)) {
                     RouteMcpMessage(message);
                 } else {
-                    // レガシー形式は既存処理
+                    // レガシー形式はCentralManagerへ通知
                     OnMessageReceivedFromPort50001?.Invoke(user, message);
                 }
             } else if (port == 50002) {
@@ -175,8 +177,19 @@ public class MultiPortWebSocketServer : MonoBehaviour {
                 switch (method) {
                     case "notifications/subtitle":
                     case "notifications_subtitle":
-                        // 字幕通知 → 既存の処理
-                        OnMessageReceivedFromPort50001?.Invoke(mySubtitle, message);
+                        // 字幕通知: paramsからtext/speakerを抽出し、subtitle名を解決してCentralManagerへ通知
+                        try {
+                            var paramsObj = obj["params"] as JObject;
+                            string text = paramsObj?["text"]?.ToString();
+                            string speaker = paramsObj?["speaker"]?.ToString();
+                            string subtitleName = ResolveSubtitleFromSpeaker(speaker);
+                            if (string.IsNullOrEmpty(subtitleName)) subtitleName = mySubtitle;
+                            OnMessageReceivedFromPort50001?.Invoke(subtitleName, text ?? string.Empty);
+                        } catch (Exception ex) {
+                            Debug.LogError($"[MCP] 字幕通知の解析に失敗: {ex.Message}");
+                            // フォールバック: 生メッセージを通知
+                            OnMessageReceivedFromPort50001?.Invoke(mySubtitle, message);
+                        }
                         Debug.Log($"[MCP] 字幕通知を受信: {method}");
                         break;
                         
@@ -211,6 +224,28 @@ public class MultiPortWebSocketServer : MonoBehaviour {
             }
         } catch (Exception ex) {
             Debug.LogError($"[MCP] ルーティングエラー: {ex.Message}");
+        }
+    }
+
+    private string ResolveSubtitleFromSpeaker(string speaker) {
+        try {
+            if (string.IsNullOrEmpty(speaker)) return mySubtitle;
+            string myName = CentralManager.Instance != null ? CentralManager.Instance.GetMyName() : null;
+            string friendName = CentralManager.Instance != null ? CentralManager.Instance.GetFriendName() : null;
+            string wipeAIName = CentralManager.Instance != null ? CentralManager.Instance.GetWipeAIName() : null;
+
+            if (!string.IsNullOrEmpty(myName) && string.Equals(speaker.Trim(), myName.Trim(), StringComparison.OrdinalIgnoreCase)) {
+                return mySubtitle;
+            }
+            if (!string.IsNullOrEmpty(friendName) && string.Equals(speaker.Trim(), friendName.Trim(), StringComparison.OrdinalIgnoreCase)) {
+                return friendSubtitle;
+            }
+            if (!string.IsNullOrEmpty(wipeAIName) && string.Equals(speaker.Trim(), wipeAIName.Trim(), StringComparison.OrdinalIgnoreCase)) {
+                return CentralManager.Instance != null ? CentralManager.Instance.GetWipeAISubtitle() : mySubtitle;
+            }
+            return mySubtitle;
+        } catch {
+            return mySubtitle;
         }
     }
 

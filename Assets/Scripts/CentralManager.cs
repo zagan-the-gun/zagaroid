@@ -50,8 +50,7 @@ public class CentralManager : MonoBehaviour {
     // private const float MIN_DISPLAY_TIME = 4.0f; // 最低表示時間 (例: 2秒)
     // private const float MAX_DISPLAY_TIME = 8.0f; // 最大表示時間 (例: 30秒)
 
-    private Dictionary<string, Queue<CurrentDisplaySubtitle>> _subtitleQueuesByChannel = new Dictionary<string, Queue<CurrentDisplaySubtitle>>(); // チャンネルごとの日本語字幕キュー
-    private Dictionary<string, CurrentDisplaySubtitle> _currentDisplayByChannel = new Dictionary<string, CurrentDisplaySubtitle>(); // チャンネルごとの現在表示中の日本語字幕
+    // 旧：字幕表示ロジックは SubtitleController に移行
 
     private void Awake() {
         // シングルトンパターンの実装
@@ -102,6 +101,8 @@ public class CentralManager : MonoBehaviour {
         } else {
             Debug.LogError("MultiPortWebSocketServer のインスタンスが見つかりません。");
         }
+
+        // SubtitleController の自動生成は行わない（TranslationController と同様、シーン配置前提）
 
         // アプリケーション終了時のイベントを登録
         Application.quitting += OnApplicationQuitting;
@@ -162,48 +163,7 @@ public class CentralManager : MonoBehaviour {
         StartDiscordBot();
     }
 
-    private void Update() {
-        // 字幕の表示時間処理（チャンネル別）
-        if (_currentDisplayByChannel.Count == 0) {
-            return;
-        }
-
-        // ToList() でコピーして反復中のディクショナリ変更を回避
-        foreach (var kvp in _currentDisplayByChannel.ToList()) {
-            var channel = kvp.Key;
-            var current = kvp.Value;
-            if (current == null) {
-                continue;
-            }
-
-            current.remainingDuration -= Time.deltaTime;
-
-            if (current.remainingDuration <= 0) {
-                Debug.Log("日本語字幕の表示時間が終了しました。");
-                // OBS側で日本語字幕をクリアする (テキストを空にする)
-                SendObsSubtitles(current.japaneseSubtitle, "");
-                // 日本語字幕が消えたら、英語字幕も消す
-                if (!string.IsNullOrEmpty(current.englishSubtitle)) {
-                    SendObsSubtitles(current.englishSubtitle, "");
-                }
-
-                // 現在表示をクリア
-                _currentDisplayByChannel.Remove(channel);
-
-                // 同チャンネルのキューに次があれば表示を開始
-                if (_subtitleQueuesByChannel.TryGetValue(channel, out var queue) && queue.Count > 0) {
-                    Debug.Log("キューから次の日本語字幕を表示します。");
-                    var nextEntry = queue.Dequeue();
-                    startDisplayingJapaneseSubtitle(nextEntry);
-
-                    // 英語字幕が設定されている場合のみ翻訳を実行
-                    if (!string.IsNullOrEmpty(nextEntry.englishSubtitle)) {
-                        StartCoroutine(translateSubtitle(nextEntry.englishSubtitle, nextEntry.japaneseText));
-                    }
-                }
-            }
-        }
-    }
+    private void Update() {}
 
     // PlayerPrefs を使った設定の読み書きメソッド
     public string GetSubtitleAIExecutionPath() {
@@ -337,6 +297,31 @@ public class CentralManager : MonoBehaviour {
             // フォールバック（通常は発生しない）
             PlayerPrefs.SetString("TranslationMode", mode);
         }
+    }
+
+    /// <summary>
+    /// 字幕用の翻訳をCentralManager経由で実行し、結果をコールバックで返します。
+    /// </summary>
+    /// <param name="sourceText">翻訳元のテキスト</param>
+    /// <param name="targetLang">対象言語（例: "en"）</param>
+    /// <param name="subtitleName">字幕/識別子（TranslationControllerにはspeakerとして渡す）</param>
+    /// <param name="onCompleted">翻訳結果（null可）</param>
+    public IEnumerator TranslateForSubtitle(string sourceText, string targetLang, string subtitleName, System.Action<string> onCompleted) {
+        if (TranslationController.Instance == null) {
+            Debug.LogWarning("[CentralManager] TranslationControllerが見つかりません。翻訳をスキップします。");
+            onCompleted?.Invoke(null);
+            yield break;
+        }
+
+        string result = null;
+        yield return StartCoroutine(TranslationController.Instance.Translate(
+            sourceText,
+            targetLang,
+            subtitleName,
+            (translatedText) => { result = translatedText; }
+        ));
+
+        onCompleted?.Invoke(result);
     }
 
     // VoiceVox関連の設定メソッド
@@ -737,22 +722,8 @@ public class CentralManager : MonoBehaviour {
             return; // 設定されていない場合は処理をスキップ
         }
 
-        // 字幕として送信（HandleWebSocketMessageFromPort50001と同じ処理）
-        float calculatedDuration = calculateDisplayDuration(recognizedText.Length);
-        // string myEnglishSubtitle = GetMyEnglishSubtitle();
-        // if (string.IsNullOrEmpty(myEnglishSubtitle)) {
-        //     myEnglishSubtitle = "zagan_subtitle_en"; // デフォルト値
-        // }
-
-        CurrentDisplaySubtitle newEntry = new CurrentDisplaySubtitle(
-            recognizedText,
-            subtitleChannel,
-            "", // 英語字幕チャンネルを一時的に空文字列に
-            calculatedDuration,
-            false // Wipe由来ではない
-        );
-
-        manageJapaneseSubtitleDisplay(newEntry);
+        // 字幕表示はSubtitleControllerへ委譲
+        SubtitleController.Instance?.EnqueueJapaneseSubtitle(recognizedText, subtitleChannel, "", false);
 
         // コメント読み上げを開始
         // StartCoroutine(speakComment(inputName, recognizedText));
@@ -799,16 +770,8 @@ public class CentralManager : MonoBehaviour {
                 // WipeAI専用のOBS字幕チャンネルへ表示
                 string wipeSubtitleChannel = GetWipeAISubtitle();
                 if (!string.IsNullOrEmpty(wipeSubtitleChannel)) {
-                    float duration = calculateDisplayDuration(comment.Length);
-                    // Wipe由来の字幕はWipe転送しない（ループ防止）
-                    CurrentDisplaySubtitle entry = new CurrentDisplaySubtitle(
-                        comment,
-                        wipeSubtitleChannel,
-                        "", // 英語字幕は未使用
-                        duration,
-                        false
-                    );
-                    manageJapaneseSubtitleDisplay(entry);
+                    // 字幕表示はSubtitleControllerへ委譲
+                    SubtitleController.Instance?.EnqueueJapaneseSubtitle(comment, wipeSubtitleChannel, "", false);
 
                     // WipeAIの字幕もVoiceVoxで読み上げ
                     string wipeName = GetWipeAIName();
@@ -935,202 +898,15 @@ public class CentralManager : MonoBehaviour {
     }
 
     private void HandleWebSocketMessageFromPort50001(string subtitle, string subtitleText) {
-        Debug.Log($"字幕を受信しました！ Subtitle: {subtitle}, Message(raw): {subtitleText}");
-        // 字幕をOBSに送信
-        // SendObsSubtitles(subtitle, subtitleText);
-
-        // JSON互換: {"text":"..."} 形式ならtextを抽出。失敗時はそのまま使用
-        string extractedText = subtitleText;
-        string extractedSubtitleName = subtitle;
-        string extractedLanguage = "auto"; // デフォルトは自動判定
-        // 英語字幕用デフォルト名（JSON無指定時のフォールバック）
-        string defaultEnglishSubtitle = CentralManager.Instance != null ? CentralManager.Instance.GetMyEnglishSubtitle() : null;
-        string extractedEnglishSubtitleName = defaultEnglishSubtitle;
-        
-        try {
-            if (!string.IsNullOrEmpty(subtitleText)) {
-                string trimmed = subtitleText.TrimStart();
-                if (trimmed.StartsWith("{")) {
-                    var obj = Newtonsoft.Json.Linq.JObject.Parse(subtitleText);
-                    
-                    // MCP形式チェック: jsonrpc: "2.0" があるか
-                    var jsonrpcVersion = obj["jsonrpc"]?.ToString();
-                    if (jsonrpcVersion == "2.0") {
-                        // MCP準拠フォーマット
-                        Debug.Log("[MCP] MCP準拠形式を検出しました");
-                        
-                        var method = obj["method"]?.ToString();
-                        var paramsObj = obj["params"] as Newtonsoft.Json.Linq.JObject;
-                        
-                        // methodの検証（notifications/subtitle を期待）
-                        if (method != "notifications/subtitle") {
-                            Debug.LogWarning($"[MCP] 未対応のmethod: {method}. 'notifications/subtitle' を期待しています。");
-                        }
-                        
-                        if (paramsObj != null) {
-                            // text, speaker, type, language を抽出
-                            extractedText = paramsObj["text"]?.ToString();
-                            var speaker = paramsObj["speaker"]?.ToString();
-                            var type = paramsObj["type"]?.ToString();
-                            var language = paramsObj["language"]?.ToString();
-                            
-                            if (!string.IsNullOrEmpty(language)) {
-                                extractedLanguage = language;
-                            }
-                            
-                            // speakerからsubtitle名を取得
-                            if (!string.IsNullOrEmpty(speaker)) {
-                                extractedSubtitleName = GetSubtitleFromSpeaker(speaker);
-                                // 英語字幕はベース名 + "_en" を使用
-                                if (!string.IsNullOrEmpty(extractedSubtitleName)) {
-                                    extractedEnglishSubtitleName = extractedSubtitleName + "_en";
-                                }
-                            }
-                            
-                            Debug.Log($"[MCP] パース結果 - method: {method}, speaker: {speaker}, type: {type}, language: {language}, subtitle: {extractedSubtitleName}");
-                        } else {
-                            Debug.LogWarning("[MCP] params が見つかりません");
-                        }
-                    } else {
-                        // 既存のJSON形式（ゆかコネNeo/オリジナル）
-                        var candidate = obj["text"]?.ToString();
-                        if (!string.IsNullOrEmpty(candidate)) {
-                            extractedText = candidate;
-                        }
-                        // 複数クライアント対応: JSON内にsubtitle名があれば優先（無ければchannelも許容）
-                        var subtitleCandidate = obj["subtitle"]?.ToString();
-                        if (string.IsNullOrEmpty(subtitleCandidate)) {
-                            subtitleCandidate = obj["channel"]?.ToString();
-                        }
-                        if (!string.IsNullOrWhiteSpace(subtitleCandidate)) {
-                            extractedSubtitleName = subtitleCandidate;
-                            // 英語字幕はベース名 + "_en" を使用
-                            extractedEnglishSubtitleName = subtitleCandidate + "_en";
-                        }
-                    }
-                }
-            }
-        } catch (System.Exception ex) {
-            Debug.LogWarning($"字幕JSON解析に失敗しました。プレーンテキストとして扱います。理由: {ex.Message}");
-        }
-
-        // 文字数に応じて日本語字幕表示時間を調整する
-        float calculatedDuration = calculateDisplayDuration(extractedText.Length);
-
-        // 新しい日本語字幕エントリを作成（Wipe由来ではない）
-        CurrentDisplaySubtitle newJpEntry = new CurrentDisplaySubtitle(
-            extractedText,
-            extractedSubtitleName,
-            extractedEnglishSubtitleName, // 英語チャンネルも情報として保持
-            calculatedDuration,
-            false
-        );
-
-        // 日本語字幕の表示ロジックを管理
-        manageJapaneseSubtitleDisplay(newJpEntry);
-
-        // 翻訳字幕の送信
-        StartCoroutine(translateSubtitle(extractedEnglishSubtitleName, extractedText));
+        // サーバ側でMCP解析済み: subtitle=字幕ソース名, subtitleText=テキスト
+        if (string.IsNullOrEmpty(subtitle) || string.IsNullOrEmpty(subtitleText)) return;
+        SubtitleController.Instance?.EnqueueJapaneseSubtitle(subtitleText, subtitle, subtitle + "_en", false);
     }
 
     // 字幕表示時間を計算するヘルパーメソッド
-    private float calculateDisplayDuration(int charCount) {
-        // 設定値を取得して利用
-        float charsPerSecond = GetCharactersPerSecond();
-        float minDisplayTime = GetMinDisplayTime();
-        float maxDisplayTime = GetMaxDisplayTime();
+    private float calculateDisplayDuration(int charCount) { return 0f; }
 
-        float duration = (float)charCount / charsPerSecond;
-        duration = Mathf.Max(duration, minDisplayTime); // durationがminDisplayTimeより小さければminDisplayTimeなる
-        return Mathf.Clamp(duration, minDisplayTime, maxDisplayTime); // 最終的にminDisplayTimeからmaxDisplayTimeの間にクランプ
-    }
-
-    // 日本語字幕の表示状態を管理するメインロジック
-    private void manageJapaneseSubtitleDisplay(CurrentDisplaySubtitle newJpEntry) {
-        var channel = newJpEntry.japaneseSubtitle;
-
-        // チャンネル用のキューを確保
-        if (!_subtitleQueuesByChannel.TryGetValue(channel, out var queue)) {
-            queue = new Queue<CurrentDisplaySubtitle>();
-            _subtitleQueuesByChannel[channel] = queue;
-        }
-
-        if (!_currentDisplayByChannel.TryGetValue(channel, out var current) || current == null) {
-            // 現在表示中の日本語字幕がない場合、すぐに表示
-            startDisplayingJapaneseSubtitle(newJpEntry);
-            Debug.Log("字幕：新しい日本語字幕をすぐに表示します。");
-        } else if (!current.IsCombined) {
-            // 同チャンネル内で結合表示
-            Debug.Log("字幕：既存の日本語字幕と新しい日本語字幕を結合して表示します。");
-            combineAndDisplayJapaneseSubtitles(current, newJpEntry);
-        } else {
-            // 結合中にさらに新規が来た場合、同チャンネルのキューへ
-            Debug.Log("字幕：既に結合表示中またはキューに他の字幕があるため、新しい日本語字幕をキューに追加します。");
-            queue.Enqueue(newJpEntry);
-        }
-    }
-
-    // 実際に日本語字幕の表示を開始するメソッド
-    private void startDisplayingJapaneseSubtitle(CurrentDisplaySubtitle jpEntry) {
-        // チャンネルごとの現在表示に設定
-        _currentDisplayByChannel[jpEntry.japaneseSubtitle] = jpEntry;
-
-        // 日本語字幕をOBSに送信
-        SendObsSubtitles(jpEntry.japaneseSubtitle, jpEntry.japaneseText);
-
-        // Wipe AI にも常時転送（Wipe由来は除外）
-        if (!jpEntry.IsFromWipe) {
-            // 字幕の出所に応じてspeaker名を設定（my/friend以外は送信しない）
-            string mySubtitle = GetMySubtitle();
-            string friendSubtitle = GetFriendSubtitle();
-
-            if (!string.IsNullOrEmpty(mySubtitle) &&
-                string.Equals(jpEntry.japaneseSubtitle?.Trim(), mySubtitle.Trim(), System.StringComparison.OrdinalIgnoreCase)) {
-                var speaker = GetMyName();
-                if (string.IsNullOrEmpty(speaker)) speaker = "streamer";
-                SendWipeSubtitle(jpEntry.japaneseText, speaker);
-            } else if (!string.IsNullOrEmpty(friendSubtitle) &&
-                string.Equals(jpEntry.japaneseSubtitle?.Trim(), friendSubtitle.Trim(), System.StringComparison.OrdinalIgnoreCase)) {
-                var speaker = GetFriendName();
-                if (string.IsNullOrEmpty(speaker)) speaker = "streamer";
-                SendWipeSubtitle(jpEntry.japaneseText, speaker);
-            }
-        }
-
-        Debug.Log($"日本語字幕表示開始: 『{jpEntry.japaneseText}』, 残り時間: {jpEntry.remainingDuration:F2}秒");
-    }
-
-    // 日本語字幕を結合して表示するメソッド
-    private void combineAndDisplayJapaneseSubtitles(CurrentDisplaySubtitle existingJp, CurrentDisplaySubtitle newJp) {
-        // 日本語字幕の結合 (既存 + 新規)
-        string combinedJapaneseText = $"{existingJp.japaneseText}\n{newJp.japaneseText}";
-
-        // 設定値を取得して利用
-        float minDisplayTime = GetMinDisplayTime();
-        float maxDisplayTime = GetMaxDisplayTime();
-
-        // 新しい表示時間を計算: 既存字幕の残り時間 + 新規字幕の表示時間 (ただし最大時間を超えない)
-        float newDuration = existingJp.remainingDuration + newJp.displayDuration;
-        newDuration = Mathf.Clamp(newDuration, minDisplayTime, maxDisplayTime);
-
-        // 新しい結合済みCurrentDisplaySubtitleとして設定
-        var combined = new CurrentDisplaySubtitle(
-            combinedJapaneseText,
-            existingJp.japaneseSubtitle, // チャンネルは既存のものを引き継ぐ
-            existingJp.englishSubtitle,   // 英語チャンネルも引き継ぐ
-            newDuration
-        );
-        combined.remainingDuration = newDuration; // 残り時間も更新
-        combined.SetCombined(true); // 結合状態を設定
-
-        // チャンネルごとの現在表示に反映
-        _currentDisplayByChannel[existingJp.japaneseSubtitle] = combined;
-
-        // OBSに送信
-        SendObsSubtitles(combined.japaneseSubtitle, combined.japaneseText);
-
-        Debug.Log($"日本語字幕結合表示開始: 『{combined.japaneseText}』, 残り時間: {combined.remainingDuration:F2}秒");
-    }
+    // 旧APIスタブ（残置呼び出し対策）
 
     private void HandleWebSocketMessageFromPort50002(string subtitle, string subtitleText) {
         Debug.Log($"[Port 50002] Subtitle: {subtitle}, Message: {subtitleText}");
@@ -1138,57 +914,10 @@ public class CentralManager : MonoBehaviour {
     }
 
     // 英語字幕の送信
-    private IEnumerator translateSubtitle(string subtitle, string subtitleText) {
-        Debug.Log("字幕の翻訳開始");
-        
-        // TranslationControllerに翻訳を委譲（フォールバック処理も含む）
-        if (TranslationController.Instance != null) {
-            yield return StartCoroutine(TranslationController.Instance.Translate(
-                subtitleText, 
-                "en", 
-                subtitle, 
-                (translatedText) => {
-                    subtitleText = translatedText ?? ""; // nullの場合は空文字
-                }
-            ));
-        } else {
-            Debug.LogWarning("[CentralManager] TranslationControllerが見つかりません。翻訳をスキップします。");
-            subtitleText = "";
-        }
-
-        Debug.Log($"翻訳字幕: {subtitleText}");
-
-        // 字幕をOBSに送信
-        SendObsSubtitles($"{subtitle}", subtitleText);
-    }
+    private IEnumerator translateSubtitle(string subtitle, string subtitleText) { yield break; }
 }
 
-public class CurrentDisplaySubtitle {
-    public string japaneseText; // 表示中の日本語字幕テキスト
-    public string japaneseSubtitle; // 日本語字幕のOBSソース名 (例: "zagan_subtitle")
-    public string englishSubtitle; // 英語字幕のOBSソース名 (例: "zagan_subtitle_en") // 英語字幕チャンネルも保持
-    public float displayDuration; // この日本語字幕の表示時間（秒）
-    public float remainingDuration; // この日本語字幕の残り表示時間（秒）
-    public bool IsCombined { get; private set; } = false; // 結合状態を管理
-    public bool IsFromWipe { get; private set; } = false; // この字幕がWipe由来か
-
-    public CurrentDisplaySubtitle(string jpText, string jpSubtitle, string enSubtitle, float duration, bool isFromWipe = false) {
-        japaneseText = jpText;
-        japaneseSubtitle = jpSubtitle;
-        englishSubtitle = enSubtitle; // 英語チャンネルもここで設定
-        displayDuration = duration;
-        remainingDuration = duration;
-        IsCombined = false; // 初期状態は非結合
-        IsFromWipe = isFromWipe;
-    }
-    
-    /// <summary>
-    /// 結合状態を設定
-    /// </summary>
-    public void SetCombined(bool combined) {
-        IsCombined = combined;
-    }
-}
+// CurrentDisplaySubtitle は SubtitleController 側に移動
 
 // Twitch        コメント受信   イベント セントラルマネージャーがイベントを受け取り各処理 OK
 // Twitch        コメント送信   イベント セントラルマネージャーがイベントを送信 OK
