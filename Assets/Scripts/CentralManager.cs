@@ -166,6 +166,27 @@ public class CentralManager : MonoBehaviour {
     private void Update() {}
 
     // PlayerPrefs を使った設定の読み書きメソッド
+    private const string ActorsKey = "Actors";
+
+    public List<ActorConfig> GetActors() {
+        try {
+            var json = PlayerPrefs.GetString(ActorsKey, "");
+            if (string.IsNullOrEmpty(json)) return new List<ActorConfig>();
+            var list = JsonConvert.DeserializeObject<List<ActorConfig>>(json);
+            return list ?? new List<ActorConfig>();
+        } catch {
+            return new List<ActorConfig>();
+        }
+    }
+
+    public void SetActors(List<ActorConfig> actors) {
+        try {
+            var json = JsonConvert.SerializeObject(actors ?? new List<ActorConfig>());
+            PlayerPrefs.SetString(ActorsKey, json);
+        } catch (System.Exception ex) {
+            Debug.LogError($"[CentralManager] SetActors error: {ex.Message}");
+        }
+    }
     public string GetSubtitleAIExecutionPath() {
         // 存在しない場合はデフォルト値として空文字列を返す。
         return PlayerPrefs.GetString("SubtitleAIExecutionPath", "");

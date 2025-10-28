@@ -449,6 +449,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   mySubtitle: 
+  friendSubtitle: 
 --- !u!4 &190701975
 Transform:
   m_ObjectHideFlags: 0
@@ -1164,6 +1165,55 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 811615276}
   m_CullTransparentMesh: 1
+--- !u!1 &870144091
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 870144093}
+  - component: {fileID: 870144092}
+  m_Layer: 0
+  m_Name: ActorUIController
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &870144092
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 870144091}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b164a63c9128643c7bb6bea6ef22255c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  uiDocument: {fileID: 0}
+  japaneseFont: {fileID: 12800000, guid: d065ea09fa8ba40bd81f4a257bdc358e, type: 3}
+  actorDeleteDialogTemplate: {fileID: 0}
+  actorDeleteDialogStyle: {fileID: 0}
+  defaultActorCount: 0
+--- !u!4 &870144093
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 870144091}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 1129.6287, y: 588.73553, z: 39.26697}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &903145778
 GameObject:
   m_ObjectHideFlags: 0
@@ -2300,3 +2350,4 @@ SceneRoots:
   - {fileID: 487978540}
   - {fileID: 1515543472}
   - {fileID: 1847263568}
+  - {fileID: 870144093}

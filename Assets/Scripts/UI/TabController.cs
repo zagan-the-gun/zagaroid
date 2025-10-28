@@ -10,10 +10,10 @@ public class TabController : MonoBehaviour{
     private VisualElement mainContainer;
     private UnityEngine.UIElements.Button logButton;
     private UnityEngine.UIElements.Button settingButton;
-    private UnityEngine.UIElements.Button objectButton;
+    private UnityEngine.UIElements.Button actorButton;
     private VisualElement logContent;
     private VisualElement settingContent;
-    private VisualElement objectContent;
+    private VisualElement actorContent;
     
     // 追加: トグル用要素
     private UnityEngine.UIElements.Button toggleButton;
@@ -43,10 +43,10 @@ public class TabController : MonoBehaviour{
         mainContainer = uiRoot.Q<VisualElement>("main");
         logButton = uiRoot.Q<UnityEngine.UIElements.Button>("LogButton");
         settingButton = uiRoot.Q<UnityEngine.UIElements.Button>("SettingButton");
-        objectButton = uiRoot.Q<UnityEngine.UIElements.Button>("ObjectButton");
+        actorButton = uiRoot.Q<UnityEngine.UIElements.Button>("ActorButton");
         logContent = uiRoot.Q<VisualElement>("logContent");
         settingContent = uiRoot.Q<VisualElement>("settingContent");
-        objectContent = uiRoot.Q<VisualElement>("objectContent");
+        actorContent = uiRoot.Q<VisualElement>("actorContent");
         toggleButton = uiRoot.Q<UnityEngine.UIElements.Button>("Toggle");
         tabsContainer = uiRoot.Q<VisualElement>("tabs");
         contentDisplayArea = uiRoot.Q<VisualElement>("contentDisplayArea");
@@ -59,8 +59,8 @@ public class TabController : MonoBehaviour{
             ShowOnly(settingContent);
             SetExpanded(true); // 設定タブを開いたら展開して操作可能にする
         };
-        objectButton.clicked += () => {
-            ShowOnly(objectContent);
+        actorButton.clicked += () => {
+            ShowOnly(actorContent);
             SetExpanded(true); // 設定タブを開いたら展開して操作可能にする
         };
 
@@ -91,8 +91,8 @@ public class TabController : MonoBehaviour{
     /// </summary>
     private void ShowOnly(VisualElement target) {
         if (target == null) return;
-        // 同列の候補: logContent / settingContent / objectContent
-        VisualElement[] all = new VisualElement[] { logContent, settingContent, objectContent };
+        // 同列の候補: logContent / settingContent / actorContent
+        VisualElement[] all = new VisualElement[] { logContent, settingContent, actorContent };
         foreach (var ve in all) {
             if (ve == null) continue;
             ve.style.display = (ve == target) ? DisplayStyle.Flex : DisplayStyle.None;

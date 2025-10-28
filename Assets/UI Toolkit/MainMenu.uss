@@ -1,6 +1,9 @@
 .panel {
+    color: white;
+    background-color:rgb(0, 0, 0);
+
     border-width: 1px;
-    border-color: black;
+    border-color:rgb(0, 255, 0);
     border-radius: 5px;
     padding: 10px;
     margin: 5px;
@@ -18,19 +21,58 @@
 
 /* パネル上端に常時表示する見出し用ラベル */
 .panel__title {
+    color: white;
+
     position: absolute;
     top: -15px;
     left: 5px;
     transform: none;
-    background-color: white;
-    color: black;
+    background-color:rgb(0, 0, 0);
     border-width: 1px;
-    border-color: black;
+    border-color:rgb(0, 255, 0);
     border-radius: 5px;
     padding: 2px 8px;
     white-space: nowrap;
     pointer-events: none;
     z-index: 2;
+}
+
+/* パネル内の共通ボタン */
+.panel__button {
+    color: white;
+    background-color:rgb(0, 0, 0);
+
+    padding: 10px 12px;
+
+    border-radius: 5px;
+
+    border-width: 1px;
+    border-color:rgb(0, 255, 0);
+}
+
+/* 追加（Add）用ボタン */
+.panel__button--add {
+    height: 152px; /* 必要に応じて調整 */
+}
+
+/* ===== パネル内の TextField 共通デザイン ===== */
+/* コンテナ部分（枠・背景） */
+.panel .unity-base-text-field,
+.panel .unity-text-field {
+    background-color: rgb(0, 0, 0);
+    /* border-width: 1px;
+    border-color: rgb(0, 255, 0); */
+    border-radius: 5px;
+}
+
+/* 入力テキスト部分（色・パディング） */
+.panel .unity-base-text-field__input,
+.panel .unity-text-field__input {
+    color: black;
+    padding: 6px 8px;
+    border-width: 1px;
+    border-color:rgb(0, 255, 0);
+
 }
 
 /* DropdownFieldのポップアップがScrollView内でクリップされないようにする */
@@ -42,3 +84,24 @@
 }
 
 /* 追加対策は撤去し、最小限のクリップ回避のみ残す */
+
+/* ===== Actors grid (2 columns x multiple rows) ===== */
+.actors-grid {
+    flex-direction: column;
+}
+.actors-row {
+    flex-direction: row;
+    align-items: stretch;
+}
+.actors-cell {
+    width: 32%;
+    flex-grow: 0;
+    flex-shrink: 0;
+    /* flex-basis: 1px; */
+    min-width: 0;
+}
+
+/* 危険操作系（Deleteなど） */
+.panel__button--danger {
+    /* 必要があれば差分の色を指定。とりあえず枠線は同配色 */
+}

@@ -1,0 +1,11 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xmlns="UnityEngine.UIElements.StyleSheet" editor-extension-mode="False">
+    <ui:VisualElement name="ActorDeleteConfirmOverlay" class="overlay">
+        <ui:VisualElement name="DialogBox" class="dialog">
+            <ui:Label text="DELETE this Actor?" name="ConfirmMessageLabel" class="dialog__message" />
+            <ui:VisualElement class="dialog__buttons">
+                <ui:Button text="Cancel" name="ConfirmCancelButton" class="dialog__button" />
+                <ui:Button text="OK" name="ConfirmOkButton" class="dialog__button dialog__button--danger" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>
