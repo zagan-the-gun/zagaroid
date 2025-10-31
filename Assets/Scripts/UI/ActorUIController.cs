@@ -6,17 +6,11 @@ using UnityEngine.UIElements;
 
 public class ActorUIController : MonoBehaviour
 {
-    [SerializeField] private UIDocument uiDocument;
     [Header("Fonts")]
     [SerializeField] private Font japaneseFont; // 再描画時に見出しへ直適用
     [Header("UI Templates")]
     [SerializeField] private VisualTreeAsset actorDeleteDialogTemplate;
     [SerializeField] private StyleSheet actorDeleteDialogStyle;
-    [Header("Defaults")]
-    [SerializeField] private int defaultActorCount = 0; // 起動時に既存が無ければ生成する数
-
-    // ランタイムの最小モデル
-    // ActorConfig は Models/ActorConfig.cs に分離
 
     private readonly List<ActorConfig> actors = new List<ActorConfig>();
 
@@ -40,46 +34,21 @@ public class ActorUIController : MonoBehaviour
 
     private const string LogPrefix = "[ZAGARO][ActorUI]";
 
-#if UNITY_EDITOR
-	private void AssignActorDeleteDialogAssetsIfMissingEditorOnly()
-	{
-		if (actorDeleteDialogTemplate == null)
-		{
-			actorDeleteDialogTemplate = UnityEditor.AssetDatabase.LoadAssetAtPath<VisualTreeAsset>("Assets/UI Toolkit/ActorDeleteConfirmDialog.uxml");
-		}
-		if (actorDeleteDialogStyle == null)
-		{
-			actorDeleteDialogStyle = UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>("Assets/UI Toolkit/ActorDeleteConfirmDialog.uss");
-		}
-	}
-
-	private void OnValidate()
-	{
-		AssignActorDeleteDialogAssetsIfMissingEditorOnly();
-	}
-#endif
-
     private void OnEnable()
     {
-        // UIDocument の自動検出（未設定でも動くように）
-        if (uiDocument == null)
-        {
-            uiDocument = GetComponent<UIDocument>();
-            if (uiDocument == null)
-            {
-                uiDocument = FindObjectOfType<UIDocument>(true);
-            }
+        // UIDocument の自動検出（Scene内に必ず1つ存在）
+        UIDocument uiDocument = GetComponent<UIDocument>();
+        if (uiDocument == null) {
+            uiDocument = FindObjectOfType<UIDocument>(true);
         }
-        if (uiDocument == null || uiDocument.rootVisualElement == null)
-        {
-            Debug.LogError($"{LogPrefix} UIDocument が見つかりません。Scene へアタッチし参照を設定してください。");
+        if (uiDocument == null || uiDocument.rootVisualElement == null) {
+            Debug.LogError($"{LogPrefix} UIDocument が見つかりません。");
             return;
         }
 
         uiRoot = uiDocument.rootVisualElement;
         actorContentRoot = uiRoot.Q<VisualElement>("actorContent");
-        if (actorContentRoot == null)
-        {
+        if (actorContentRoot == null) {
             Debug.LogError($"{LogPrefix} actorContent が見つかりません。");
             return;
         }
@@ -91,44 +60,33 @@ public class ActorUIController : MonoBehaviour
             Debug.LogError($"{LogPrefix} name='3' のコンテナが見つかりません。");
             return;
         }
-        // 2列レイアウト: USS クラスで管理
+        // 3列レイアウト: USS クラスで管理
         actorGridRoot.AddToClassList("actors-grid");
 
         // 追加ボタンのある既存行からタイル参照を取得
         panelActorAddTile = actorContentRoot.Q<VisualElement>("PanelActorAdd");
-        if (panelActorAddTile != null) panelActorAddTile.AddToClassList("actors-cell");
 
         // 追加ボタンを取得（中身のButton）
         addButton = actorContentRoot.Q<Button>("ActorAddButton");
-        if (addButton != null)
-        {
+        if (addButton != null) {
             addButton.clicked -= OnAddActorClicked;
             addButton.clicked += OnAddActorClicked;
-            addButton.UnregisterCallback<ClickEvent>(OnAddActorClickedEvent);
-            addButton.RegisterCallback<ClickEvent>(OnAddActorClickedEvent);
             Debug.Log($"{LogPrefix} Add ボタンをバインドしました: name={addButton.name}, enabled={addButton.enabledSelf}, display={addButton.resolvedStyle.display}");
-        }
-        else
-        {
+        } else {
             Debug.LogWarning($"{LogPrefix} Add ボタンが見つかりません。");
         }
 
-		#if UNITY_EDITOR
-		AssignActorDeleteDialogAssetsIfMissingEditorOnly();
-		#endif
 		EnsureConfirmOverlay();
 
         // 共通Saveボタンにフック（全タブ一括保存）
-        uiRoot.Query<Button>("SaveSettingsButton").ForEach(b =>
-        {
+        uiRoot.Query<Button>("SaveSettingsButton").ForEach(b => {
             b.clicked -= OnSaveAllClicked;
             b.clicked += OnSaveAllClicked;
         });
 
         // CentralManager からロード。無ければ UXML から初期化
         LoadActorsFromCentral();
-        if (actors.Count == 0)
-        {
+        if (actors.Count == 0) {
             BootstrapActorsFromExisting();
         }
         RebuildGrid();
@@ -152,20 +110,17 @@ public class ActorUIController : MonoBehaviour
     }
 
     // 既存 UXML の PanelActor から actors を初期化
-    private void BootstrapActorsFromExisting()
-    {
+    private void BootstrapActorsFromExisting() {
         if (actorGridRoot == null) return;
         if (actors.Count > 0) return;
-        foreach (var child in actorGridRoot.Children())
-        {
+        foreach (var child in actorGridRoot.Children()) {
             if (child == null) continue;
             if (child.name == "PanelActorAdd") continue;
             var nameField = child.Q<TextField>("ActorNameInput");
             var idField = child.Q<TextField>("DiscordTargetUserIdInput");
             var toggle = child.Q<Toggle>("EnableActorToggle");
             if (nameField == null && idField == null && toggle == null) continue;
-            var cfg = new ActorConfig
-            {
+            var cfg = new ActorConfig {
                 actorName = nameField != null ? (nameField.value ?? string.Empty) : string.Empty,
                 discordUserId = idField != null ? (idField.value ?? string.Empty) : string.Empty,
                 enabled = toggle != null ? toggle.value : true
@@ -186,11 +141,6 @@ public class ActorUIController : MonoBehaviour
         Debug.Log($"{LogPrefix} Actor 追加。現在件数: {actors.Count}");
     }
 
-    private void OnAddActorClickedEvent(ClickEvent evt)
-    {
-        Debug.Log($"{LogPrefix} ActorAddButton clicked (ClickEvent)");
-    }
-
     private void RequestDelete(VisualElement panel, ActorConfig config)
     {
         ShowConfirm(
@@ -205,8 +155,7 @@ public class ActorUIController : MonoBehaviour
     }
 
     // ============ UI Building ============
-    private VisualElement CreateActorPanel(ActorConfig config)
-    {
+    private VisualElement CreateActorPanel(ActorConfig config) {
         var panel = new VisualElement();
         panel.AddToClassList("panel");
         panel.AddToClassList("actors-cell");
@@ -217,8 +166,7 @@ public class ActorUIController : MonoBehaviour
 
         var toggle = new Toggle("Enable") { name = "EnableActorToggle" };
         toggle.value = config.enabled;
-        toggle.RegisterValueChangedCallback(evt =>
-        {
+        toggle.RegisterValueChangedCallback(evt => {
             config.enabled = evt.newValue;
         });
         toggle.style.marginBottom = 5;
@@ -226,11 +174,9 @@ public class ActorUIController : MonoBehaviour
 
         var nameField = new TextField("actor name") { name = "ActorNameInput" };
         nameField.value = config.actorName;
-        nameField.RegisterValueChangedCallback(evt =>
-        {
+        nameField.RegisterValueChangedCallback(evt => {
             string sanitized = SanitizeActorName(evt.newValue);
-            if (sanitized != evt.newValue)
-            {
+            if (sanitized != evt.newValue) {
                 nameField.SetValueWithoutNotify(sanitized);
             }
             config.actorName = sanitized; // 正規化なし、入力通り（非ASCII除去のみ）
@@ -238,13 +184,45 @@ public class ActorUIController : MonoBehaviour
         });
         panel.Add(nameField);
 
+        // display name（表示名）: actor nameの直下に配置
+        var displayField = new TextField("display name") { name = "ActorDisplayNameInput" };
+        displayField.value = config.displayName;
+        displayField.RegisterValueChangedCallback(evt => {
+            config.displayName = evt.newValue ?? string.Empty;
+        });
+        panel.Add(displayField);
+
+        // translation（type の上）
+        var translationToggle = new Toggle("Translation") { name = "ActorTranslationToggle" };
+        translationToggle.value = config.translationEnabled;
+        translationToggle.RegisterValueChangedCallback(evt => {
+            config.translationEnabled = evt.newValue;
+        });
+        translationToggle.style.marginBottom = 5;
+        panel.Add(translationToggle);
+
+        // type ドロップダウン（local / friend / wipe）
         var idField = new TextField("Discord User ID") { name = "DiscordTargetUserIdInput" };
+        var typeDropdown = new DropdownField("type") { name = "ActorTypeDropdown" };
+        var typeChoices = new List<string> { "local", "friend", "wipe" };
+        typeDropdown.choices = typeChoices;
+        if (string.IsNullOrEmpty(config.type) || !typeChoices.Contains(config.type)) {
+            config.type = "local";
+        }
+        typeDropdown.value = config.type;
+        typeDropdown.RegisterValueChangedCallback(evt => {
+            config.type = evt.newValue;
+            idField.style.display = (config.type == "friend") ? DisplayStyle.Flex : DisplayStyle.None;
+        });
+        panel.Add(typeDropdown);
+
+        // Discord User ID（friend のときだけ表示）
         idField.value = config.discordUserId;
         idField.style.marginBottom = 5;
-        idField.RegisterValueChangedCallback(evt =>
-        {
+        idField.RegisterValueChangedCallback(evt => {
             config.discordUserId = evt.newValue;
         });
+        idField.style.display = (config.type == "friend") ? DisplayStyle.Flex : DisplayStyle.None;
         panel.Add(idField);
 
         var deleteBtn = new Button() { text = "Delete", name = "ActorDeleteButton" };
@@ -256,35 +234,29 @@ public class ActorUIController : MonoBehaviour
     }
 
     // ============ Grid Rebuild ============
-    private void RebuildGrid()
-    {
+    private void RebuildGrid() {
         if (actorGridRoot == null) return;
 
         // ルートをクリア
         actorGridRoot.Clear();
 
         // USSに完全委譲: 行ラッパーを使わずフラットに追加
-        foreach (var cfg in actors)
-        {
+        foreach (var cfg in actors) {
             actorGridRoot.Add(CreateActorPanel(cfg));
         }
         // Add タイルを末尾へ
         panelActorAddTile?.RemoveFromHierarchy();
-        if (panelActorAddTile != null)
-        {
+        if (panelActorAddTile != null) {
             actorGridRoot.Add(panelActorAddTile);
         }
 
         // 再配置後の再取得・再バインド（Buttonは移動で参照が変わる可能性）
         var latestAddBtn = panelActorAddTile?.Q<Button>("ActorAddButton") ?? actorContentRoot.Q<Button>("ActorAddButton");
-        if (latestAddBtn != null)
-        {
+        if (latestAddBtn != null) {
             addButton.clicked -= OnAddActorClicked;
             addButton = latestAddBtn;
             addButton.clicked -= OnAddActorClicked;
             addButton.clicked += OnAddActorClicked;
-            addButton.UnregisterCallback<ClickEvent>(OnAddActorClickedEvent);
-            addButton.RegisterCallback<ClickEvent>(OnAddActorClickedEvent);
             Debug.Log($"{LogPrefix} Add ボタンを再バインド: name={addButton.name}, enabled={addButton.enabledSelf}, display={addButton.resolvedStyle.display}");
         }
 
@@ -300,8 +272,7 @@ public class ActorUIController : MonoBehaviour
 
     }
 
-    private void FocusLastActorNameField()
-    {
+    private void FocusLastActorNameField() {
         if (actorGridRoot == null) return;
         if (actorGridRoot.childCount == 0) return;
         for (int idx = actorGridRoot.childCount - 1; idx >= 0; idx--)
@@ -313,43 +284,37 @@ public class ActorUIController : MonoBehaviour
     }
 
     // CentralManager連携: 保存/読込
-    private void LoadActorsFromCentral()
-    {
+    private void LoadActorsFromCentral() {
         actors.Clear();
         var list = CentralManager.Instance?.GetActors();
         if (list == null) return;
         actors.AddRange(list);
     }
 
-    private void SaveActorsToCentral()
-    {
+    private void SaveActorsToCentral() {
         CentralManager.Instance?.SetActors(actors);
     }
 
     // 共通Saveボタン押下時に呼ばれる
-    private void OnSaveAllClicked()
-    {
+    private void OnSaveAllClicked() {
         SaveActorsToCentral();
         CentralManager.Instance?.SaveAllPlayerPrefs();
     }
 
     // 半角英数のみ許容（A-Za-z0-9）。それ以外は除去。
-    private static string SanitizeActorName(string input)
-    {
+    private static string SanitizeActorName(string input) {
         if (string.IsNullOrEmpty(input)) return string.Empty;
         return Regex.Replace(input, "[^A-Za-z0-9]", "");
     }
 
     // ============ Confirm Overlay ============
-    private void EnsureConfirmOverlay()
-    {
+    private void EnsureConfirmOverlay() {
         if (confirmOverlay != null) return;
         if (uiRoot == null) return;
 
         // UXMLテンプレートから生成（Inspector参照）
         var template = actorDeleteDialogTemplate;
-        if (template == null)
-        {
+        if (template == null) {
             Debug.LogError($"{LogPrefix} ActorDeleteConfirmDialog の VisualTreeAsset が未設定です。Inspectorで割り当ててください。");
             return;
         }
@@ -363,8 +328,7 @@ public class ActorUIController : MonoBehaviour
 
         // USSを適用（Inspector参照）
         var ss = actorDeleteDialogStyle;
-        if (ss != null)
-        {
+        if (ss != null) {
             confirmOverlay.styleSheets.Add(ss);
         }
 
@@ -374,12 +338,10 @@ public class ActorUIController : MonoBehaviour
         confirmOkButton = container.Q<Button>("ConfirmOkButton");
 
         // クリック動作
-        if (confirmCancelButton != null)
-        {
+        if (confirmCancelButton != null) {
             confirmCancelButton.clicked += HideConfirm;
         }
-        if (confirmOkButton != null)
-        {
+        if (confirmOkButton != null) {
             confirmOkButton.clicked += () =>
             {
                 var action = pendingConfirmAction;
@@ -390,8 +352,7 @@ public class ActorUIController : MonoBehaviour
         }
 
         // 日本語フォントを明示適用
-        if (japaneseFont != null)
-        {
+        if (japaneseFont != null) {
             var jp = FontDefinition.FromFont(japaneseFont);
             if (confirmMessage != null) confirmMessage.style.unityFontDefinition = jp;
             if (confirmOkButton != null) confirmOkButton.style.unityFontDefinition = jp;
@@ -401,10 +362,8 @@ public class ActorUIController : MonoBehaviour
         uiRoot.Add(confirmOverlay);
     }
 
-    private void TeardownConfirmOverlay()
-    {
-        if (confirmOverlay != null)
-        {
+    private void TeardownConfirmOverlay() {
+        if (confirmOverlay != null) {
             confirmOverlay.RemoveFromHierarchy();
             confirmOverlay = null;
             confirmMessage = null;
@@ -414,14 +373,11 @@ public class ActorUIController : MonoBehaviour
         }
     }
 
-    private void ShowConfirm(string message, Action onOk)
-    {
-        if (confirmOverlay == null)
-        {
+    private void ShowConfirm(string message, Action onOk) {
+        if (confirmOverlay == null) {
             EnsureConfirmOverlay();
         }
-        if (confirmOverlay == null)
-        {
+        if (confirmOverlay == null) {
             Debug.LogError($"{LogPrefix} 確認ダイアログの生成に失敗しました。UXML/USSのInspector割り当てを確認してください。");
             return;
         }
@@ -431,14 +387,9 @@ public class ActorUIController : MonoBehaviour
         confirmOverlay.pickingMode = PickingMode.Position; // 背景操作ブロック
     }
 
-    private void HideConfirm()
-    {
+    private void HideConfirm() {
         if (confirmOverlay == null) return;
         confirmOverlay.style.display = DisplayStyle.None;
         confirmOverlay.pickingMode = PickingMode.Ignore;
     }
 }
-
-// （フォント再適用ヘルパーは削除）
-
-

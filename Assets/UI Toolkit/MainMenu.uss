@@ -105,3 +105,26 @@
 .panel__button--danger {
     /* 必要があれば差分の色を指定。とりあえず枠線は同配色 */
 }
+
+/* 内側のチェックボックス本体（UnityのチェックマークImage）を緑に */
+.panel .unity-checkmark,
+.panel .unity-toggle__checkmark {
+    border-color:rgb(0, 255, 0);
+}
+
+/* ===== Dropdown (Select) 共通デザイン ===== */
+.panel .unity-base-popup-field__input {
+    color: white;
+    padding: 6px 8px;
+    border-width: 1px;
+    border-color: rgb(0, 255, 0);
+    background-color: rgb(0, 0, 0);
+}
+
+.panel .unity-popup-field__arrow {
+    -unity-background-image-tint-color: rgb(0, 255, 0);
+}
+
+.panel .unity-base-popup-field__arrow {
+    -unity-background-image-tint-color: rgb(0, 255, 0);
+}
