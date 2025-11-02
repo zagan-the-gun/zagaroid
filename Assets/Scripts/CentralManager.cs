@@ -302,20 +302,6 @@ public class CentralManager : MonoBehaviour {
     public void SetFriendName(string value) {
         PlayerPrefs.SetString("FriendName", value);
     }
-    public string GetWipeAIName() {
-        return PlayerPrefs.GetString("WipeAIName", "");
-    }
-    public void SetWipeAIName(string value) {
-        PlayerPrefs.SetString("WipeAIName", value);
-    }
-
-    // Wipe AI: subtitle チャンネル名
-    public string GetWipeAISubtitle() {
-        return PlayerPrefs.GetString("WipeAISubtitle", "wipe_subtitle");
-    }
-    public void SetWipeAISubtitle(string value) {
-        PlayerPrefs.SetString("WipeAISubtitle", value);
-    }
 
     // 翻訳方式の設定管理はTranslationControllerに移動しました
     // 互換性のため、ラッパーメソッドを残します

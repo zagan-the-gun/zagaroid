@@ -251,34 +251,28 @@ public class MultiPortWebSocketServer : MonoBehaviour {
 
     /// <summary>
     /// speaker 名から対応する字幕フィールド名を取得
-    /// 新方式：ActorConfig 配列から検索、旧方式はフォールバック
+    /// ActorConfig 配列から検索、見つからない場合は従来の個別設定にフォールバック
     /// </summary>
     private string ResolveSubtitleFromSpeaker(string speaker) {
         try {
             if (string.IsNullOrEmpty(speaker)) return mySubtitle;
             
-            // ① Actor配列から検索（新方式）
+            // Actor配列から検索（新方式）
             // speaker 名で ActorConfig を検索し、対応する字幕フィールド名を返す
             var config = CentralManager.Instance?.GetActorByName(speaker);
             if (config != null) {
                 return config.actorName + "_subtitle";  // 例: "zagan" → "zagan_subtitle"
             }
             
-            // ② フォールバック：従来の個別設定を使う
-            // ActorConfig が見つからない場合は、旧システムの MyName/FriendName/WipeAIName と照合
-            // （段階移行中の互換性維持）
+            // フォールバック：従来の個別設定を使う（互換性維持）
             string myName = CentralManager.Instance != null ? CentralManager.Instance.GetMyName() : null;
             string friendName = CentralManager.Instance != null ? CentralManager.Instance.GetFriendName() : null;
-            string wipeAIName = CentralManager.Instance != null ? CentralManager.Instance.GetWipeAIName() : null;
 
             if (!string.IsNullOrEmpty(myName) && string.Equals(speaker.Trim(), myName.Trim(), StringComparison.OrdinalIgnoreCase)) {
                 return mySubtitle;
             }
             if (!string.IsNullOrEmpty(friendName) && string.Equals(speaker.Trim(), friendName.Trim(), StringComparison.OrdinalIgnoreCase)) {
                 return friendSubtitle;
-            }
-            if (!string.IsNullOrEmpty(wipeAIName) && string.Equals(speaker.Trim(), wipeAIName.Trim(), StringComparison.OrdinalIgnoreCase)) {
-                return CentralManager.Instance != null ? CentralManager.Instance.GetWipeAISubtitle() : mySubtitle;
             }
             return mySubtitle;
         } catch {

@@ -13,11 +13,6 @@ public class SettingUIController : MonoBehaviour {
     private VisualElement settingContentRoot;
 
     // 各設定UI要素への参照
-    private Toggle autoStartSubtitleAIToggle;
-    private TextField subtitleAIExecutionPathInput;
-    private Button browseSubtitleAIPathButton; // 参照ボタン
-    private Button startSubtitleAIButton; // 手動起動ボタン
-
     private Toggle autoStartVoiceVoxToggle;
     private TextField voiceVoxExecutionPathInput;
     private Button browseVoiceVoxPathButton; // 参照ボタン
@@ -42,8 +37,6 @@ public class SettingUIController : MonoBehaviour {
     private TextField deepLApiClientKeyInput;
     private DropdownField translationModeDropdown;
     private TextField realtimeAudioWsUrlInput;
-    private TextField wipeAINameInput;
-    private TextField wipeAISubtitleInput;
     
     private Toggle autoStartDiscordBotToggle;
     private TextField discordTokenInput;
@@ -77,11 +70,6 @@ public class SettingUIController : MonoBehaviour {
         }
 
         // 各UI要素を取得
-        autoStartSubtitleAIToggle = settingContentRoot.Q<Toggle>("AutoStartSubtitleAIToggle");
-        subtitleAIExecutionPathInput = settingContentRoot.Q<TextField>("SubtitleAIExecutionPathInput");
-        browseSubtitleAIPathButton = settingContentRoot.Q<Button>("BrowseSubtitleAIPathButton"); // 参照ボタン
-        startSubtitleAIButton = settingContentRoot.Q<Button>("StartSubtitleAIButton"); // 手動起動ボタン
-
         autoStartVoiceVoxToggle = settingContentRoot.Q<Toggle>("AutoStartVoiceVoxToggle");
         voiceVoxExecutionPathInput = settingContentRoot.Q<TextField>("VoiceVoxExecutionPathInput");
         browseVoiceVoxPathButton = settingContentRoot.Q<Button>("BrowseVoiceVoxPathButton"); // 参照ボタン
@@ -105,8 +93,6 @@ public class SettingUIController : MonoBehaviour {
         deepLApiClientKeyInput = settingContentRoot.Q<TextField>("DeepLApiClientKeyInput"); // DeepL APIキー
         translationModeDropdown = settingContentRoot.Q<DropdownField>("TranslationModeDropdown"); // 翻訳方式選択
         realtimeAudioWsUrlInput = settingContentRoot.Q<TextField>("RealtimeAudioWsUrlInput"); // Realtime Audio WS URL
-        wipeAISubtitleInput = uiDocument.rootVisualElement.Q<TextField>("WipeAISubtitleInput");
-        wipeAINameInput = uiDocument.rootVisualElement.Q<TextField>("WipeAINameInput");
         autoStartDiscordBotToggle = settingContentRoot.Q<Toggle>("AutoStartDiscordBotToggle");
         discordTokenInput = settingContentRoot.Q<TextField>("DiscordTokenInput");
         discordGuildIdInput = settingContentRoot.Q<TextField>("DiscordGuildIdInput");
@@ -130,15 +116,6 @@ public class SettingUIController : MonoBehaviour {
         Debug.LogWarning("設定UI LoadSettingsToUI処理終了");
 
         // --- イベントリスナーの登録 ---
-        if (browseSubtitleAIPathButton != null)
-        {
-            browseSubtitleAIPathButton.clicked += OnBrowseSubtitleAIPathClicked;
-        }
-
-        if (startSubtitleAIButton != null) {
-            startSubtitleAIButton.clicked += OnStartSubtitleAIClicked;
-        }
-
         if (browseVoiceVoxPathButton != null)
         {
             browseVoiceVoxPathButton.clicked += OnBrowseVoiceVoxPathClicked;
@@ -178,14 +155,6 @@ public class SettingUIController : MonoBehaviour {
 
     void OnDisable() {
         // イベントリスナーの解除 (オブジェクトが無効になったときにメモリリークを防ぐ)
-        if (browseSubtitleAIPathButton != null) {
-            browseSubtitleAIPathButton.clicked -= OnBrowseSubtitleAIPathClicked;
-        }
-
-        if (startSubtitleAIButton != null) {
-            startSubtitleAIButton.clicked -= OnStartSubtitleAIClicked;
-        }
-
         if (browseVoiceVoxPathButton != null) {
             browseVoiceVoxPathButton.clicked -= OnBrowseVoiceVoxPathClicked;
         }
@@ -221,14 +190,6 @@ public class SettingUIController : MonoBehaviour {
     // 設定値をUIに読み込むメソッド
     private void LoadSettingsToUI() {
         // PlayerPrefsから読み込み、UIに設定
-        if (autoStartSubtitleAIToggle != null) {
-            autoStartSubtitleAIToggle.value = CentralManager.Instance.GetAutoStartSubtitleAI();
-        }
-
-        if (subtitleAIExecutionPathInput != null) {
-            subtitleAIExecutionPathInput.value = CentralManager.Instance.GetSubtitleAIExecutionPath();
-        }
-
         if (autoStartVoiceVoxToggle != null) {
             autoStartVoiceVoxToggle.value = CentralManager.Instance.GetAutoStartVoiceVox();
         }
@@ -314,12 +275,6 @@ public class SettingUIController : MonoBehaviour {
         if (realtimeAudioWsUrlInput != null) {
             realtimeAudioWsUrlInput.value = CentralManager.Instance.GetRealtimeAudioWsUrl();
         }
-        if (wipeAISubtitleInput != null) {
-            wipeAISubtitleInput.value = CentralManager.Instance.GetWipeAISubtitle();
-        }
-        if (wipeAINameInput != null) {
-            wipeAINameInput.value = CentralManager.Instance.GetWipeAIName();
-        }
 
         if (autoStartDiscordBotToggle != null) {
             autoStartDiscordBotToggle.value = CentralManager.Instance.GetAutoStartDiscordBot();
@@ -361,14 +316,6 @@ public class SettingUIController : MonoBehaviour {
 
     // UIから設定値を読み込み、保存するメソッド
     private void SaveSettingsFromUI() {
-        if (autoStartSubtitleAIToggle != null) {
-            CentralManager.Instance.SetAutoStartSubtitleAI(autoStartSubtitleAIToggle.value);
-        }
-
-        if (subtitleAIExecutionPathInput != null) {
-            CentralManager.Instance.SetSubtitleAIExecutionPath(subtitleAIExecutionPathInput.value);
-        }
-
         if (autoStartVoiceVoxToggle != null) {
             CentralManager.Instance.SetAutoStartVoiceVox(autoStartVoiceVoxToggle.value);
         }
@@ -428,17 +375,6 @@ public class SettingUIController : MonoBehaviour {
         if (realtimeAudioWsUrlInput != null) {
             CentralManager.Instance.SetRealtimeAudioWsUrl(realtimeAudioWsUrlInput.value);
         }
-        if (wipeAISubtitleInput != null) {
-            CentralManager.Instance.SetWipeAISubtitle(wipeAISubtitleInput.value);
-        }
-        if (wipeAINameInput != null) {
-            CentralManager.Instance.SetWipeAIName(wipeAINameInput.value);
-        }
-
-        // 変更があればWSサービスのパスを更新
-        // if (MultiPortWebSocketServer.Instance != null) {
-        //     MultiPortWebSocketServer.Instance.ReloadWipeServicePath();
-        // }
 
         if (autoStartDiscordBotToggle != null) {
             CentralManager.Instance.SetAutoStartDiscordBot(autoStartDiscordBotToggle.value);
@@ -532,31 +468,6 @@ public class SettingUIController : MonoBehaviour {
     }
 
     // --- 参照ボタンのクリックハンドラ ---
-    private void OnBrowseSubtitleAIPathClicked() {
-        Debug.Log("字幕AIパス参照ボタンがクリックされました。");
-        
-        BrowseExecutableFile(
-            "字幕AI実行ファイルを選択",
-            CentralManager.Instance.GetSubtitleAIExecutionPath(),
-            (selectedPath) => {
-                // 選択されたパスをTextFieldに設定
-                subtitleAIExecutionPathInput.value = selectedPath;
-                
-                // CentralManagerに保存
-                CentralManager.Instance.SetSubtitleAIExecutionPath(selectedPath);
-                
-                Debug.Log($"字幕AIパスが設定されました: {selectedPath}");
-            }
-        );
-    }
-
-    // --- 手動起動ボタンのクリックハンドラ ---
-    private void OnStartSubtitleAIClicked() {
-        Debug.Log("字幕AI手動起動ボタンがクリックされました");
-        CentralManager.Instance.StartSubtitleAI();
-    }
-
-    // --- VoiceVox参照ボタンのクリックハンドラ ---
     private void OnBrowseVoiceVoxPathClicked() {
         Debug.Log("VoiceVoxパス参照ボタンがクリックされました。");
         
