@@ -279,33 +279,13 @@ public class TranslationController : MonoBehaviour {
     /// 翻訳方式を取得（NMT or deepl）
     /// </summary>
     public string GetTranslationMode() {
-        string mode = PlayerPrefs.GetString("TranslationMode", "deepl");
-        // 後方互換: "menz" → "NMT" に変換
-        if (mode == "menz") {
-            mode = "NMT";
-            PlayerPrefs.SetString("TranslationMode", mode);
-            PlayerPrefs.Save();
-        }
-        // 古いデータの互換性チェック
-        if (mode != "NMT" && mode != "deepl") {
-            mode = "deepl";
-            PlayerPrefs.SetString("TranslationMode", mode);
-            PlayerPrefs.Save();
-        }
-        return mode;
+        return PlayerPrefs.GetString("TranslationMode", "deepl");
     }
 
     /// <summary>
     /// 翻訳方式を設定（NMT or deepl）
     /// </summary>
     public void SetTranslationMode(string mode) {
-        // 後方互換: "menz" → "NMT" に変換
-        if (mode == "menz") mode = "NMT";
-        
-        if (mode != "NMT" && mode != "deepl") {
-            Debug.LogWarning($"[TranslationController] 不正な翻訳方式: {mode}。deeplに設定します。");
-            mode = "deepl";
-        }
         PlayerPrefs.SetString("TranslationMode", mode);
         PlayerPrefs.Save();
         Debug.Log($"[TranslationController] 翻訳方式を設定: {mode}");

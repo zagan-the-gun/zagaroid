@@ -303,22 +303,15 @@ public class CentralManager : MonoBehaviour {
         PlayerPrefs.SetString("FriendName", value);
     }
 
-    // 翻訳方式の設定管理はTranslationControllerに移動しました
-    // 互換性のため、ラッパーメソッドを残します
+    // 翻訳方式の設定管理（シンプル版、後方互換処理なし）
     public string GetTranslationMode() {
-        return TranslationController.Instance != null 
-            ? TranslationController.Instance.GetTranslationMode() 
-            : "deepl";
+        return PlayerPrefs.GetString("TranslationMode", "deepl");
     }
     
     public void SetTranslationMode(string mode) {
-        if (TranslationController.Instance != null) {
-            TranslationController.Instance.SetTranslationMode(mode);
-        } else {
-            // フォールバック（通常は発生しない）
-            PlayerPrefs.SetString("TranslationMode", mode);
-        }
+        PlayerPrefs.SetString("TranslationMode", mode);
     }
+
 
     /// <summary>
     /// 字幕用の翻訳をCentralManager経由で実行し、結果をコールバックで返します。
@@ -443,24 +436,10 @@ public class CentralManager : MonoBehaviour {
     }
 
     public string GetDiscordSubtitleMethodString() {
-        // 新キーがあればそれを返す
-        if (PlayerPrefs.HasKey(DiscordSubtitleMethodStrKey)) {
-            var v = PlayerPrefs.GetString(DiscordSubtitleMethodStrKey, "WitAI");
-            // 後方互換: "MenZ" → "STT" に変換
-            if (v == "MenZ") v = "STT";
-            return (v == "STT") ? "STT" : "WitAI";
-        }
-        // 旧キーからの移行
-        int legacy = PlayerPrefs.GetInt(DiscordSubtitleMethodKey, 0);
-        string mapped = legacy == 1 ? "STT" : "WitAI";
-        PlayerPrefs.SetString(DiscordSubtitleMethodStrKey, mapped);
-        return mapped;
+        return PlayerPrefs.GetString(DiscordSubtitleMethodStrKey, "WitAI");
     }
     public void SetDiscordSubtitleMethodString(string value) {
-        // 後方互換: "MenZ" → "STT" に変換
-        if (value == "MenZ") value = "STT";
-        string normalized = (value == "STT") ? "STT" : "WitAI";
-        PlayerPrefs.SetString(DiscordSubtitleMethodStrKey, normalized);
+        PlayerPrefs.SetString(DiscordSubtitleMethodStrKey, value);
     }
 
     public string GetDiscordWitaiToken() {

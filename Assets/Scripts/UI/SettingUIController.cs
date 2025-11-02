@@ -241,35 +241,15 @@ public class SettingUIController : MonoBehaviour {
         }
 
         if (translationModeDropdown != null) {
-            Debug.Log("翻訳方式ドロップダウンの初期化を開始");
-            
-            // CentralManagerインスタンスの確認
-            if (CentralManager.Instance == null) {
-                Debug.LogError("CentralManager.Instanceがnullです！");
-                return;
-            }
-            
-            // ドロップダウンの選択肢を設定
             var choices = new List<string> { "deepl", "NMT" }; // deepl: DeepL翻訳, NMT: MenZ翻訳
             translationModeDropdown.choices = choices;
-            Debug.Log($"ドロップダウンの選択肢を設定しました: {string.Join(", ", choices)}");
-            
-            // 現在の設定値を取得
             string currentMode = CentralManager.Instance.GetTranslationMode();
-            Debug.Log($"現在の翻訳方式: '{currentMode}'");
-            
-            // 値を設定
-            translationModeDropdown.value = currentMode;
-            Debug.Log($"ドロップダウンの値を設定しました: '{translationModeDropdown.value}'");
-            
-            // 選択肢に現在の値が含まれているかチェック
+            // 選択肢に含まれない値の場合はデフォルト値を使用
             if (!choices.Contains(currentMode)) {
-                Debug.LogWarning($"現在の設定値 '{currentMode}' が選択肢に含まれていません。デフォルト値を設定します。");
-                translationModeDropdown.value = "deepl";
-                CentralManager.Instance.SetTranslationMode("deepl");
+                currentMode = "deepl";
+                CentralManager.Instance.SetTranslationMode(currentMode);
             }
-        } else {
-            Debug.LogError("translationModeDropdownがnullです！");
+            translationModeDropdown.value = currentMode;
         }
 
         if (realtimeAudioWsUrlInput != null) {
@@ -297,15 +277,15 @@ public class SettingUIController : MonoBehaviour {
             discordTargetUserIdInput.value = CentralManager.Instance.GetDiscordTargetUserId();
         }
         if (subtitleMethodDropdown != null) {
-            Debug.Log("Discord字幕方式ドロップダウンの初期化を開始");
             var choices = new List<string> { "WitAI", "STT" }; // WitAI: Wit.ai音声認識, STT: MenZ字幕AI
             subtitleMethodDropdown.choices = choices;
-            string saved = CentralManager.Instance.GetDiscordSubtitleMethodString();
-            // 後方互換: "MenZ" → "STT" に変換（GetDiscordSubtitleMethodStringで変換済みのはずだが念のため）
-            if (saved == "MenZ") saved = "STT";
-            if (!choices.Contains(saved)) saved = "WitAI";
-            subtitleMethodDropdown.value = saved;
-            Debug.Log($"Discord字幕方式: '{subtitleMethodDropdown.value}'");
+            string currentMethod = CentralManager.Instance.GetDiscordSubtitleMethodString();
+            // 選択肢に含まれない値の場合はデフォルト値を使用
+            if (!choices.Contains(currentMethod)) {
+                currentMethod = "WitAI";
+                CentralManager.Instance.SetDiscordSubtitleMethodString(currentMethod);
+            }
+            subtitleMethodDropdown.value = currentMethod;
         }
         if (witaiTokenInput != null) {
             witaiTokenInput.value = CentralManager.Instance.GetDiscordWitaiToken();
@@ -370,6 +350,7 @@ public class SettingUIController : MonoBehaviour {
 
         if (translationModeDropdown != null) {
             CentralManager.Instance.SetTranslationMode(translationModeDropdown.value);
+            Debug.Log($"翻訳モードを保存しました: {translationModeDropdown.value}");
         }
 
         if (realtimeAudioWsUrlInput != null) {
