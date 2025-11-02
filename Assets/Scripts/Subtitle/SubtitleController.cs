@@ -67,83 +67,6 @@ public class SubtitleController : MonoBehaviour {
     }
 
     /// <summary>
-    /// MCP字幕通知（またはレガシーJSON）を処理（MultiPortWebSocketServerから直接呼ばれる）
-    /// </summary>
-    /// <param name="rawMessage">MCP/レガシー形式の字幕JSONまたはプレーン文字列</param>
-    public void OnWebSocketMessage(string rawMessage) {
-        Debug.Log($"[SubtitleController] 受信: raw={rawMessage}");
-
-        string extractedText = rawMessage;
-        string extractedSubtitleName = CentralManager.Instance != null ? CentralManager.Instance.GetMySubtitle() : string.Empty;
-        string extractedLanguage = "auto";
-        string defaultEnglishSubtitle = CentralManager.Instance != null ? CentralManager.Instance.GetMyEnglishSubtitle() : null;
-        string extractedEnglishSubtitleName = defaultEnglishSubtitle;
-
-        try {
-            if (!string.IsNullOrEmpty(rawMessage)) {
-                string trimmed = rawMessage.TrimStart();
-                if (trimmed.StartsWith("{")) {
-                    var obj = Newtonsoft.Json.Linq.JObject.Parse(rawMessage);
-                    var jsonrpcVersion = obj["jsonrpc"]?.ToString();
-                    if (jsonrpcVersion == "2.0") {
-                        Debug.Log("[MCP] MCP準拠形式を検出しました");
-                        var method = obj["method"]?.ToString();
-                        var paramsObj = obj["params"] as Newtonsoft.Json.Linq.JObject;
-                        if (method != "notifications/subtitle") {
-                            Debug.LogWarning($"[MCP] 未対応のmethod: {method}. 'notifications/subtitle' を期待しています。");
-                        }
-                        if (paramsObj != null) {
-                            extractedText = paramsObj["text"]?.ToString();
-                            var speaker = paramsObj["speaker"]?.ToString();
-                            var type = paramsObj["type"]?.ToString();
-                            var language = paramsObj["language"]?.ToString();
-                            if (!string.IsNullOrEmpty(language)) {
-                                extractedLanguage = language;
-                            }
-                            if (!string.IsNullOrEmpty(speaker)) {
-                                extractedSubtitleName = GetSubtitleFromSpeaker(speaker);
-                                if (!string.IsNullOrEmpty(extractedSubtitleName)) {
-                                    extractedEnglishSubtitleName = extractedSubtitleName + "_en";
-                                }
-                            }
-                            Debug.Log($"[MCP] パース結果 - method: {method}, subtitle: {extractedSubtitleName}, lang: {extractedLanguage}");
-                        } else {
-                            Debug.LogWarning("[MCP] params が見つかりません");
-                        }
-                    } else {
-                        var candidate = obj["text"]?.ToString();
-                        if (!string.IsNullOrEmpty(candidate)) {
-                            extractedText = candidate;
-                        }
-                        var subtitleCandidate = obj["subtitle"]?.ToString();
-                        if (string.IsNullOrEmpty(subtitleCandidate)) {
-                            subtitleCandidate = obj["channel"]?.ToString();
-                        }
-                        if (!string.IsNullOrWhiteSpace(subtitleCandidate)) {
-                            extractedSubtitleName = subtitleCandidate;
-                            extractedEnglishSubtitleName = subtitleCandidate + "_en";
-                        }
-                    }
-                }
-            }
-        } catch (System.Exception ex) {
-            Debug.LogWarning($"[SubtitleController] 字幕JSON解析に失敗（プレーン扱い）: {ex.Message}");
-        }
-
-        float calculatedDuration = CalculateDisplayDuration(extractedText?.Length ?? 0);
-        var newJpEntry = new CurrentDisplaySubtitle(
-            extractedText,
-            extractedSubtitleName,
-            extractedEnglishSubtitleName,
-            calculatedDuration,
-            false
-        );
-
-        ManageJapaneseSubtitleDisplay(newJpEntry);
-        StartCoroutine(TranslateSubtitleCoroutine(extractedEnglishSubtitleName, extractedText));
-    }
-
-    /// <summary>
     /// CentralManager（/wipe_subtitle受信やDiscord音声など）からの日本語字幕表示依頼
     /// </summary>
     /// <param name="japaneseText">日本語字幕として表示するテキスト</param>
@@ -211,11 +134,9 @@ public class SubtitleController : MonoBehaviour {
             if (!string.IsNullOrEmpty(mySubtitle) && string.Equals(jpEntry.japaneseSubtitle?.Trim(), mySubtitle.Trim(), StringComparison.OrdinalIgnoreCase)) {
                 var speaker = CentralManager.Instance != null ? CentralManager.Instance.GetMyName() : "streamer";
                 if (string.IsNullOrEmpty(speaker)) speaker = "streamer";
-                CentralManager.Instance?.SendWipeSubtitle(jpEntry.japaneseText, speaker);
             } else if (!string.IsNullOrEmpty(friendSubtitle) && string.Equals(jpEntry.japaneseSubtitle?.Trim(), friendSubtitle.Trim(), StringComparison.OrdinalIgnoreCase)) {
                 var speaker = CentralManager.Instance != null ? CentralManager.Instance.GetFriendName() : "streamer";
                 if (string.IsNullOrEmpty(speaker)) speaker = "streamer";
-                CentralManager.Instance?.SendWipeSubtitle(jpEntry.japaneseText, speaker);
             }
         }
 
@@ -269,31 +190,6 @@ public class SubtitleController : MonoBehaviour {
 
         CentralManager.SendObsSubtitles(englishSubtitle, translated ?? string.Empty);
     }
-
-    /// <summary>
-    /// 話者名から設定済みの字幕ソース名を解決します。
-    /// 未知の話者はMySubtitleにフォールバックします。
-    /// </summary>
-    /// <param name="speaker">話者表示名</param>
-    /// <returns>対応する字幕ソース名</returns>
-    private string GetSubtitleFromSpeaker(string speaker) {
-        if (string.IsNullOrEmpty(speaker)) return string.Empty;
-        string myName = CentralManager.Instance != null ? CentralManager.Instance.GetMyName() : null;
-        string friendName = CentralManager.Instance != null ? CentralManager.Instance.GetFriendName() : null;
-        string wipeAIName = CentralManager.Instance != null ? CentralManager.Instance.GetWipeAIName() : null;
-
-        if (!string.IsNullOrEmpty(myName) && string.Equals(speaker.Trim(), myName.Trim(), StringComparison.OrdinalIgnoreCase)) {
-            return CentralManager.Instance != null ? CentralManager.Instance.GetMySubtitle() : string.Empty;
-        }
-        if (!string.IsNullOrEmpty(friendName) && string.Equals(speaker.Trim(), friendName.Trim(), StringComparison.OrdinalIgnoreCase)) {
-            return CentralManager.Instance != null ? CentralManager.Instance.GetFriendSubtitle() : string.Empty;
-        }
-        if (!string.IsNullOrEmpty(wipeAIName) && string.Equals(speaker.Trim(), wipeAIName.Trim(), StringComparison.OrdinalIgnoreCase)) {
-            return CentralManager.Instance != null ? CentralManager.Instance.GetWipeAISubtitle() : string.Empty;
-        }
-        Debug.LogWarning($"[MCP] 不明なspeaker名: {speaker}, デフォルトの字幕チャンネルを使用します");
-        return CentralManager.Instance != null ? CentralManager.Instance.GetMySubtitle() : string.Empty;
-    }
 }
 
 public class CurrentDisplaySubtitle {
@@ -319,5 +215,3 @@ public class CurrentDisplaySubtitle {
         IsCombined = combined;
     }
 }
-
-

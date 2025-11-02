@@ -6,20 +6,19 @@ using WebSocketSharp.Server;
 using System.Collections.Generic;
 using System.Collections;
 using Newtonsoft.Json.Linq;
+using System.Linq;
+using Newtonsoft.Json;
 
 public class MultiPortWebSocketServer : MonoBehaviour {
     private WebSocketServer wss1; // ポート50001
     private WebSocketServer wss2; // ポート50002
     private readonly Dictionary<int, Action<string, string>> messageHandlers = new Dictionary<int, Action<string, string>>();
-    private string _wipeServicePath = "/wipe_subtitle"; // 動的に切替可能
 
     public static MultiPortWebSocketServer Instance { get; private set; }
 
     // ポートごとのイベント定義
     public static event Action<string, string> OnMessageReceivedFromPort50001;
     public static event Action<string, string> OnMessageReceivedFromPort50002;
-    // Wipe用の受信イベント（messageのみ）
-    public static event Action<string> OnWipeMessageReceived;
 
     private readonly Queue<Action> _executionQueue = new Queue<Action>();
 
@@ -54,10 +53,6 @@ public class MultiPortWebSocketServer : MonoBehaviour {
             if (port == 50001) {
             // if (port == 50000) {
                 server.AddWebSocketService<EchoService1>("/");
-                // 設定からWipeパスを取得
-                string configured = CentralManager.Instance != null ? CentralManager.Instance.GetWipeAISubtitle() : "wipe_subtitle";
-                _wipeServicePath = "/" + (string.IsNullOrEmpty(configured) ? "wipe_subtitle" : configured.Trim('/'));
-                server.AddWebSocketService<WipeService>(_wipeServicePath);
                 // 翻訳AI専用パス
                 server.AddWebSocketService<TranslationService>("/translate_text");
                 wss1 = server; // インスタンスを保存
@@ -138,8 +133,18 @@ public class MultiPortWebSocketServer : MonoBehaviour {
                 if (IsMcpFormat(message)) {
                     RouteMcpMessage(message);
                 } else {
-                    // レガシー形式はCentralManagerへ通知
+                    // レガシー形式（ゆかりネット/ゆかコネNEO）は STT なので常に Wipe へ送る
+                    // ① 字幕表示タスク
                     OnMessageReceivedFromPort50001?.Invoke(user, message);
+                    
+                    // ② Wipe へ送信タスク（旧形式は常に人間の音声なので送る）
+                    // 字幕ソース名 user から speaker 名に変換
+                    string speaker = ResolveSubtitleSourceToSpeaker(user) ?? user;
+                    if (Instance != null) {
+                        Instance.BroadcastToWipeAIClients(message, speaker, "subtitle");
+                    }
+                    
+                    Debug.Log($"[MCP] レガシー形式の字幕を受信: user={user}, speaker={speaker}");
                 }
             } else if (port == 50002) {
                 OnMessageReceivedFromPort50002?.Invoke(user, message);
@@ -177,20 +182,37 @@ public class MultiPortWebSocketServer : MonoBehaviour {
                 switch (method) {
                     case "notifications/subtitle":
                     case "notifications_subtitle":
-                        // 字幕通知: paramsからtext/speakerを抽出し、subtitle名を解決してCentralManagerへ通知
+                        // 字幕通知: paramsからtext/speakerを抽出し、タスク判定してイベント投げる
                         try {
                             var paramsObj = obj["params"] as JObject;
                             string text = paramsObj?["text"]?.ToString();
                             string speaker = paramsObj?["speaker"]?.ToString();
+                            string messageType = paramsObj?["type"]?.ToString();
                             string subtitleName = ResolveSubtitleFromSpeaker(speaker);
                             if (string.IsNullOrEmpty(subtitleName)) subtitleName = mySubtitle;
-                            OnMessageReceivedFromPort50001?.Invoke(subtitleName, text ?? string.Empty);
+
+                            // Actor設定から翻訳可否を判定
+                            var actor = CentralManager.Instance?.GetActorByName(speaker);
+                            bool enableTranslation = actor?.translationEnabled ?? true;
+                            
+                            // ① 字幕の表示・翻訳処理
+                            CentralManager.Instance?.HandleWebSocketMessageFromPort50001(
+                                subtitleName, 
+                                text ?? string.Empty, 
+                                enableTranslation
+                            );
+
+                            // ② Wipe 由来でなければ、Wipe AI（MenZ-GeminiCLI）へも転送してコメント生成
+                            if (actor?.type != "wipe") {
+                                if (Instance != null) {
+                                    Instance.BroadcastToWipeAIClients(text ?? string.Empty, speaker, "subtitle");
+                                }
+                            }
+
+                            Debug.Log($"[MCP] 字幕通知を受信: {method}, speaker={speaker}, type={messageType}, actorType={actor?.type}, enableTranslation={enableTranslation}");
                         } catch (Exception ex) {
                             Debug.LogError($"[MCP] 字幕通知の解析に失敗: {ex.Message}");
-                            // フォールバック: 生メッセージを通知
-                            OnMessageReceivedFromPort50001?.Invoke(mySubtitle, message);
                         }
-                        Debug.Log($"[MCP] 字幕通知を受信: {method}");
                         break;
                         
                     case "translate_text":
@@ -227,9 +249,24 @@ public class MultiPortWebSocketServer : MonoBehaviour {
         }
     }
 
+    /// <summary>
+    /// speaker 名から対応する字幕フィールド名を取得
+    /// 新方式：ActorConfig 配列から検索、旧方式はフォールバック
+    /// </summary>
     private string ResolveSubtitleFromSpeaker(string speaker) {
         try {
             if (string.IsNullOrEmpty(speaker)) return mySubtitle;
+            
+            // ① Actor配列から検索（新方式）
+            // speaker 名で ActorConfig を検索し、対応する字幕フィールド名を返す
+            var config = CentralManager.Instance?.GetActorByName(speaker);
+            if (config != null) {
+                return config.actorName + "_subtitle";  // 例: "zagan" → "zagan_subtitle"
+            }
+            
+            // ② フォールバック：従来の個別設定を使う
+            // ActorConfig が見つからない場合は、旧システムの MyName/FriendName/WipeAIName と照合
+            // （段階移行中の互換性維持）
             string myName = CentralManager.Instance != null ? CentralManager.Instance.GetMyName() : null;
             string friendName = CentralManager.Instance != null ? CentralManager.Instance.GetFriendName() : null;
             string wipeAIName = CentralManager.Instance != null ? CentralManager.Instance.GetWipeAIName() : null;
@@ -249,21 +286,28 @@ public class MultiPortWebSocketServer : MonoBehaviour {
         }
     }
 
-    // Wipe用メッセージのメインスレッドディスパッチ
-    private void HandleWipeMessageOnMainThread(string message) {
-        Enqueue(() => {
-            OnWipeMessageReceived?.Invoke(message);
-        });
-    }
-
-    // Wipe: 全クライアントへブロードキャスト
-    public void BroadcastToWipeClients(string message) {
+    /// <summary>
+    /// 字幕ソース名を話者名に変換
+    /// actor化で不要になる
+    /// </summary>
+    private string ResolveSubtitleSourceToSpeaker(string sourceName) {
         try {
-            if (wss1 == null) return;
-            var host = wss1.WebSocketServices[_wipeServicePath]; 
-            host?.Sessions.Broadcast(message);
+            if (string.IsNullOrEmpty(sourceName)) return null;
+
+            // 字幕ソース名から "_subtitle" を削除して speaker 名を取得
+            // 例: "zagan_subtitle" → "zagan"
+            if (sourceName.EndsWith("_subtitle", StringComparison.OrdinalIgnoreCase)) {
+                string speaker = sourceName.Substring(0, sourceName.Length - 9);  // "_subtitle" = 9文字
+                Debug.Log($"[MCP] Converted sourceName '{sourceName}' to speaker '{speaker}'");
+                return speaker;
+            }
+
+            // "_subtitle" がない場合はそのまま返す
+            Debug.Log($"[MCP] sourceName '{sourceName}' has no '_subtitle' suffix, returning as-is");
+            return sourceName;
         } catch (Exception ex) {
-            Debug.LogError($"[WS][WIPE] ブロードキャストエラー: {ex.Message}");
+            Debug.LogError($"[MCP] ResolveSubtitleSourceToSpeaker error: {ex.Message}");
+            return sourceName;
         }
     }
 
@@ -294,6 +338,37 @@ public class MultiPortWebSocketServer : MonoBehaviour {
     }
 
     /// <summary>
+    /// "/" パスの全クライアント（WipeAI、ReazonSpeech等）にメッセージをブロードキャスト
+    /// MCP フォーマットの字幕・コメント通知を送信
+    /// </summary>
+    /// <param name="text">テキスト内容</param>
+    /// <param name="speaker">話者名（MyName/FriendName/WipeAIName等）</param>
+    /// <param name="messageType">メッセージタイプ（"subtitle"/"comment"等）</param>
+    public void BroadcastToWipeAIClients(string text, string speaker, string messageType = "subtitle") {
+        try {
+            // MCP JSON-RPC 2.0 フォーマットでメッセージ構築
+            var messageObj = new {
+                jsonrpc = "2.0",
+                method = "notifications/subtitle",
+                @params = new {
+                    text = text,
+                    speaker = speaker ?? "unknown",
+                    type = messageType,
+                    language = "ja"
+                }
+            };
+
+            string jsonMessage = JsonConvert.SerializeObject(messageObj, Formatting.None);
+            var host = wss1.WebSocketServices["/"];
+            host.Sessions.Broadcast(jsonMessage);
+            
+            Debug.Log($"[MCP] WipeAI クライアントにブロードキャスト: speaker={speaker}, type={messageType}, text_length={text.Length}");
+        } catch (Exception ex) {
+            Debug.LogError($"[MCP] WipeAI クライアントへのブロードキャストエラー: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// 翻訳クライアントの接続状態を設定（TranslationServiceから呼ばれる）
     /// </summary>
     public static void SetTranslationClientConnectionState(bool connected) {
@@ -308,24 +383,6 @@ public class MultiPortWebSocketServer : MonoBehaviour {
             });
         }
         Debug.Log($"[MCP] 翻訳クライアント接続状態: {(connected ? "接続" : "切断")}");
-    }
-
-    // 設定変更に応じて /wipe_subtitle サービスのパスを更新
-    public void ReloadWipeServicePath() {
-        try {
-            if (wss1 == null) return;
-            string configured = CentralManager.Instance != null ? CentralManager.Instance.GetWipeAISubtitle() : "wipe_subtitle";
-            string newPath = "/" + (string.IsNullOrEmpty(configured) ? "wipe_subtitle" : configured.Trim('/'));
-            if (newPath == _wipeServicePath) return;
-
-            // 旧サービスを削除して新規に追加
-            try { wss1.RemoveWebSocketService(_wipeServicePath); } catch {}
-            wss1.AddWebSocketService<WipeService>(newPath);
-            _wipeServicePath = newPath;
-            Debug.Log($"[WS][WIPE] サービスパスを更新: {_wipeServicePath}");
-        } catch (Exception ex) {
-            Debug.LogError($"[WS][WIPE] パス更新エラー: {ex.Message}");
-        }
     }
 
     // private IEnumerator InvokeOnMainThread(Action action) {
@@ -349,30 +406,6 @@ public class MultiPortWebSocketServer : MonoBehaviour {
 
         protected override void OnError(ErrorEventArgs e) {
             Debug.LogError($"EchoService1: エラー (ポート 50001 /) - {e.Message}");
-        }
-    }
-
-    // /wipe_subtitle 用のサービス (内部クラス)
-    private class WipeService : WebSocketBehavior {
-        protected override void OnOpen() {
-            // ブロードキャスト運用のため、個別登録処理は不要
-        }
-
-        protected override void OnMessage(MessageEventArgs e) {
-            try {
-                // 受信をメインスレッドでハンドリング（messageのみ）
-                Instance?.HandleWipeMessageOnMainThread(e.Data);
-            } catch (Exception ex) {
-                Debug.LogError($"[WS][WIPE] OnMessage エラー: {ex.Message}");
-            }
-        }
-
-        protected override void OnClose(CloseEventArgs e) {
-            // ブロードキャスト運用のため、個別登録解除処理は不要
-        }
-
-        protected override void OnError(ErrorEventArgs e) {
-            Debug.LogError($"[WS][WIPE] エラー: {e.Message}");
         }
     }
 
