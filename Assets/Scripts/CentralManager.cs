@@ -851,6 +851,17 @@ public class CentralManager : MonoBehaviour {
 
     // 英語字幕の送信
     private IEnumerator translateSubtitle(string subtitle, string subtitleText) { yield break; }
+
+    /// <summary>
+    /// VoiceVox で TTS（テキスト読み上げ）を実行
+    /// Wipe AI のコメントを音声化する際に外部から呼ばれる
+    /// </summary>
+    /// <param name="text">読み上げるテキスト</param>
+    /// <param name="actorName">話者名（Actor の actorName を使用）</param>
+    public void RequestVoiceVoxTTS(string text, string actorName) {
+        if (string.IsNullOrEmpty(text)) return;
+        StartCoroutine(speakComment(actorName, text));
+    }
 }
 
 // CurrentDisplaySubtitle は SubtitleController 側に移動

@@ -208,8 +208,15 @@ public class MultiPortWebSocketServer : MonoBehaviour {
                                     Instance.BroadcastToWipeAIClients(text ?? string.Empty, speaker, "subtitle");
                                 }
                             }
+                            
+                            // ③ Wipe AI のコメント（type="comment"）で TTS が有効なら VoiceVox で音声化
+                            if (actor?.type == "wipe" && messageType == "comment" && actor?.ttsEnabled == true) {
+                                if (Instance != null) {
+                                    CentralManager.Instance?.RequestVoiceVoxTTS(text ?? string.Empty, actor.actorName);
+                                }
+                            }
 
-                            Debug.Log($"[MCP] 字幕通知を受信: {method}, speaker={speaker}, type={messageType}, actorType={actor?.type}, enableTranslation={enableTranslation}");
+                            Debug.Log($"[MCP] 字幕通知を受信: {method}, speaker={speaker}, type={messageType}, actorType={actor?.type}, enableTranslation={enableTranslation}, ttsEnabled={actor?.ttsEnabled}");
                         } catch (Exception ex) {
                             Debug.LogError($"[MCP] 字幕通知の解析に失敗: {ex.Message}");
                         }

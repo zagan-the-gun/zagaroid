@@ -11,6 +11,8 @@ public class ActorUIController : MonoBehaviour
     [Header("UI Templates")]
     [SerializeField] private VisualTreeAsset actorDeleteDialogTemplate;
     [SerializeField] private StyleSheet actorDeleteDialogStyle;
+    [SerializeField] private VisualTreeAsset avatarSettingDialogTemplate;
+    [SerializeField] private StyleSheet avatarSettingDialogStyle;
 
     private readonly List<ActorConfig> actors = new List<ActorConfig>();
 
@@ -172,6 +174,15 @@ public class ActorUIController : MonoBehaviour
         toggle.style.marginBottom = 5;
         panel.Add(toggle);
 
+        // translation（全タイプで使用可能）
+        var translationToggle = new Toggle("Translation") { name = "ActorTranslationToggle" };
+        translationToggle.value = config.translationEnabled;
+        translationToggle.RegisterValueChangedCallback(evt => {
+            config.translationEnabled = evt.newValue;
+        });
+        translationToggle.style.marginBottom = 5;
+        panel.Add(translationToggle);
+
         var nameField = new TextField("actor name") { name = "ActorNameInput" };
         nameField.value = config.actorName;
         nameField.RegisterValueChangedCallback(evt => {
@@ -179,7 +190,7 @@ public class ActorUIController : MonoBehaviour
             if (sanitized != evt.newValue) {
                 nameField.SetValueWithoutNotify(sanitized);
             }
-            config.actorName = sanitized; // 正規化なし、入力通り（非ASCII除去のみ）
+            config.actorName = sanitized;
             title.text = sanitized + "設定";
         });
         panel.Add(nameField);
@@ -192,16 +203,38 @@ public class ActorUIController : MonoBehaviour
         });
         panel.Add(displayField);
 
-        // translation（type の上）
-        var translationToggle = new Toggle("Translation") { name = "ActorTranslationToggle" };
-        translationToggle.value = config.translationEnabled;
-        translationToggle.RegisterValueChangedCallback(evt => {
-            config.translationEnabled = evt.newValue;
-        });
-        translationToggle.style.marginBottom = 5;
-        panel.Add(translationToggle);
+        // Avatar 関連（すべてのタイプで表示）
+        var avatarContainer = new VisualElement();
+        avatarContainer.style.marginBottom = 5;
+        avatarContainer.style.display = DisplayStyle.Flex;
 
-        // type ドロップダウン（local / friend / wipe）
+        // 顔画像サムネイル（Image で表示）
+        var avatarThumbnail = new Image();
+        avatarThumbnail.name = "AvatarThumbnail";
+        avatarThumbnail.style.height = 100;
+        avatarThumbnail.style.paddingTop = 5;
+        avatarThumbnail.style.paddingBottom = 5;
+        avatarThumbnail.style.backgroundColor = new Color(0.2f, 0.2f, 0.2f, 1f);
+        
+        // 初期表示：最初のアニメパスから読み込む
+        if (config.avatarAnimePaths.Count > 0) {
+            var texture = LoadTextureFromPath(config.avatarAnimePaths[0]);
+            if (texture != null) {
+                avatarThumbnail.image = texture;
+            }
+        }
+        
+        avatarContainer.Add(avatarThumbnail);
+
+        // Avatar Setting ボタン
+        var avatarSettingBtn = new Button() { text = "Avatar Setting" };
+        avatarSettingBtn.AddToClassList("panel__button");
+        avatarSettingBtn.clicked += () => ShowAvatarSettingPanel(config, avatarThumbnail);
+        avatarContainer.Add(avatarSettingBtn);
+
+        panel.Add(avatarContainer);
+
+        // type ドロップダウン（local / friend / wipe）- display name の直下に配置
         var idField = new TextField("Discord User ID") { name = "DiscordTargetUserIdInput" };
         var typeDropdown = new DropdownField("type") { name = "ActorTypeDropdown" };
         var typeChoices = new List<string> { "local", "friend", "wipe" };
@@ -210,11 +243,27 @@ public class ActorUIController : MonoBehaviour
             config.type = "local";
         }
         typeDropdown.value = config.type;
+
+        // TTS トグル（wipeタイプのときのみ表示）
+        var ttsToggle = new Toggle("TTS") { name = "ActorTTSToggle" };
+        ttsToggle.value = config.ttsEnabled;
+        ttsToggle.RegisterValueChangedCallback(evt => {
+            config.ttsEnabled = evt.newValue;
+        });
+        ttsToggle.style.marginBottom = 5;
+        ttsToggle.style.display = (config.type == "wipe") ? DisplayStyle.Flex : DisplayStyle.None;
+
         typeDropdown.RegisterValueChangedCallback(evt => {
             config.type = evt.newValue;
             idField.style.display = (config.type == "friend") ? DisplayStyle.Flex : DisplayStyle.None;
+            // Type 変更時に TTS の表示/非表示を制御
+            ttsToggle.style.display = (config.type == "wipe") ? DisplayStyle.Flex : DisplayStyle.None;
         });
+        typeDropdown.style.marginBottom = 5;
         panel.Add(typeDropdown);
+
+        // TTS（テキスト読み上げ、wipeタイプのときのみ有効）
+        panel.Add(ttsToggle);
 
         // Discord User ID（friend のときだけ表示）
         idField.value = config.discordUserId;
@@ -385,11 +434,217 @@ public class ActorUIController : MonoBehaviour
         pendingConfirmAction = onOk;
         confirmOverlay.style.display = DisplayStyle.Flex;
         confirmOverlay.pickingMode = PickingMode.Position; // 背景操作ブロック
+        confirmOverlay.BringToFront(); // 最前面に表示
     }
 
     private void HideConfirm() {
         if (confirmOverlay == null) return;
         confirmOverlay.style.display = DisplayStyle.None;
         confirmOverlay.pickingMode = PickingMode.Ignore;
+    }
+
+    // ============ Avatar Setting Panel ============
+    private void ShowAvatarSettingPanel(ActorConfig config, Image avatarThumbnail) {
+        Debug.Log($"[ActorUI] Avatar Setting Panel opened for {config.actorName}");
+        
+        // パネルが既に存在する場合は削除
+        if (uiRoot == null) return;
+        var existingPanel = uiRoot.Q<VisualElement>("AvatarSettingOverlay");
+        if (existingPanel != null) {
+            existingPanel.RemoveFromHierarchy();
+        }
+
+        // UXML テンプレートから生成
+        var template = avatarSettingDialogTemplate;
+        if (template == null) {
+            Debug.LogError($"{LogPrefix} AvatarSettingDialog の VisualTreeAsset が未設定です。Inspectorで割り当ててください。");
+            return;
+        }
+
+        var container = template.Instantiate();
+        var overlay = container.Q<VisualElement>("AvatarSettingOverlay");
+        if (overlay == null) {
+            Debug.LogError($"{LogPrefix} AvatarSettingOverlay が見つかりません。");
+            return;
+        }
+
+        // USS を適用
+        if (avatarSettingDialogStyle != null) {
+            overlay.styleSheets.Add(avatarSettingDialogStyle);
+        }
+
+        // タイトルを設定
+        var titleLabel = overlay.Q<Label>("DialogTitle");
+        if (titleLabel != null) {
+            titleLabel.text = $"{config.actorName} - Avatar Setting";
+            if (japaneseFont != null) {
+                titleLabel.style.unityFontDefinition = FontDefinition.FromFont(japaneseFont);
+            }
+        }
+
+        // パスコンテナを取得
+        var animePathsContainer = overlay.Q<VisualElement>("AnimePathsContainer");
+        var lipSyncPathsContainer = overlay.Q<VisualElement>("LipSyncPathsContainer");
+
+        if (animePathsContainer != null) {
+            RefreshAvatarPathsList(
+                config.avatarAnimePaths,
+                animePathsContainer,
+                () => RefreshAvatarPathsList(config.avatarAnimePaths, animePathsContainer, () => { }, () => { }),
+                () => RefreshAvatarPathsList(config.avatarAnimePaths, animePathsContainer, () => { }, () => { })
+            );
+        }
+
+        if (lipSyncPathsContainer != null) {
+            RefreshAvatarPathsList(
+                config.avatarLipSyncPaths,
+                lipSyncPathsContainer,
+                () => RefreshAvatarPathsList(config.avatarLipSyncPaths, lipSyncPathsContainer, () => { }, () => { }),
+                () => RefreshAvatarPathsList(config.avatarLipSyncPaths, lipSyncPathsContainer, () => { }, () => { })
+            );
+        }
+
+        // ボタンイベント設定
+        var saveBtn = overlay.Q<Button>("SaveButton");
+        var cancelBtn = overlay.Q<Button>("CancelButton");
+
+        if (saveBtn != null) {
+            saveBtn.clicked += () => {
+                SaveActorsToCentral();
+                
+                // サムネイル更新
+                int animeCount = config.avatarAnimePaths.Count;
+                int lipSyncCount = config.avatarLipSyncPaths.Count;
+                if (animeCount > 0 || lipSyncCount > 0) {
+                    avatarThumbnail.image = LoadTextureFromPath(config.avatarAnimePaths.Count > 0 ? config.avatarAnimePaths[0] : null);
+                    if (avatarThumbnail.image == null) {
+                        avatarThumbnail.image = LoadTextureFromPath(config.avatarLipSyncPaths.Count > 0 ? config.avatarLipSyncPaths[0] : null);
+                    }
+                    if (avatarThumbnail.image == null) {
+                        avatarThumbnail.image = LoadTextureFromPath(null); // デフォルト画像
+                    }
+                } else {
+                    avatarThumbnail.image = null; // 画像がない場合は null にする
+                }
+                
+                Debug.Log($"[ActorUI] Avatar Setting saved for {config.actorName}");
+                overlay.RemoveFromHierarchy();
+            };
+        }
+
+        if (cancelBtn != null) {
+            cancelBtn.clicked += () => {
+                overlay.RemoveFromHierarchy();
+            };
+        }
+
+        // 背景クリックで閉じる
+        overlay.RegisterCallback<MouseDownEvent>(evt => {
+            if (evt.target == overlay) {
+                overlay.RemoveFromHierarchy();
+            }
+        });
+
+        uiRoot.Add(overlay);
+    }
+
+    private void RefreshAvatarPathsList(
+        List<string> pathsList,
+        VisualElement container,
+        Action onPathAdded,
+        Action onPathRemoved
+    ) {
+        container.Clear();
+
+        // 既存パスのサムネイルボタン表示
+        for (int i = 0; i < pathsList.Count; i++) {
+            int indexCopy = i;
+            var thumbnailBtn = CreateThumbnailButton(pathsList[i], indexCopy, () => {
+                ShowConfirm(
+                    "Delete this path?",
+                    () => {
+                        pathsList.RemoveAt(indexCopy);
+                        onPathRemoved?.Invoke();
+                    }
+                );
+            });
+            container.Add(thumbnailBtn);
+        }
+
+        // パス追加用ボタン（"+" ボタン）
+        var addPathBtn = new Button();
+        addPathBtn.text = "+";
+        addPathBtn.AddToClassList("avatar-thumbnail-add-btn");
+        addPathBtn.clicked += () => {
+            OpenFileDialog((selectedPath) => {
+                if (!string.IsNullOrEmpty(selectedPath) && !pathsList.Contains(selectedPath)) {
+                    pathsList.Add(selectedPath);
+                    onPathAdded?.Invoke();
+                }
+            });
+        };
+        container.Add(addPathBtn);
+    }
+
+    private Button CreateThumbnailButton(string path, int index, Action onDelete) {
+        var btn = new Button();
+        btn.text = "";  // テキストを空にしてサムネイル画像を表示
+        btn.AddToClassList("avatar-thumbnail-btn");
+
+        var imageContainer = new VisualElement();
+        imageContainer.AddToClassList("avatar-thumbnail-btn__image");
+        imageContainer.pickingMode = PickingMode.Ignore;  // クリックを親に透す
+
+        // パスから画像を読み込んで表示
+        var texture = LoadTextureFromPath(path);
+        if (texture != null) {
+            var image = new Image();
+            image.image = texture;
+            image.style.width = Length.Percent(100);
+            image.style.height = Length.Percent(100);
+            image.pickingMode = PickingMode.Ignore;  // クリックを親に透す
+            imageContainer.Add(image);
+        } else {
+            // 読み込み失敗時はパスの一部を表示
+            var fallbackLabel = new Label(System.IO.Path.GetFileName(path));
+            fallbackLabel.style.fontSize = 10;
+            fallbackLabel.style.color = new Color(0.8f, 0.8f, 0.8f, 1);
+            fallbackLabel.style.whiteSpace = WhiteSpace.Normal;
+            fallbackLabel.style.overflow = Overflow.Hidden;
+            fallbackLabel.pickingMode = PickingMode.Ignore;  // クリックを親に透す
+            imageContainer.Add(fallbackLabel);
+        }
+
+        btn.Add(imageContainer);
+        btn.clicked += onDelete;
+
+        return btn;
+    }
+
+    private void OpenFileDialog(Action<string> onPathSelected) {
+        #if UNITY_EDITOR
+        string selectedPath = UnityEditor.EditorUtility.OpenFilePanel(
+            "Select Image File",
+            System.IO.Path.GetDirectoryName(Application.persistentDataPath),
+            "png,jpg,jpeg,gif,bmp"
+        );
+        if (!string.IsNullOrEmpty(selectedPath)) {
+            onPathSelected(selectedPath);
+        }
+        #else
+        // ランタイムではファイルダイアログが使用できないため、パス入力で対応
+        Debug.Log($"[ActorUI] File dialog not available in runtime. Please manually enter the file path.");
+        #endif
+    }
+
+    private Texture2D LoadTextureFromPath(string path) {
+        if (string.IsNullOrEmpty(path)) return null;
+        byte[] bytes = System.IO.File.ReadAllBytes(path);
+        Texture2D texture = new Texture2D(2, 2); // テクスチャを作成
+        if (texture.LoadImage(bytes)) {
+            return texture;
+        }
+        Debug.LogError($"{LogPrefix} Failed to load texture from path: {path}");
+        return null;
     }
 }

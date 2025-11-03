@@ -18,7 +18,7 @@
     border-radius: 5px;
 
     border-width: 1px;
-    border-color:rgb(0, 255, 0);
+    border-color:rgb(255, 0, 0);
 }
 
 .dialog__message {
@@ -40,7 +40,7 @@
     border-radius: 5px;
 
     border-width: 1px;
-    border-color:rgb(0, 255, 0);
+    border-color:rgb(255, 0, 0);
 }
 
 .dialog__button--danger {
