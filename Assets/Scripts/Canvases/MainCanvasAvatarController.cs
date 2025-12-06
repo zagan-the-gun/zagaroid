@@ -189,6 +189,38 @@ public class MainCanvasAvatarController : MonoBehaviour
         // 表示スケール（倍率）を適用
         rect.localScale = Vector3.one * actor.avatarDisplayScale;
 
+        // 3D空間で表示するためにMeshRendererとMeshFilterを追加（PCとOBS両方に表示されるように）
+        MeshRenderer meshRenderer = go.GetComponent<MeshRenderer>();
+        MeshFilter meshFilter = go.GetComponent<MeshFilter>();
+
+
+        // Quadメッシュを作成（RectTransformのサイズに基づく）
+        float meshWidth = rect.sizeDelta.x > 0 ? rect.sizeDelta.x : texture.width;
+        float meshHeight = rect.sizeDelta.y > 0 ? rect.sizeDelta.y : texture.height;
+        if (meshWidth <= 0) meshWidth = 100f;
+        if (meshHeight <= 0) meshHeight = 100f;
+
+        Mesh quadMesh = CreateQuadMesh(meshWidth, meshHeight);
+        meshFilter.mesh = quadMesh;
+
+        // Unlit/Transparentシェーダーでマテリアルを作成（透過対応）
+        Material mat = new Material(Shader.Find("Unlit/Transparent"));
+        mat.mainTexture = texture;
+        meshRenderer.material = mat;
+
+        // レンダリング設定
+        meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        meshRenderer.receiveShadows = false;
+
+        // RawImageは表示しないが、ドラッグ検知のために有効のままにする
+        // 色を完全透明にして、raycastTargetをtrueに設定（UIDragMoveがドラッグを検知するため）
+        image.color = new Color(1f, 1f, 1f, 0f); // 完全透明
+        image.raycastTarget = true; // ドラッグ検知のために必要
+        image.enabled = true; // 有効のまま（raycastTargetが機能するため）
+
+        // レイヤーを設定（OBS画面に表示されるように、Nico Text (TMP)と同じレイヤー）
+        go.layer = LayerMask.NameToLayer("Default");
+
         // ドラッグ機能を追加
         var drag = image.gameObject.GetComponent<UIDragMove>();
         if (drag == null)
@@ -261,5 +293,46 @@ public class MainCanvasAvatarController : MonoBehaviour
             Debug.LogError($"{LogPrefix} ファイル読み込みエラー: {path} - {ex.Message}");
             return null;
         }
+    }
+
+    /// <summary>
+    /// 3D空間で表示するためのQuadメッシュを作成
+    /// </summary>
+    private Mesh CreateQuadMesh(float width, float height)
+    {
+        Mesh mesh = new Mesh();
+        mesh.name = "AvatarQuad";
+        
+        // 頂点を定義（中心を原点として）
+        float halfWidth = width * 0.5f;
+        float halfHeight = height * 0.5f;
+        
+        Vector3[] vertices = new Vector3[4] {
+            new Vector3(-halfWidth, -halfHeight, 0), // 左下
+            new Vector3(halfWidth, -halfHeight, 0),  // 右下
+            new Vector3(-halfWidth, halfHeight, 0),  // 左上
+            new Vector3(halfWidth, halfHeight, 0)     // 右上
+        };
+        
+        // UV座標を定義
+        Vector2[] uv = new Vector2[4] {
+            new Vector2(0, 0), // 左下
+            new Vector2(1, 0), // 右下
+            new Vector2(0, 1), // 左上
+            new Vector2(1, 1)  // 右上
+        };
+        
+        // 三角形を定義（2つの三角形でQuadを作成）
+        int[] triangles = new int[6] {
+            0, 2, 1, // 最初の三角形
+            2, 3, 1  // 2番目の三角形
+        };
+        
+        mesh.vertices = vertices;
+        mesh.uv = uv;
+        mesh.triangles = triangles;
+        mesh.RecalculateNormals();
+        
+        return mesh;
     }
 }
