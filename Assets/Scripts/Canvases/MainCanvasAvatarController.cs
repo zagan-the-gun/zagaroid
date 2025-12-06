@@ -170,9 +170,9 @@ public class MainCanvasAvatarController : MonoBehaviour
         var rect = go.GetComponent<RectTransform>();
         rect.anchoredPosition = actor.avatarDisplayPosition;
 
-        // Image の色を白色で不透明に設定（コメントと同じ）
+        // Image の設定（ドラッグ検知のためにraycastTargetをtrueに設定）
         image.color = new Color(1f, 1f, 1f, 1f);
-        image.raycastTarget = false;
+        image.raycastTarget = true; // ドラッグ検知のために必要
         image.enabled = true;
 
         // テクスチャを設定
@@ -190,9 +190,8 @@ public class MainCanvasAvatarController : MonoBehaviour
         rect.localScale = Vector3.one * actor.avatarDisplayScale;
 
         // 3D空間で表示するためにMeshRendererとMeshFilterを追加（PCとOBS両方に表示されるように）
-        MeshRenderer meshRenderer = go.GetComponent<MeshRenderer>();
-        MeshFilter meshFilter = go.GetComponent<MeshFilter>();
-
+        MeshRenderer meshRenderer = go.AddComponent<MeshRenderer>();
+        MeshFilter meshFilter = go.AddComponent<MeshFilter>();
 
         // Quadメッシュを作成（RectTransformのサイズに基づく）
         float meshWidth = rect.sizeDelta.x > 0 ? rect.sizeDelta.x : texture.width;
