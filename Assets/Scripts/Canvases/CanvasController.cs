@@ -12,9 +12,7 @@ public class CanvasController : MonoBehaviour {
     [SerializeField] private float smoothTime = 0.05f; // 少しマイルドに
 
     [Header("Canvas / Camera binding")]
-    [SerializeField] private Canvas targetCanvas; // コメントを表示する対象Canvas（未指定なら親から自動取得）
-    [SerializeField] private Camera uiRenderCamera; // UIを描画するカメラ（NDI送出カメラを割り当て推奨。未指定ならMainCamera）
-    [SerializeField] private RectTransform commentsParent; // コメント生成先（未指定ならtargetCanvas直下 or 自身）
+    [SerializeField] private Camera ndiCamera; // NDIカメラ
 
     void OnEnable() {
         // セントラルマネージャからコメントを受信するイベントを登録
@@ -26,26 +24,24 @@ public class CanvasController : MonoBehaviour {
     }
 
     void Start() {
-        // Canvasの自動検出
-        if (targetCanvas == null) {
-            targetCanvas = GetComponentInParent<Canvas>();
+        Canvas canvas = GetComponent<Canvas>();
+        if (canvas == null) {
+            Debug.LogError("CanvasController: 対象Canvasが見つかりません。同じGameObjectにCanvasコンポーネントを追加してください。");
+            return;
         }
 
-        if (targetCanvas != null) {
-            // 画面に表示しつつ、カメラ出力（NDI）にも載るように、ScreenSpace-Cameraへ変更
-            if (targetCanvas.renderMode != RenderMode.ScreenSpaceCamera) {
-                targetCanvas.renderMode = RenderMode.ScreenSpaceCamera;
-            }
+        if (ndiCamera == null) {
+            Debug.LogError("CanvasController: NDIカメラが設定されていません。InspectorでndiCameraを設定してください。");
+            return;
+        }
 
-            // 平面距離は近めに（カメラのNear/Farに収まる値）
-            if (targetCanvas.planeDistance < 0.1f) {
-                targetCanvas.planeDistance = 1.0f;
-            }
-
-            // 必要に応じてソートオーダーも調整（最前面に出したい場合）
-            // targetCanvas.sortingOrder = 1000;
-        } else {
-            Debug.LogWarning("CanvasController: 対象Canvasが見つかりません。親階層にCanvasを配置してください。");
+        // Canvasの設定
+        canvas.renderMode = RenderMode.ScreenSpaceCamera;
+        canvas.worldCamera = ndiCamera;
+        
+        // 平面距離は近めに（カメラのNear/Farに収まる値）
+        if (canvas.planeDistance < 0.1f) {
+            canvas.planeDistance = 1.0f;
         }
     }
 
@@ -57,22 +53,13 @@ public class CanvasController : MonoBehaviour {
 
     // スクロール前にTMPオブジェクトの生成
     private void addComment(string comment) {
-        // デバッグ：設定確認
-        Debug.Log($"[CanvasController] targetCanvas: {targetCanvas?.name}, commentTemplate: {commentTemplate?.name}, commentsParent: {commentsParent?.name}");
-        
-        if (targetCanvas == null) {
-            Debug.LogError("[CanvasController] targetCanvas が null です！");
-            return;
-        }
-        
         if (commentTemplate == null) {
             Debug.LogError("[CanvasController] commentTemplate が null です！");
             return;
         }
-        
-        // Main Canvas に直接生成
-        Transform parentTransform = targetCanvas.transform;
-        GameObject newComment = Instantiate(commentTemplate, parentTransform);
+
+        // Canvasに直接生成
+        GameObject newComment = Instantiate(commentTemplate, transform);
 
         newComment.SetActive(true); // 新しいコメントを表示
 
