@@ -37,11 +37,6 @@ public class CanvasController : MonoBehaviour {
                 targetCanvas.renderMode = RenderMode.ScreenSpaceCamera;
             }
 
-            // UI描画カメラの割当（未指定時はMainCamera）。既に設定済みなら上書きしない
-            if (targetCanvas.worldCamera == null) {
-                targetCanvas.worldCamera = uiRenderCamera != null ? uiRenderCamera : Camera.main;
-            }
-
             // 平面距離は近めに（カメラのNear/Farに収まる値）
             if (targetCanvas.planeDistance < 0.1f) {
                 targetCanvas.planeDistance = 1.0f;
@@ -52,33 +47,8 @@ public class CanvasController : MonoBehaviour {
         } else {
             Debug.LogWarning("CanvasController: 対象Canvasが見つかりません。親階層にCanvasを配置してください。");
         }
-
-        // 初期化順の保険：1フレーム後に再確認してカメラを再バインドし、描画を強制更新
-        StartCoroutine(EnsureCameraBindingAtEndOfFrame());
     }
 
-    private IEnumerator EnsureCameraBindingAtEndOfFrame() {
-        // 他の初期化（カメラ設定やCanvasScalerなど）が終わるのを待つ
-        yield return new WaitForEndOfFrame();
-
-        if (targetCanvas == null) yield break;
-
-        Canvas canvasToConfig = targetCanvas.rootCanvas != null ? targetCanvas.rootCanvas : targetCanvas;
-
-        if (canvasToConfig.renderMode != RenderMode.ScreenSpaceCamera) {
-            canvasToConfig.renderMode = RenderMode.ScreenSpaceCamera;
-        }
-
-        if (canvasToConfig.worldCamera == null) {
-            canvasToConfig.worldCamera = uiRenderCamera != null ? uiRenderCamera : Camera.main;
-        }
-
-        if (canvasToConfig.planeDistance < 0.1f) {
-            canvasToConfig.planeDistance = 1.0f;
-        }
-
-        Canvas.ForceUpdateCanvases();
-    }
 
     // セントラルマネージャーから情報を受け取るイベント
     void HandleCanvasCommentSend(string comment) {
@@ -87,8 +57,21 @@ public class CanvasController : MonoBehaviour {
 
     // スクロール前にTMPオブジェクトの生成
     private void addComment(string comment) {
-        // 生成先を決定（明示指定 > 対象Canvas直下 > 自身）
-        Transform parentTransform = commentsParent != null ? commentsParent : (targetCanvas != null ? targetCanvas.transform : transform);
+        // デバッグ：設定確認
+        Debug.Log($"[CanvasController] targetCanvas: {targetCanvas?.name}, commentTemplate: {commentTemplate?.name}, commentsParent: {commentsParent?.name}");
+        
+        if (targetCanvas == null) {
+            Debug.LogError("[CanvasController] targetCanvas が null です！");
+            return;
+        }
+        
+        if (commentTemplate == null) {
+            Debug.LogError("[CanvasController] commentTemplate が null です！");
+            return;
+        }
+        
+        // Main Canvas に直接生成
+        Transform parentTransform = targetCanvas.transform;
         GameObject newComment = Instantiate(commentTemplate, parentTransform);
 
         newComment.SetActive(true); // 新しいコメントを表示
@@ -158,7 +141,7 @@ public class CanvasController : MonoBehaviour {
                 ref velocity, 
                 smoothTime
             );
-            
+
             yield return null;
         }
 

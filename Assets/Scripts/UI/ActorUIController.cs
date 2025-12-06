@@ -203,6 +203,17 @@ public class ActorUIController : MonoBehaviour
         });
         panel.Add(displayField);
 
+        // Avatar Display Scale（Canvas上での表示サイズ倍率）
+        var scaleField = new FloatField("Avatar Scale") { name = "AvatarDisplayScaleInput" };
+        scaleField.value = config.avatarDisplayScale;
+        scaleField.RegisterValueChangedCallback(evt => {
+            config.avatarDisplayScale = Mathf.Clamp(evt.newValue, 0.1f, 5.0f); // 0.1～5.0 に制限
+            scaleField.SetValueWithoutNotify(config.avatarDisplayScale);
+            // Canvas の RawImage に即座に反映
+            CentralManager.Instance?.SetActors(actors);
+        });
+        panel.Add(scaleField);
+
         // Avatar 関連（すべてのタイプで表示）
         var avatarContainer = new VisualElement();
         avatarContainer.style.marginBottom = 5;

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using UnityEngine;
 
 public class ActorConfig
 {
@@ -13,6 +14,8 @@ public class ActorConfig
     // 画像・アニメーション関連（type="wipe"の時に使用）
     public List<string> avatarAnimePaths = new();     // Avatar アニメーション
     public List<string> avatarLipSyncPaths = new();   // Avatar リップシンク
+    public float avatarDisplayScale = 1.0f;           // Canvas 上の表示スケール（倍率）
+    public Vector2 avatarDisplayPosition = Vector2.zero; // Canvas 上の表示位置（anchoredPosition）
 }
 
 

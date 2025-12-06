@@ -14,6 +14,11 @@ public class CentralManager : MonoBehaviour {
     public static void SetFaceVisible(bool visible) {
         FaceVisibilityChanged?.Invoke(visible);
     }
+
+    // --- Actor リスト変更通知 ---
+    public delegate void ActorsChangedDelegate(List<ActorConfig> actors);
+    public static event ActorsChangedDelegate OnActorsChanged;
+    
     // シングルトンインスタンス
     public static CentralManager Instance { get; private set; }
 
@@ -183,6 +188,8 @@ public class CentralManager : MonoBehaviour {
         try {
             var json = JsonConvert.SerializeObject(actors ?? new List<ActorConfig>());
             PlayerPrefs.SetString(ActorsKey, json);
+            // Actor リスト変更を通知
+            OnActorsChanged?.Invoke(actors ?? new List<ActorConfig>());
         } catch (System.Exception ex) {
             Debug.LogError($"[CentralManager] SetActors error: {ex.Message}");
         }
