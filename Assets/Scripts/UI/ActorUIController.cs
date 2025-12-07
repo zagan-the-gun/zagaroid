@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -202,17 +203,6 @@ public class ActorUIController : MonoBehaviour
             config.displayName = evt.newValue ?? string.Empty;
         });
         panel.Add(displayField);
-
-        // Avatar Display Scale（Canvas上での表示サイズ倍率）
-        var scaleField = new FloatField("Avatar Scale") { name = "AvatarDisplayScaleInput" };
-        scaleField.value = config.avatarDisplayScale;
-        scaleField.RegisterValueChangedCallback(evt => {
-            config.avatarDisplayScale = Mathf.Clamp(evt.newValue, 0.1f, 5.0f); // 0.1～5.0 に制限
-            scaleField.SetValueWithoutNotify(config.avatarDisplayScale);
-            // Canvas の RawImage に即座に反映
-            CentralManager.Instance?.SetActors(actors);
-        });
-        panel.Add(scaleField);
 
         // Avatar 関連（すべてのタイプで表示）
         var avatarContainer = new VisualElement();
@@ -515,13 +505,31 @@ public class ActorUIController : MonoBehaviour
             );
         }
 
+        // Avatar Scale フィールドを設定
+        var scaleField = overlay.Q<FloatField>("AvatarScaleInput");
+        if (scaleField != null) {
+            scaleField.value = config.avatarDisplayScale;
+            scaleField.RegisterValueChangedCallback(evt => {
+                config.avatarDisplayScale = Mathf.Clamp(evt.newValue, 0.1f, 5.0f); // 0.1～5.0 に制限
+                scaleField.SetValueWithoutNotify(config.avatarDisplayScale);
+            });
+        }
+
         // ボタンイベント設定
         var saveBtn = overlay.Q<Button>("SaveButton");
         var cancelBtn = overlay.Q<Button>("CancelButton");
 
         if (saveBtn != null) {
             saveBtn.clicked += () => {
+                // Avatar Scaleの値を保存（既にRegisterValueChangedCallbackで更新されているが、念のため）
+                if (scaleField != null) {
+                    config.avatarDisplayScale = Mathf.Clamp(scaleField.value, 0.1f, 5.0f);
+                }
+                
                 SaveActorsToCentral();
+                
+                // Canvas の RawImage に即座に反映
+                CentralManager.Instance?.SetActors(actors);
                 
                 // サムネイル更新
                 int animeCount = config.avatarAnimePaths.Count;

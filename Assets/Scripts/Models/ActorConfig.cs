@@ -17,5 +17,3 @@ public class ActorConfig
     public float avatarDisplayScale = 1.0f;           // Canvas 上の表示スケール（倍率）
     public Vector2 avatarDisplayPosition = Vector2.zero; // Canvas 上の表示位置（anchoredPosition）
 }
-
-

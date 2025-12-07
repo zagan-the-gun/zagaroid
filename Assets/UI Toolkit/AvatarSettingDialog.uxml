@@ -1,23 +1,19 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xmlns="UnityEngine.UIElements.StyleSheet" editor-extension-mode="False">
-    <Style src="project://database/Assets/UI%20Toolkit/AvatarSettingDialog.uss?fileID=7433441132597879392&amp;guid=AVATAR_SETTING_GUID&amp;type=3#AvatarSettingDialog" />
+    <Style src="project://database/Assets/UI%20Toolkit/AvatarSettingDialog.uss?fileID=7433441132597879392&amp;guid=48030a837749d45ad9fdfa7660a8f35c&amp;type=3#AvatarSettingDialog" />
     <ui:VisualElement name="AvatarSettingOverlay" class="avatar-overlay">
         <ui:VisualElement name="DialogBox" class="avatar-dialog">
             <ui:Label text="Avatar Setting" name="DialogTitle" class="avatar-dialog__title" />
             <ui:ScrollView class="avatar-dialog__scroll" style="flex-direction: column;">
-                <!-- Avatar Animation Paths セクション -->
                 <ui:Label text="Avatar Animation Paths" class="avatar-dialog__section-title" />
                 <ui:ScrollView name="AnimePathsScroll" class="avatar-paths-grid-scroll">
                     <ui:VisualElement name="AnimePathsContainer" class="avatar-paths-grid" />
                 </ui:ScrollView>
-                
-                <!-- Avatar LipSync Paths セクション -->
                 <ui:Label text="Avatar LipSync Paths" class="avatar-dialog__section-title" style="margin-top: 20px;" />
                 <ui:ScrollView name="LipSyncPathsScroll" class="avatar-paths-grid-scroll">
                     <ui:VisualElement name="LipSyncPathsContainer" class="avatar-paths-grid" />
                 </ui:ScrollView>
+                <ui:FloatField name="AvatarScaleInput" label="Avatar Scale" style="margin-top: 20px;" />
             </ui:ScrollView>
-            
-            <!-- ボタンコンテナ -->
             <ui:VisualElement class="avatar-dialog__buttons">
                 <ui:Button text="Save" name="SaveButton" class="avatar-dialog__button avatar-dialog__button--primary" />
                 <ui:Button text="Cancel" name="CancelButton" class="avatar-dialog__button" />

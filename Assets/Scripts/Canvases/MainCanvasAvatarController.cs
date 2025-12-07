@@ -124,7 +124,7 @@ public class MainCanvasAvatarController : MonoBehaviour
             }
         }
 
-        // 既存の UI の位置を更新（保存された位置がある場合）
+        // 既存の UI の位置とスケールを更新（保存された値がある場合）
         foreach (var actor in actors)
         {
             if (actorAvatarUIMap.TryGetValue(actor.actorName, out var image))
@@ -133,6 +133,8 @@ public class MainCanvasAvatarController : MonoBehaviour
                 if (rect != null)
                 {
                     rect.anchoredPosition = actor.avatarDisplayPosition;
+                    // スケールを更新
+                    rect.localScale = Vector3.one * actor.avatarDisplayScale;
                 }
             }
         }

@@ -1,6 +1,7 @@
 using UnityEngine;
 // using System.IO;
 using Newtonsoft.Json;
+using Newtonsoft.Json.UnityConverters.Math;
 using System;
 using System.Collections.Generic;
 using System.Collections;
@@ -177,7 +178,12 @@ public class CentralManager : MonoBehaviour {
         try {
             var json = PlayerPrefs.GetString(ActorsKey, "");
             if (string.IsNullOrEmpty(json)) return new List<ActorConfig>();
-            var list = JsonConvert.DeserializeObject<List<ActorConfig>>(json);
+            // Vector2の循環参照を避けるため、Vector2Converterを使用
+            var settings = new JsonSerializerSettings
+            {
+                Converters = new List<JsonConverter> { new Vector2Converter() }
+            };
+            var list = JsonConvert.DeserializeObject<List<ActorConfig>>(json, settings);
             return list ?? new List<ActorConfig>();
         } catch {
             return new List<ActorConfig>();
@@ -186,12 +192,19 @@ public class CentralManager : MonoBehaviour {
 
     public void SetActors(List<ActorConfig> actors) {
         try {
-            var json = JsonConvert.SerializeObject(actors ?? new List<ActorConfig>());
+            var actorsList = actors ?? new List<ActorConfig>();
+            // Vector2の循環参照を避けるため、Vector2Converterを使用
+            var settings = new JsonSerializerSettings
+            {
+                Converters = new List<JsonConverter> { new Vector2Converter() },
+                Formatting = Formatting.None
+            };
+            var json = JsonConvert.SerializeObject(actorsList, settings);
             PlayerPrefs.SetString(ActorsKey, json);
             // Actor リスト変更を通知
-            OnActorsChanged?.Invoke(actors ?? new List<ActorConfig>());
+            OnActorsChanged?.Invoke(actorsList);
         } catch (System.Exception ex) {
-            Debug.LogError($"[CentralManager] SetActors error: {ex.Message}");
+            Debug.LogError($"[CentralManager] [SetActors] error: {ex.Message}");
         }
     }
 
