@@ -46,16 +46,36 @@ public class MainCanvasAvatarController : MonoBehaviour
         public int previousDirection = 1; // 前フレームの進行方向（サイクル完了判定用）
     }
     
+    /// <summary>
+    /// リップシンク制御用の状態管理
+    /// FaceAnimatorControllerを参考に実装
+    /// 3D Mesh（Quad）を使用して、アニメーション画像の上にリップシンク口を重ねる設計
+    /// NDI カメラで映るようにするため、必ず 3D Mesh を使用
+    /// </summary>
+    private class AvatarLipSyncState {
+        public List<Texture2D> lipSyncTextures = new List<Texture2D>(); // リップシンク用テクスチャ
+        public float mouthOpen01 = 0f;  // 開口度 (0..1)
+        public bool hasLipLevel = false;
+        public float lastLipLevelTimeUnscaled = 0f;
+        public Material lipSyncMaterial; // リップシンク用マテリアル（3D Mesh レンダリング用）
+        public GameObject lipSyncGameObject; // リップシンク用 3D GameObject（デバッグ用）
+    }
+    
     private Dictionary<string, AvatarAnimationState> animationStates = new Dictionary<string, AvatarAnimationState>();
+    private Dictionary<string, AvatarLipSyncState> lipSyncStates = new Dictionary<string, AvatarLipSyncState>();
 
     private void OnEnable() {
         // CentralManager のイベント購読
         CentralManager.OnActorsChanged += HandleActorsChanged;
+        // リップシンクイベント購読
+        CentralManager.OnLipSyncLevel += HandleLipSyncLevel;
     }
 
     private void OnDisable() {
         // イベント購読解除
         CentralManager.OnActorsChanged -= HandleActorsChanged;
+        // リップシンクイベント購読解除
+        CentralManager.OnLipSyncLevel -= HandleLipSyncLevel;
     }
 
     private void Start() {
@@ -121,9 +141,16 @@ public class MainCanvasAvatarController : MonoBehaviour
             if (actorAvatarUIMap.TryGetValue(actorName, out var image))
             {
                 Debug.Log($"{LogPrefix} UI を削除: {actorName}");
+                
+                // リップシンク GameObject も削除
+                if (lipSyncStates.TryGetValue(actorName, out var lipState) && lipState.lipSyncGameObject != null) {
+                    Destroy(lipState.lipSyncGameObject);
+                }
+                
                 Destroy(image.gameObject);
                 actorAvatarUIMap.Remove(actorName);
                 animationStates.Remove(actorName);
+                lipSyncStates.Remove(actorName);
             }
         }
 
@@ -287,6 +314,10 @@ public class MainCanvasAvatarController : MonoBehaviour
             // 1枚の場合はアニメーション不要
             animationStates.Remove(actor.actorName);
         }
+
+        // リップシンク状態を初期化（AvatarLipSyncPathsがある場合）
+        Debug.Log($"{LogPrefix} CreateAvatarUI: {actor.actorName} lipSyncPaths.Count={actor.avatarLipSyncPaths?.Count ?? 0}");
+        InitializeLipSyncState(actor);
         
         Debug.Log($"{LogPrefix} UI を作成: {actor.actorName} texture={image.texture?.name ?? "null"} color={image.color}");
     }
@@ -301,7 +332,7 @@ public class MainCanvasAvatarController : MonoBehaviour
     }
 
     /// <summary>
-    /// ドラッグ終了時に位置を保存（毎フレーム監視）、アニメーション更新
+    /// ドラッグ終了時に位置を保存（毎フレーム監視）、アニメーション更新、リップシンク更新
     /// </summary>
     private void Update() {
         // 各 Actor の UI 位置が変更されていないか監視
@@ -322,6 +353,90 @@ public class MainCanvasAvatarController : MonoBehaviour
         
         // アニメーション更新
         UpdateAvatarAnimations();
+        
+        // リップシンク更新
+        UpdateLipSync();
+    }
+
+    /// <summary>
+    /// リップシンク更新
+    /// FaceAnimatorControllerを参考に実装
+    /// リップシンク用テクスチャを、音声レベルに応じて更新
+    /// 注意：リップシンク画像がない場合はこのメソッドは実行されない
+    /// </summary>
+    private void UpdateLipSync() {
+        if (lipSyncStates.Count == 0) {
+            return; // リップシンク用テクスチャがない場合はスキップ
+        }
+
+        const float lipLevelHoldSeconds = 0.10f;    // レベル駆動の保持時間（FaceAnimatorControllerと同じ）
+        const float lipEpsilon = 0.02f;             // レベル駆動の最小閾値
+        const float mouthGain = 1.8f;               // 開口度ゲイン
+        
+        foreach (var kvp in lipSyncStates) {
+            string actorName = kvp.Key;
+            AvatarLipSyncState lipState = kvp.Value;
+            
+            // リップシンクテクスチャが有効か確認
+            if (lipState.lipSyncTextures == null || lipState.lipSyncTextures.Count == 0) {
+                Debug.LogWarning($"{LogPrefix} リップシンク画像が空: {actorName}");
+                continue;
+            }
+            
+            // リップシンク GameObject が有効か確認
+            if (lipState.lipSyncMaterial == null || lipState.lipSyncGameObject == null) {
+                Debug.LogWarning($"{LogPrefix} リップシンク GameObject が無効: {actorName}");
+                continue;
+            }
+            
+            // リップシンクレベルが有効か判定（保持時間内かどうか）
+            bool recentLip = lipState.hasLipLevel && 
+                             (Time.unscaledTime - lipState.lastLipLevelTimeUnscaled) <= lipLevelHoldSeconds;
+            
+            if (!recentLip || lipState.mouthOpen01 < lipEpsilon) {
+                // レベルが無い、または微小 → デフォルト（先頭画像）に戻す
+                UpdateLipSyncTexture(actorName, 0);
+                continue;
+            }
+            
+            // 開口度を強調（ゲイン+非線形）
+            float mapped = Mathf.Clamp01(Mathf.Sqrt(Mathf.Clamp01(lipState.mouthOpen01 * mouthGain)));
+            
+            // マッピング値をテクスチャインデックスに変換
+            int idx = Mathf.Clamp(
+                Mathf.RoundToInt(mapped * (lipState.lipSyncTextures.Count - 1)),
+                0,
+                lipState.lipSyncTextures.Count - 1
+            );
+            
+            UpdateLipSyncTexture(actorName, idx);
+        }
+    }
+
+    /// <summary>
+    /// 指定アクターのリップシンク画像を更新
+    /// リップシンク用マテリアルのテクスチャを設定
+    /// </summary>
+    private void UpdateLipSyncTexture(string actorName, int textureIndex) {
+        if (!lipSyncStates.TryGetValue(actorName, out var lipState)) {
+            return;
+        }
+        
+        if (lipState.lipSyncTextures == null || lipState.lipSyncTextures.Count == 0) {
+            return;
+        }
+        
+        if (textureIndex < 0 || textureIndex >= lipState.lipSyncTextures.Count) {
+            return;
+        }
+        
+        // リップシンク用マテリアルを更新
+        if (lipState.lipSyncMaterial != null) {
+            var lipTexture = lipState.lipSyncTextures[textureIndex];
+            lipState.lipSyncMaterial.mainTexture = lipTexture;
+        } else {
+            Debug.LogWarning($"{LogPrefix} リップシンク Material が null: {actorName}");
+        }
     }
 
     /// <summary>
@@ -393,6 +508,88 @@ public class MainCanvasAvatarController : MonoBehaviour
     }
 
     /// <summary>
+    /// リップシンク状態を初期化
+    /// 3D Mesh を使用してアニメーション画像の上にリップシンク口を重ねる
+    /// NDI カメラで映るようにするため 3D Mesh は必須
+    /// </summary>
+    private void InitializeLipSyncState(ActorConfig actor) {
+        if (actor.avatarLipSyncPaths == null || actor.avatarLipSyncPaths.Count == 0) {
+            lipSyncStates.Remove(actor.actorName);
+            return;
+        }
+
+        // すべてのリップシンク画像をロード
+        var lipSyncTextures = new List<Texture2D>();
+        foreach (var path in actor.avatarLipSyncPaths) {
+            var texture = LoadTextureFromPath(path);
+            if (texture != null) {
+                lipSyncTextures.Add(texture);
+            }
+        }
+
+        if (lipSyncTextures.Count == 0) {
+            Debug.LogWarning($"{LogPrefix} リップシンク画像がロードできません: {actor.actorName}");
+            lipSyncStates.Remove(actor.actorName);
+            return;
+        }
+
+        // リップシンク用 3D GameObject を作成
+        if (actorAvatarUIMap.TryGetValue(actor.actorName, out var avatarImage)) {
+            var avatarGo = avatarImage.gameObject;
+            var avatarRect = avatarGo.GetComponent<RectTransform>();
+            
+            // アバターのサイズを取得
+            Vector2 avatarSize = avatarRect.sizeDelta;
+            if (avatarSize.x <= 0) avatarSize.x = 100f;
+            if (avatarSize.y <= 0) avatarSize.y = 100f;
+            
+            // リップシンク用 3D GameObject を作成
+            var lipSyncGo = new GameObject($"{actor.actorName}_LipSync_3D");
+            lipSyncGo.transform.SetParent(avatarGo.transform);
+            
+            // アバター画像と同じワールド位置に配置
+            var lipSyncTransform = lipSyncGo.transform;
+            lipSyncTransform.localPosition = new Vector3(0, 0, -0.1f); // Z を手前に設定
+            lipSyncTransform.localRotation = Quaternion.identity;
+            lipSyncTransform.localScale = Vector3.one;
+            
+            // MeshFilter と MeshRenderer を追加
+            var meshFilter = lipSyncGo.AddComponent<MeshFilter>();
+            var meshRenderer = lipSyncGo.AddComponent<MeshRenderer>();
+            
+            // Quad メッシュを作成（アバターと同じサイズ）
+            Mesh lipSyncMesh = CreateQuadMesh(avatarSize.x, avatarSize.y);
+            meshFilter.mesh = lipSyncMesh;
+            
+            // マテリアルを作成（最初のリップシンク画像を表示）
+            Material lipSyncMat = new Material(Shader.Find("Unlit/Transparent"));
+            lipSyncMat.mainTexture = lipSyncTextures[0];
+            lipSyncMat.renderQueue = 3001; // 手前に描画
+            meshRenderer.material = lipSyncMat;
+            
+            // レンダリング設定
+            meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            meshRenderer.receiveShadows = false;
+            
+            // リップシンク状態を作成
+            var lipSyncState = new AvatarLipSyncState {
+                lipSyncTextures = lipSyncTextures,
+                mouthOpen01 = 0f,
+                hasLipLevel = false,
+                lastLipLevelTimeUnscaled = 0f,
+                lipSyncMaterial = lipSyncMat,
+                lipSyncGameObject = lipSyncGo
+            };
+            lipSyncStates[actor.actorName] = lipSyncState;
+            
+            Debug.Log($"{LogPrefix} リップシンク状態を初期化: {actor.actorName} count={lipSyncTextures.Count} go={lipSyncGo.name}");
+        } else {
+            Debug.LogWarning($"{LogPrefix} アバター UI が見つかりません: {actor.actorName}");
+            lipSyncStates.Remove(actor.actorName);
+        }
+    }
+
+    /// <summary>
     /// ファイルパスから Texture2D を読み込み
     /// </summary>
     private Texture2D LoadTextureFromPath(string path) {
@@ -413,6 +610,23 @@ public class MainCanvasAvatarController : MonoBehaviour
         {
             Debug.LogError($"{LogPrefix} ファイル読み込みエラー: {path} - {ex.Message}");
             return null;
+        }
+    }
+
+    /// <summary>
+    /// リップシンクレベルを受信（CentralManagerから通知）
+    /// アクティブなアクターすべてに同じレベルを適用
+    /// </summary>
+    private void HandleLipSyncLevel(float level01) {
+        if (lipSyncStates.Count == 0) {
+            return; // リップシンク状態がない場合はスキップ
+        }
+        
+        foreach (var kvp in lipSyncStates) {
+            kvp.Value.mouthOpen01 = Mathf.Clamp01(level01);
+            kvp.Value.hasLipLevel = true;
+            kvp.Value.lastLipLevelTimeUnscaled = Time.unscaledTime;
+            Debug.Log($"{LogPrefix} HandleLipSyncLevel: {kvp.Key} level={level01:F4}");
         }
     }
 
