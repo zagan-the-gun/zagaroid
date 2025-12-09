@@ -30,21 +30,35 @@ public class MainCanvasAvatarController : MonoBehaviour
     private const string LogPrefix = "[MainCanvasAvatarController]";
     private Dictionary<string, RawImage> actorAvatarUIMap = new Dictionary<string, RawImage>(); // Actor名 → Image
     private List<ActorConfig> cachedActors = new List<ActorConfig>();
+    
+    /// <summary>
+    /// アクターごとのアニメーション状態
+    /// </summary>
+    private class AvatarAnimationState {
+        public List<Texture2D> textures = new List<Texture2D>(); // ロード済みテクスチャリスト
+        public float elapsedTime = 0f; // 経過時間
+        public int currentIndex = 0; // 現在の画像インデックス
+        public int direction = 1; // 進行方向（1=前進、-1=後退）
+        public MeshRenderer meshRenderer; // メッシュレンダラー参照
+        public Material material; // マテリアル参照
+        public bool isInCycleDelay = false; // 1サイクル完了後の待機フェーズ中かどうか
+        public float cycleDelayElapsedTime = 0f; // 待機時間の経過時間
+        public int previousDirection = 1; // 前フレームの進行方向（サイクル完了判定用）
+    }
+    
+    private Dictionary<string, AvatarAnimationState> animationStates = new Dictionary<string, AvatarAnimationState>();
 
-    private void OnEnable()
-    {
+    private void OnEnable() {
         // CentralManager のイベント購読
         CentralManager.OnActorsChanged += HandleActorsChanged;
     }
 
-    private void OnDisable()
-    {
+    private void OnDisable() {
         // イベント購読解除
         CentralManager.OnActorsChanged -= HandleActorsChanged;
     }
 
-    private void Start()
-    {
+    private void Start() {
         // avatarControlPanel が未設定ならシーンから自動検出
         if (avatarControlPanel == null)
         {
@@ -90,8 +104,7 @@ public class MainCanvasAvatarController : MonoBehaviour
     /// <summary>
     /// Actor リスト変更時のハンドラ
     /// </summary>
-    private void HandleActorsChanged(List<ActorConfig> actors)
-    {
+    private void HandleActorsChanged(List<ActorConfig> actors) {
         if (avatarControlPanel == null) return;
 
         Debug.Log($"{LogPrefix} Actor リスト変更を検知: {actors.Count} 件");
@@ -110,6 +123,7 @@ public class MainCanvasAvatarController : MonoBehaviour
                 Debug.Log($"{LogPrefix} UI を削除: {actorName}");
                 Destroy(image.gameObject);
                 actorAvatarUIMap.Remove(actorName);
+                animationStates.Remove(actorName);
             }
         }
 
@@ -143,8 +157,7 @@ public class MainCanvasAvatarController : MonoBehaviour
     /// <summary>
     /// 指定の Actor 用 UI を生成
     /// </summary>
-    private void CreateAvatarUI(ActorConfig actor)
-    {
+    private void CreateAvatarUI(ActorConfig actor) {
         if (avatarControlPanel == null) return;
 
         // アバター画像パスが設定されていない場合はスキップ
@@ -154,14 +167,28 @@ public class MainCanvasAvatarController : MonoBehaviour
             return;
         }
 
-        // 最初の画像をロード
-        Debug.Log($"{LogPrefix} テクスチャ読み込み開始: {actor.actorName} path={actor.avatarAnimePaths[0]}");
-        var texture = LoadTextureFromPath(actor.avatarAnimePaths[0]);
-        if (texture == null)
+        // すべての画像をロード
+        var textures = new List<Texture2D>();
+        foreach (var path in actor.avatarAnimePaths)
         {
-            Debug.LogWarning($"{LogPrefix} テクスチャ読み込み失敗のためスキップ: {actor.actorName} path={actor.avatarAnimePaths[0]}");
+            Debug.Log($"{LogPrefix} テクスチャ読み込み開始: {actor.actorName} path={path}");
+            var texture = LoadTextureFromPath(path);
+            if (texture == null)
+            {
+                Debug.LogWarning($"{LogPrefix} テクスチャ読み込み失敗: {actor.actorName} path={path}");
+                continue;
+            }
+            textures.Add(texture);
+        }
+
+        if (textures.Count == 0)
+        {
+            Debug.LogWarning($"{LogPrefix} 有効なテクスチャが1つもないためスキップ: {actor.actorName}");
             return;
         }
+
+        // 最初のテクスチャを使用（初期表示用）
+        var initialTexture = textures[0];
 
         // Image GameObject を作成
         var go = new GameObject($"{actor.actorName}_Icon", typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
@@ -178,15 +205,15 @@ public class MainCanvasAvatarController : MonoBehaviour
         image.enabled = true;
 
         // テクスチャを設定
-        image.texture = texture;
+        image.texture = initialTexture;
 
         // RectTransform のサイズを画像のナチュラルサイズに設定
-        if (texture.width > 0 && texture.height > 0)
+        if (initialTexture.width > 0 && initialTexture.height > 0)
         {
-            rect.sizeDelta = new Vector2(texture.width, texture.height);
+            rect.sizeDelta = new Vector2(initialTexture.width, initialTexture.height);
         }
 
-        Debug.Log($"{LogPrefix} テクスチャ読み込み成功: {actor.actorName} size={texture.width}x{texture.height}");
+        Debug.Log($"{LogPrefix} テクスチャ読み込み成功: {actor.actorName} size={initialTexture.width}x{initialTexture.height} count={textures.Count}");
 
         // 表示スケール（倍率）を適用
         rect.localScale = Vector3.one * actor.avatarDisplayScale;
@@ -196,8 +223,8 @@ public class MainCanvasAvatarController : MonoBehaviour
         MeshFilter meshFilter = go.AddComponent<MeshFilter>();
 
         // Quadメッシュを作成（RectTransformのサイズに基づく）
-        float meshWidth = rect.sizeDelta.x > 0 ? rect.sizeDelta.x : texture.width;
-        float meshHeight = rect.sizeDelta.y > 0 ? rect.sizeDelta.y : texture.height;
+        float meshWidth = rect.sizeDelta.x > 0 ? rect.sizeDelta.x : initialTexture.width;
+        float meshHeight = rect.sizeDelta.y > 0 ? rect.sizeDelta.y : initialTexture.height;
         if (meshWidth <= 0) meshWidth = 100f;
         if (meshHeight <= 0) meshHeight = 100f;
 
@@ -206,7 +233,7 @@ public class MainCanvasAvatarController : MonoBehaviour
 
         // Unlit/Transparentシェーダーでマテリアルを作成（透過対応）
         Material mat = new Material(Shader.Find("Unlit/Transparent"));
-        mat.mainTexture = texture;
+        mat.mainTexture = initialTexture;
         meshRenderer.material = mat;
 
         // レンダリング設定
@@ -236,24 +263,47 @@ public class MainCanvasAvatarController : MonoBehaviour
 
         // マップに登録
         actorAvatarUIMap[actor.actorName] = image;
+        
+        // アニメーション状態を初期化（複数画像の場合）
+        if (textures.Count > 1)
+        {
+            var animState = new AvatarAnimationState
+            {
+                textures = textures,
+                elapsedTime = 0f,
+                currentIndex = 0,
+                direction = 1,
+                meshRenderer = meshRenderer,
+                material = mat,
+                isInCycleDelay = false,
+                cycleDelayElapsedTime = 0f,
+                previousDirection = 1
+            };
+            animationStates[actor.actorName] = animState;
+            Debug.Log($"{LogPrefix} アニメーション状態を初期化: {actor.actorName} count={textures.Count}");
+        }
+        else
+        {
+            // 1枚の場合はアニメーション不要
+            animationStates.Remove(actor.actorName);
+        }
+        
         Debug.Log($"{LogPrefix} UI を作成: {actor.actorName} texture={image.texture?.name ?? "null"} color={image.color}");
     }
 
     /// <summary>
     /// ドラッグ終了時に位置情報を保存するコールバックを追加
     /// </summary>
-    private void AddDragEndListener(ActorConfig actor, UIDragMove drag)
-    {
+    private void AddDragEndListener(ActorConfig actor, UIDragMove drag) {
         // NOTE: UIDragMove に EndDrag イベントがあれば使用
         // 今は Update で定期的に位置をチェック
         // 別途イベントシステムを追加してもよい
     }
 
     /// <summary>
-    /// ドラッグ終了時に位置を保存（毎フレーム監視）
+    /// ドラッグ終了時に位置を保存（毎フレーム監視）、アニメーション更新
     /// </summary>
-    private void Update()
-    {
+    private void Update() {
         // 各 Actor の UI 位置が変更されていないか監視
         foreach (var actor in cachedActors)
         {
@@ -269,13 +319,83 @@ public class MainCanvasAvatarController : MonoBehaviour
                 }
             }
         }
+        
+        // アニメーション更新
+        UpdateAvatarAnimations();
+    }
+
+    /// <summary>
+    /// アバターアニメーション（ペンデュラム）を更新
+    /// </summary>
+    private void UpdateAvatarAnimations() {
+        float deltaTime = Time.deltaTime;
+
+        foreach (var kvp in animationStates) {
+            string actorName = kvp.Key;
+            AvatarAnimationState state = kvp.Value;
+
+            // アクター設定を取得
+            var actor = cachedActors.FirstOrDefault(a => a.actorName == actorName);
+            if (actor == null) continue;
+
+            // 待機フェーズ中か判定
+            if (state.isInCycleDelay) {
+                state.cycleDelayElapsedTime += deltaTime;
+
+                // 待機時間を超過したらアニメーションフェーズに戻る
+                if (state.cycleDelayElapsedTime >= actor.avatarAnimationWaitSeconds) {
+                    state.isInCycleDelay = false;
+                    state.cycleDelayElapsedTime = 0f;
+                    state.elapsedTime = 0f;
+                }
+                continue;  // ← 待機フェーズ中は処理をスキップ
+            } else {
+                // アニメーション（フレーム進行）フェーズ
+                state.elapsedTime += deltaTime;
+
+                // フレーム時間に達したかチェック（msから秒に変換）
+                float frameDurationSeconds = actor.avatarAnimationIntervalMs / 1000f;
+                if (state.elapsedTime >= frameDurationSeconds) {
+                    state.elapsedTime = 0f;
+
+                    // 次のインデックスを計算
+                    int nextIndex = state.currentIndex + state.direction;
+
+                    // 境界チェックと方向変更
+                    bool cycleCompleted = false;
+                    if (nextIndex >= state.textures.Count) {
+                        // 終端を超過 → 逆方向に + インデックスを戻す
+                        nextIndex = state.textures.Count - 2;
+                        state.direction = -1;
+                    } else if (nextIndex < 0) {
+                        // 最初より前 → サイクル完了
+                        nextIndex = 0;
+                        state.direction = 1;
+                        cycleCompleted = true;  // 最初に戻った時点でサイクル完了
+                        if (actor.avatarAnimationWaitSeconds > 0f) {
+                            state.isInCycleDelay = true;
+                            state.cycleDelayElapsedTime = 0f;
+                        }
+                    }
+
+                    state.currentIndex = nextIndex;
+
+                    // テクスチャを更新
+                    if (state.currentIndex >= 0 && state.currentIndex < state.textures.Count) {
+                        var texture = state.textures[state.currentIndex];
+                        if (state.material != null) {
+                            state.material.mainTexture = texture;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>
     /// ファイルパスから Texture2D を読み込み
     /// </summary>
-    private Texture2D LoadTextureFromPath(string path)
-    {
+    private Texture2D LoadTextureFromPath(string path) {
         if (string.IsNullOrEmpty(path)) return null;
 
         try
@@ -299,8 +419,7 @@ public class MainCanvasAvatarController : MonoBehaviour
     /// <summary>
     /// 3D空間で表示するためのQuadメッシュを作成
     /// </summary>
-    private Mesh CreateQuadMesh(float width, float height)
-    {
+    private Mesh CreateQuadMesh(float width, float height) {
         Mesh mesh = new Mesh();
         mesh.name = "AvatarQuad";
         

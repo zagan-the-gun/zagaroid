@@ -515,6 +515,26 @@ public class ActorUIController : MonoBehaviour
             });
         }
 
+        // Animation Settings: Interval
+        var animationIntervalField = overlay.Q<FloatField>("AnimationIntervalInput");
+        if (animationIntervalField != null) {
+            animationIntervalField.value = config.avatarAnimationIntervalMs;
+            animationIntervalField.RegisterValueChangedCallback(evt => {
+                config.avatarAnimationIntervalMs = Mathf.Clamp(evt.newValue, 1f, 1000f); // 1～1000ms に制限
+                animationIntervalField.SetValueWithoutNotify(config.avatarAnimationIntervalMs);
+            });
+        }
+
+        // Animation Settings: Wait
+        var animationWaitField = overlay.Q<FloatField>("AnimationWaitInput");
+        if (animationWaitField != null) {
+            animationWaitField.value = config.avatarAnimationWaitSeconds;
+            animationWaitField.RegisterValueChangedCallback(evt => {
+                config.avatarAnimationWaitSeconds = Mathf.Max(evt.newValue, 0f); // 0以上
+                animationWaitField.SetValueWithoutNotify(config.avatarAnimationWaitSeconds);
+            });
+        }
+
         // ボタンイベント設定
         var saveBtn = overlay.Q<Button>("SaveButton");
         var cancelBtn = overlay.Q<Button>("CancelButton");

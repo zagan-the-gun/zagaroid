@@ -201,14 +201,14 @@
 }
 
 /* AvatarScaleInput内のLabelスタイル */
-#AvatarScaleInput .unity-base-field__label {
+.unity-base-field__label {
     color: rgb(255, 140, 0);
     font-size: 14px;
 }
 
 /* AvatarScaleInput内の入力フィールドスタイル */
-#AvatarScaleInput .unity-base-field__input,
-#AvatarScaleInput .unity-float-field__input {
+.unity-base-field__input,
+.unity-float-field__input {
     color: white;
     padding: 6px 8px;
     border-width: 1px;

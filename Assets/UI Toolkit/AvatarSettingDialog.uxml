@@ -8,6 +8,10 @@
                 <ui:ScrollView name="AnimePathsScroll" class="avatar-paths-grid-scroll">
                     <ui:VisualElement name="AnimePathsContainer" class="avatar-paths-grid" />
                 </ui:ScrollView>
+                <ui:VisualElement style="flex-direction: row; gap: 10px; margin-top: 20px;">
+                    <ui:FloatField name="AnimationIntervalInput" label="Interval (ms)" style="flex: 1;" />
+                    <ui:FloatField name="AnimationWaitInput" label="Wait (s)" style="flex: 1;" />
+                </ui:VisualElement>
                 <ui:Label text="Avatar LipSync Paths" class="avatar-dialog__section-title" style="margin-top: 20px;" />
                 <ui:ScrollView name="LipSyncPathsScroll" class="avatar-paths-grid-scroll">
                     <ui:VisualElement name="LipSyncPathsContainer" class="avatar-paths-grid" />

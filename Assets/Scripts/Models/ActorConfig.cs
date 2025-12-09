@@ -16,4 +16,8 @@ public class ActorConfig
     public List<string> avatarLipSyncPaths = new();   // Avatar リップシンク
     public float avatarDisplayScale = 1.0f;           // Canvas 上の表示スケール（倍率）
     public Vector2 avatarDisplayPosition = Vector2.zero; // Canvas 上の表示位置（anchoredPosition）
+    
+    // アバター画像アニメーション設定
+    public float avatarAnimationIntervalMs = 30f; // フレーム間隔（ミリ秒）
+    public float avatarAnimationWaitSeconds = 4f; // 1サイクル完了後の待機時間（秒）
 }
