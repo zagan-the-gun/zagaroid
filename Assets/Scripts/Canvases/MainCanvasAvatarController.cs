@@ -13,10 +13,9 @@ using System.Linq;
 /// Main Canvas 構造:
 ///   Main Canvas
 ///     ├─ AvatarControlPanel（本コンポーネント管理）
-///     │   ├─ ksk_Avatar_Icon (RawImage)
+///     │   ├─ Actor_Avatar_Icon (RawImage)
 ///     │   │   └─ UIDragMove
-///     │   └─ Actor2_Avatar_Icon (RawImage)
-///     │       └─ UIDragMove
+///     │   └─ ...
 ///     └─ ...
 /// </summary>
 public class MainCanvasAvatarController : MonoBehaviour

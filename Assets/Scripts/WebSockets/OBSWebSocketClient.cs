@@ -9,7 +9,7 @@ public class OBSWebSocketClient : MonoBehaviour {
     private WebSocket ws;
     public string obsUrl = "ws://localhost:4455"; // OBS WebSocketのURL
     public string OBS_WEBSOCKETS_PASSWORD; // OBSの接続パスワード
-    public string textSourceName = "ksk_subtitles"; // OBSのテキストソース名
+    public string textSourceName = "subtitles"; // OBSのテキストソース名
 
     private string challengeResponse;
     private bool isConnected = false;

@@ -120,12 +120,6 @@
                             <ui:TextField label="my subtitle" value="my_subtitle" name="MySubtitleInput" />
                             <ui:TextField picking-mode="Ignore" label="my english subtitle" value="my_subtitle_en" name="MyEnglishSubtitleInput" />
                         </ui:VisualElement>
-                        <ui:VisualElement name="PanelKSK" class="panel" style="flex-grow: 1; flex-basis: 1px;">
-                            <ui:Label text="ksk設定" name="Label" class="panel__title" />
-                            <ui:TextField label="friend name" value="friend name" name="FriendNameInput" />
-                            <ui:TextField label="friend subtitle" value="friend_subtitle" name="FriendSubtitleInput" />
-                            <ui:TextField label="Discord User ID" name="DiscordTargetUserIdInput" style="margin-bottom: 5px;" />
-                        </ui:VisualElement>
                         <ui:VisualElement name="PanelActor" class="panel actors-cell">
                             <ui:Label text="Actor3設定" name="Label" class="panel__title" />
                             <ui:Toggle label="Enable" name="EnableActorToggle" style="margin-bottom: 5px;" />

@@ -444,7 +444,7 @@ public class MultiPortWebSocketServer : MonoBehaviour {
     private class EchoService2 : WebSocketBehavior {
         protected override void OnMessage(MessageEventArgs e) {
             // ログを削減: EchoService2の受信ログを削除
-            Instance?.HandleMessage(50002, "ksk_subtitles", e.Data);
+            Instance?.HandleMessage(50002, "subtitles", e.Data);
             Send($"Echo from port 50002: {e.Data}");
         }
 
