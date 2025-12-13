@@ -488,6 +488,17 @@ public class DiscordVoiceUdpManager : IDisposable
             
             // 暗号化された音声データを抽出
             var encryptedData = ExtractEncryptedData(packet);
+
+            // rtpsize系では非音声（RTCP/KeepAlive等）はここでスキップして復号を試みない
+            if (IsRtpsizeMode(_encryptionMode))
+            {
+                byte ptByte = rtpHeader[1];
+                int payloadType = ptByte & 0x7F;
+                if (payloadType < 72 || payloadType > 127 || encryptedData.Length <= 56)
+                {
+                    return null;
+                }
+            }
             
             // 暗号化データの有効性チェック
             if (!IsValidEncryptedData(encryptedData)) {

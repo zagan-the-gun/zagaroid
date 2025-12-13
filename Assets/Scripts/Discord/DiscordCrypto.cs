@@ -9,6 +9,7 @@ using TweetNaclSharp;
 /// </summary>
 public static class DiscordCrypto
 {
+    private const string LOG_PREFIX = "[GCM]";
     private const int NONCE_SIZE = 24; // XSalsa20 nonce size
     private const int TAG_SIZE = 16;   // Poly1305 authentication tag size
     private const int SUFFIX_SIZE = 12; // xsalsa20_poly1305_suffix の末尾ノンスサイズ
@@ -104,6 +105,15 @@ public static class DiscordCrypto
                 byte[] seqSuffix = new byte[4];
                 Array.Copy(encryptedData, payloadLen, seqSuffix, 0, 4);
 
+                // RTPヘッダーのPayload Typeを確認し、音声以外（RTCP/KeepAlive）はここでスキップ（復号を試みない）
+                byte rtpByte1 = rtpHeader[1];
+                int payloadType = rtpByte1 & 0x7F;
+                if (payloadType < 72 || payloadType > 127 || encryptedData.Length <= 56)
+                {
+                    // 制御系パケットは復号を試さずに無視
+                    return null;
+                }
+
                 // AEAD AAD は RTPヘッダー全体（拡張ヘッダー含む）
                 // rtpsize系では、未暗号化ヘッダー全体をAADとして使用
                 byte[] aeadAad = rtpHeader;
@@ -124,7 +134,7 @@ public static class DiscordCrypto
                     return null;
                 }
                 
-                // RTPヘッダーのPayload Type（PT）を確認
+                // RTPヘッダーのPayload Type（PT）を確認し、音声以外は復号しない（RTCP/KeepAlive）
                 // RTPヘッダー構造: byte[0] = V+P+X+CC, byte[1] = M(1bit) + PT(7bit)
                 byte rtpByte1 = rtpHeader[1];
                 int payloadType = rtpByte1 & 0x7F; // 下位7ビットがPT
@@ -230,7 +240,21 @@ public static class DiscordCrypto
         }
         catch (Exception ex)
         {
-            Debug.LogError($"❌ AES-GCM復号エラー: {ex.Message}");
+            string aadHex   = ByteArrayToHex(aeadAad, Math.Min(16, aeadAad?.Length ?? 0));
+            byte[] iv = new byte[12];
+            if (seqSuffix != null) Array.Copy(seqSuffix, 0, iv, 0, Math.Min(4, seqSuffix.Length));
+            string ivHex    = ByteArrayToHex(iv, iv.Length);
+            string seqHexLe = ByteArrayToHex(seqSuffix, seqSuffix?.Length ?? 0);
+            string seqHexBe = seqSuffix != null && seqSuffix.Length == 4
+                ? ByteArrayToHex(new byte[]{ seqSuffix[3], seqSuffix[2], seqSuffix[1], seqSuffix[0] }, 4)
+                : "n/a";
+            string hdrHex   = ByteArrayToHex(rtpHeader, Math.Min(16, rtpHeader?.Length ?? 0));
+            int cc = (rtpHeader != null && rtpHeader.Length > 0) ? (rtpHeader[0] & 0x0F) : -1;
+            bool x = (rtpHeader != null && rtpHeader.Length > 0) ? ((rtpHeader[0] & 0x10) != 0) : false;
+            int cipherLen = ciphertextWithTag?.Length ?? 0;
+            string cipherHead = ByteArrayToHex(ciphertextWithTag, Math.Min(cipherLen, 16));
+
+            Debug.LogError($"{LOG_PREFIX} ❌ AES-GCM復号エラー: {ex.Message} | aadLen={aeadAad?.Length}, aad={aadHex}, iv={ivHex}, seqLE={seqHexLe}, seqBE={seqHexBe}, cipherLen={cipherLen}, cipherHead={cipherHead}, headerLen={rtpHeader?.Length}, cc={cc}, xbit={x}, hdrHead={hdrHex}");
             return null;
         }
     }
@@ -245,6 +269,7 @@ public static class DiscordCrypto
     /// </summary>
     private static byte[] DecryptXChaCha20Poly1305Rtpsize(byte[] ciphertextWithTag, byte[] aeadAad, byte[] seqSuffix, byte[] secretKey, byte[] rtpHeader)
     {
+        byte[] nonce24 = null; // catch でも参照するため先に宣言
         try
         {
             if (secretKey == null || secretKey.Length != 32) {
@@ -259,7 +284,7 @@ public static class DiscordCrypto
             // Discord rtpsize系のXChaCha20-Poly1305 Nonceは 24 バイト。
             // Nonce構築: インクリメンタルカウンター(4バイト、リトルエンディアン) + 0埋め(20バイト)
             // AES-GCMと同じ構成を使用
-            byte[] nonce24 = new byte[24];
+            nonce24 = new byte[24];
             
             // インクリメンタルカウンター（リトルエンディアンのまま）
             Array.Copy(seqSuffix, 0, nonce24, 0, 4);
@@ -302,7 +327,19 @@ public static class DiscordCrypto
         }
         catch (Exception ex)
         {
-            Debug.LogError($"❌ XChaCha20-Poly1305復号エラー: {ex.Message}");
+            string aadHex   = ByteArrayToHex(aeadAad, Math.Min(16, aeadAad?.Length ?? 0));
+            string ivHex    = ByteArrayToHex(nonce24, 12); // 先頭12を表示
+            string seqHexLe = ByteArrayToHex(seqSuffix, seqSuffix?.Length ?? 0);
+            string seqHexBe = seqSuffix != null && seqSuffix.Length == 4
+                ? ByteArrayToHex(new byte[]{ seqSuffix[3], seqSuffix[2], seqSuffix[1], seqSuffix[0] }, 4)
+                : "n/a";
+            string hdrHex   = ByteArrayToHex(rtpHeader, Math.Min(16, rtpHeader?.Length ?? 0));
+            int cc = (rtpHeader != null && rtpHeader.Length > 0) ? (rtpHeader[0] & 0x0F) : -1;
+            bool x = (rtpHeader != null && rtpHeader.Length > 0) ? ((rtpHeader[0] & 0x10) != 0) : false;
+            int cipherLen = ciphertextWithTag?.Length ?? 0;
+            string cipherHead = ByteArrayToHex(ciphertextWithTag, Math.Min(cipherLen, 16));
+
+            Debug.LogError($"{LOG_PREFIX} ❌ XChaCha20復号エラー: {ex.Message} | aadLen={aeadAad?.Length}, aad={aadHex}, iv={ivHex}, seqLE={seqHexLe}, seqBE={seqHexBe}, cipherLen={cipherLen}, cipherHead={cipherHead}, headerLen={rtpHeader?.Length}, cc={cc}, xbit={x}, hdrHead={hdrHex}");
             return null;
         }
     }
@@ -468,4 +505,22 @@ public static class DiscordCrypto
         }
         return hex;
     }
+
+    // ログ用: バイト配列 → 16進（最大 maxBytes）
+    private static string ByteArrayToHex(byte[] data, int maxBytes)
+    {
+        if (data == null) return "null";
+        int len = Math.Min(data.Length, Math.Max(maxBytes, 0));
+        char[] c = new char[len * 2];
+        const string hex = "0123456789ABCDEF";
+        for (int i = 0; i < len; i++) {
+            int b = data[i];
+            c[i * 2] = hex[b >> 4];
+            c[i * 2 + 1] = hex[b & 0xF];
+        }
+        string body = new string(c);
+        if (len < data.Length) return body + "...";
+        return body;
+    }
+
 } 
