@@ -23,7 +23,6 @@ public class MultiPortWebSocketServer : MonoBehaviour {
     private readonly Queue<Action> _executionQueue = new Queue<Action>();
 
     public string mySubtitle;
-    public string friendSubtitle;
 
     // 翻訳クライアント（NMT）が接続されているかのフラグ
     private static bool isTranslationClientConnected = false;
@@ -44,7 +43,6 @@ public class MultiPortWebSocketServer : MonoBehaviour {
         // InitializeServer(50000);
         InitializeServer(50002);
         mySubtitle = CentralManager.Instance != null ? CentralManager.Instance.GetMySubtitle() : null;
-        friendSubtitle = CentralManager.Instance != null ? CentralManager.Instance.GetFriendSubtitle() : null;
     }
 
     private void InitializeServer(int port) {
@@ -194,6 +192,8 @@ public class MultiPortWebSocketServer : MonoBehaviour {
                             // Actor設定から翻訳可否を判定
                             var actor = CentralManager.Instance?.GetActorByName(speaker);
                             bool enableTranslation = actor?.translationEnabled ?? true;
+
+                            Debug.Log($"[MCP] subtitle route: speaker={speaker}, subtitle={subtitleName}, actorName={actor?.actorName}, actorType={actor?.type}, enableTranslation={enableTranslation}");
                             
                             // ① 字幕の表示・翻訳処理
                             CentralManager.Instance?.HandleWebSocketMessageFromPort50001(
@@ -271,15 +271,10 @@ public class MultiPortWebSocketServer : MonoBehaviour {
                 return config.actorName + "_subtitle";  // 例: "zagan" → "zagan_subtitle"
             }
             
-            // フォールバック：従来の個別設定を使う（互換性維持）
+            // フォールバック：自分の字幕に統一
             string myName = CentralManager.Instance != null ? CentralManager.Instance.GetMyName() : null;
-            string friendName = CentralManager.Instance != null ? CentralManager.Instance.GetFriendName() : null;
-
             if (!string.IsNullOrEmpty(myName) && string.Equals(speaker.Trim(), myName.Trim(), StringComparison.OrdinalIgnoreCase)) {
                 return mySubtitle;
-            }
-            if (!string.IsNullOrEmpty(friendName) && string.Equals(speaker.Trim(), friendName.Trim(), StringComparison.OrdinalIgnoreCase)) {
-                return friendSubtitle;
             }
             return mySubtitle;
         } catch {

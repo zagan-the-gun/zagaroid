@@ -647,7 +647,8 @@ public class MainCanvasAvatarController : MonoBehaviour
         }
         
         // アバターを表示（リップシンクイベントが来た = 発話中）
-        ShowAvatarsIfNeeded();
+        var speakingActor = ResolveCurrentSpeakingActor();
+        ShowAvatarsIfNeeded(speakingActor);
     }
     
     /// <summary>
@@ -659,15 +660,17 @@ public class MainCanvasAvatarController : MonoBehaviour
     }
     
     /// <summary>
-    /// avatarShowWithTalk が ON なアクターのアバターを表示
-    /// 顔画像とリップシンク画像を同期して表示
+    /// 現在話しているアクターのみ表示（Show with Talk ON のみ対象）
+    /// 顔画像とリップシンク画像を同期して表示／非表示を切り替える
     /// </summary>
-    private void ShowAvatarsIfNeeded() {
+    private void ShowAvatarsIfNeeded(ActorConfig speakingActor) {
         foreach (var actor in cachedActors) {
             if (!actor.avatarShowWithTalk) continue; // OFF なら対象外
             
-            if (SetAvatarVisibility(actor, true)) {
-                Debug.Log($"{LogPrefix} アバター表示: {actor.actorName}");
+            bool shouldShow = speakingActor != null && actor.actorName == speakingActor.actorName;
+            if (SetAvatarVisibility(actor, shouldShow)) {
+                string action = shouldShow ? "アバター表示" : "アバター非表示";
+                Debug.Log($"{LogPrefix} {action}: {actor.actorName}");
             }
         }
     }
@@ -677,13 +680,23 @@ public class MainCanvasAvatarController : MonoBehaviour
     /// 顔画像とリップシンク画像を同期して非表示
     /// </summary>
     private void HideAvatarsIfNeeded() {
-        foreach (var actor in cachedActors) {
-            if (!actor.avatarShowWithTalk) continue; // OFF なら対象外
-            
-            if (SetAvatarVisibility(actor, false)) {
-                Debug.Log($"{LogPrefix} アバター非表示: {actor.actorName}");
-            }
+        ShowAvatarsIfNeeded(null);
+    }
+
+    /// <summary>
+    /// 現在のDiscordターゲットユーザーに紐づくアクターを取得
+    /// </summary>
+    private ActorConfig ResolveCurrentSpeakingActor() {
+        if (CentralManager.Instance == null) return null;
+
+        string targetUserId = CentralManager.Instance.GetDiscordTargetUserId();
+        if (string.IsNullOrEmpty(targetUserId)) return null;
+
+        var actor = CentralManager.Instance.GetActorByDiscordUserId(targetUserId);
+        if (actor == null) {
+            Debug.LogWarning($"{LogPrefix} ShowWithTalk 対象アクターが見つかりません: targetUserId={targetUserId}");
         }
+        return actor;
     }
 
     /// <summary>
@@ -749,22 +762,31 @@ public class MainCanvasAvatarController : MonoBehaviour
         bool changed = false;
         
         if (actorAvatarUIMap.TryGetValue(actor.actorName, out var image)) {
-            image.enabled = visible;
-            changed = true;
+            if (image.enabled != visible) {
+                image.enabled = visible;
+                changed = true;
+            }
         }
         
         if (TryGetAvatarRenderer(actor.actorName, out var renderer)) {
-            renderer.enabled = visible;
-            changed = true;
+            if (renderer.enabled != visible) {
+                renderer.enabled = visible;
+                changed = true;
+            }
         }
         
         if (lipSyncStates.TryGetValue(actor.actorName, out var lipState) && lipState.lipSyncGameObject != null) {
-            lipState.lipSyncGameObject.SetActive(visible);
+            if (lipState.lipSyncGameObject.activeSelf != visible) {
+                lipState.lipSyncGameObject.SetActive(visible);
+                changed = true;
+            }
             var lipMeshRenderer = lipState.lipSyncGameObject.GetComponent<MeshRenderer>();
             if (lipMeshRenderer != null) {
-                lipMeshRenderer.enabled = visible;
+                if (lipMeshRenderer.enabled != visible) {
+                    lipMeshRenderer.enabled = visible;
+                    changed = true;
+                }
             }
-            changed = true;
         }
         
         return changed;

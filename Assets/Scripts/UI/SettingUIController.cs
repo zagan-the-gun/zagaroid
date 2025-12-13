@@ -32,7 +32,6 @@ public class SettingUIController : MonoBehaviour {
     private TextField mySubtitleInput;
     private TextField myEnglishSubtitleInput;
     private TextField friendNameInput;
-    private TextField friendSubtitleInput;
 
     private TextField deepLApiClientKeyInput;
     private DropdownField translationModeDropdown;
@@ -89,7 +88,6 @@ public class SettingUIController : MonoBehaviour {
         mySubtitleInput = uiDocument.rootVisualElement.Q<TextField>("MySubtitleInput");
         myEnglishSubtitleInput = uiDocument.rootVisualElement.Q<TextField>("MyEnglishSubtitleInput");
         friendNameInput = uiDocument.rootVisualElement.Q<TextField>("FriendNameInput");
-        friendSubtitleInput = uiDocument.rootVisualElement.Q<TextField>("FriendSubtitleInput");
         deepLApiClientKeyInput = settingContentRoot.Q<TextField>("DeepLApiClientKeyInput"); // DeepL APIキー
         translationModeDropdown = settingContentRoot.Q<DropdownField>("TranslationModeDropdown"); // 翻訳方式選択
         realtimeAudioWsUrlInput = settingContentRoot.Q<TextField>("RealtimeAudioWsUrlInput"); // Realtime Audio WS URL
@@ -232,9 +230,6 @@ public class SettingUIController : MonoBehaviour {
         if (friendNameInput != null) {
             friendNameInput.value = CentralManager.Instance.GetFriendName();
         }
-        if (friendSubtitleInput != null) {
-            friendSubtitleInput.value = CentralManager.Instance.GetFriendSubtitle();
-        }
 
         if (deepLApiClientKeyInput != null) {
             deepLApiClientKeyInput.value = CentralManager.Instance.GetDeepLApiClientKey();
@@ -339,9 +334,6 @@ public class SettingUIController : MonoBehaviour {
         }
         if (friendNameInput != null) {
             CentralManager.Instance.SetFriendName(friendNameInput.value);
-        }
-        if (friendSubtitleInput != null) {
-            CentralManager.Instance.SetFriendSubtitle(friendSubtitleInput.value);
         }
 
         if (deepLApiClientKeyInput != null) {

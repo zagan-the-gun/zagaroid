@@ -221,6 +221,18 @@ public class CentralManager : MonoBehaviour {
         );
     }
 
+    /// <summary>
+    /// Discord User ID から ActorConfig を検索します。
+    /// </summary>
+    public ActorConfig GetActorByDiscordUserId(string discordUserId) {
+        if (string.IsNullOrEmpty(discordUserId)) return null;
+        var actors = GetActors();
+        return actors.FirstOrDefault(a =>
+            !string.IsNullOrEmpty(a.discordUserId) &&
+            string.Equals(a.discordUserId.Trim(), discordUserId.Trim(), System.StringComparison.OrdinalIgnoreCase)
+        );
+    }
+
     public string GetSubtitleAIExecutionPath() {
         // 存在しない場合はデフォルト値として空文字列を返す。
         return PlayerPrefs.GetString("SubtitleAIExecutionPath", "");
@@ -267,14 +279,6 @@ public class CentralManager : MonoBehaviour {
     }
     public void SetMyEnglishSubtitle(string key) {
         PlayerPrefs.SetString("MyEnglishSubtitle", key);
-    }
-
-    public string GetFriendSubtitle() {
-        // "FriendSubtitle"というキーで保存された文字列を読み込む。存在しない場合は空文字列を返す。
-        return PlayerPrefs.GetString("FriendSubtitle", "");
-    }
-    public void SetFriendSubtitle(string key) {
-        PlayerPrefs.SetString("FriendSubtitle", key);
     }
 
     public string GetDeepLApiClientKey() {
@@ -703,20 +707,28 @@ public class CentralManager : MonoBehaviour {
 
     // DiscordBotから音声認識結果を受け取る
     private void HandleDiscordVoiceRecognized(string inputName, string recognizedText) {
-
-        // 字幕用チャンネル名を取得（友達の字幕チャンネルに変更）
-        string subtitleChannel = GetFriendSubtitle();
-        if (string.IsNullOrEmpty(subtitleChannel)) {
-            return; // 設定されていない場合は処理をスキップ
+        if (string.IsNullOrEmpty(recognizedText)) {
+            return;
         }
+
+        // Discord User ID に紐づく Actor を必須とし、見つからなければ送出しない
+        var actor = GetActorByDiscordUserId(GetDiscordTargetUserId());
+        if (actor == null || string.IsNullOrEmpty(actor.actorName)) {
+            Debug.LogWarning($"[DiscordVoice] 対象Discord User IDに紐づくActorが見つからないため字幕送出をスキップします: targetUserId={GetDiscordTargetUserId()}");
+            return;
+        }
+
+        Debug.Log($"[DiscordVoice] targetUserId={GetDiscordTargetUserId()} mapped_actor={actor.actorName}, displayName={actor.displayName}");
+
+        string subtitleChannel = actor.actorName + "_subtitle";
+        string speaker = actor.actorName;
 
         // 字幕表示はSubtitleControllerへ委譲
         SubtitleController.Instance?.EnqueueJapaneseSubtitle(recognizedText, subtitleChannel, "", false);
 
         // MenZ-GeminiCLI (WipeAI) へ字幕をブロードキャスト
         if (_webSocketServer != null) {
-            string friendName = GetFriendName();
-            _webSocketServer.BroadcastToWipeAIClients(recognizedText, friendName ?? "unknown", "subtitle");
+            _webSocketServer.BroadcastToWipeAIClients(recognizedText, string.IsNullOrEmpty(speaker) ? "unknown" : speaker, "subtitle");
         }
 
         // コメント読み上げを開始
@@ -855,6 +867,8 @@ public class CentralManager : MonoBehaviour {
         
         // enableTranslation に応じて英語字幕ソース名を決定
         string englishSubtitle = enableTranslation ? (subtitle + "_en") : "";
+
+        Debug.Log($"[SubtitleWS] enqueue subtitle={subtitle}, enableTranslation={enableTranslation}, textLen={subtitleText.Length}");
         
         SubtitleController.Instance?.EnqueueJapaneseSubtitle(subtitleText, subtitle, englishSubtitle, false);
     }

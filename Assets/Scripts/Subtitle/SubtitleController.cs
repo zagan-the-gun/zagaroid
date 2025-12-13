@@ -140,18 +140,6 @@ public class SubtitleController : MonoBehaviour {
         // 字幕表示開始イベント発行
         OnSubtitleStarted?.Invoke(jpEntry.japaneseSubtitle);
 
-        if (!jpEntry.IsFromWipe) {
-            string mySubtitle = CentralManager.Instance != null ? CentralManager.Instance.GetMySubtitle() : null;
-            string friendSubtitle = CentralManager.Instance != null ? CentralManager.Instance.GetFriendSubtitle() : null;
-            if (!string.IsNullOrEmpty(mySubtitle) && string.Equals(jpEntry.japaneseSubtitle?.Trim(), mySubtitle.Trim(), StringComparison.OrdinalIgnoreCase)) {
-                var speaker = CentralManager.Instance != null ? CentralManager.Instance.GetMyName() : "streamer";
-                if (string.IsNullOrEmpty(speaker)) speaker = "streamer";
-            } else if (!string.IsNullOrEmpty(friendSubtitle) && string.Equals(jpEntry.japaneseSubtitle?.Trim(), friendSubtitle.Trim(), StringComparison.OrdinalIgnoreCase)) {
-                var speaker = CentralManager.Instance != null ? CentralManager.Instance.GetFriendName() : "streamer";
-                if (string.IsNullOrEmpty(speaker)) speaker = "streamer";
-            }
-        }
-
         Debug.Log($"[Subtitle] 日本語字幕表示開始: 『{jpEntry.japaneseText}』 残り{jpEntry.remainingDuration:F2}s");
     }
 
