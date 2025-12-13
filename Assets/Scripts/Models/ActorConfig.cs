@@ -20,4 +20,7 @@ public class ActorConfig
     // アバター画像アニメーション設定
     public float avatarAnimationIntervalMs = 30f; // フレーム間隔（ミリ秒）
     public float avatarAnimationWaitSeconds = 4f; // 1サイクル完了後の待機時間（秒）
+    
+    // アバター表示制御
+    public bool avatarShowWhileTalking = false;   // 発話中のみアバターを表示
 }

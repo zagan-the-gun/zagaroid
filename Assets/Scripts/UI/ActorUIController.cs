@@ -505,6 +505,15 @@ public class ActorUIController : MonoBehaviour
             );
         }
 
+        // Show While Talking トグルを設定
+        var showWhileTalkingToggle = overlay.Q<Toggle>("ShowWhileTalkingToggle");
+        if (showWhileTalkingToggle != null) {
+            showWhileTalkingToggle.value = config.avatarShowWhileTalking;
+            showWhileTalkingToggle.RegisterValueChangedCallback(evt => {
+                config.avatarShowWhileTalking = evt.newValue;
+            });
+        }
+
         // Avatar Scale フィールドを設定
         var scaleField = overlay.Q<FloatField>("AvatarScaleInput");
         if (scaleField != null) {

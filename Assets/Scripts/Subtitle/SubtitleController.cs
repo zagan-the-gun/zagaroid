@@ -15,6 +15,11 @@ using UnityEngine;
 public class SubtitleController : MonoBehaviour {
     public static SubtitleController Instance { get; private set; }
 
+    // 字幕表示イベント
+    public delegate void SubtitleEventDelegate(string channel);
+    public static event SubtitleEventDelegate OnSubtitleStarted;   // 字幕表示開始
+    public static event SubtitleEventDelegate OnSubtitleEnded;     // 字幕表示終了
+
     // チャンネルごとの日本語字幕キュー / 現在表示中
     private readonly Dictionary<string, Queue<CurrentDisplaySubtitle>> subtitleQueuesByChannel = new Dictionary<string, Queue<CurrentDisplaySubtitle>>();
     private readonly Dictionary<string, CurrentDisplaySubtitle> currentDisplayByChannel = new Dictionary<string, CurrentDisplaySubtitle>();
@@ -52,6 +57,10 @@ public class SubtitleController : MonoBehaviour {
                 if (!string.IsNullOrEmpty(current.englishSubtitle)) {
                     CentralManager.SendObsSubtitles(current.englishSubtitle, "");
                 }
+                
+                // 字幕表示終了イベント発行
+                OnSubtitleEnded?.Invoke(current.japaneseSubtitle);
+                
                 currentDisplayByChannel.Remove(channel);
 
                 // 次があれば表示開始
@@ -127,6 +136,9 @@ public class SubtitleController : MonoBehaviour {
     private void StartDisplayingJapaneseSubtitle(CurrentDisplaySubtitle jpEntry) {
         currentDisplayByChannel[jpEntry.japaneseSubtitle] = jpEntry;
         CentralManager.SendObsSubtitles(jpEntry.japaneseSubtitle, jpEntry.japaneseText);
+        
+        // 字幕表示開始イベント発行
+        OnSubtitleStarted?.Invoke(jpEntry.japaneseSubtitle);
 
         if (!jpEntry.IsFromWipe) {
             string mySubtitle = CentralManager.Instance != null ? CentralManager.Instance.GetMySubtitle() : null;
@@ -165,6 +177,10 @@ public class SubtitleController : MonoBehaviour {
 
         currentDisplayByChannel[existingJp.japaneseSubtitle] = combined;
         CentralManager.SendObsSubtitles(combined.japaneseSubtitle, combined.japaneseText);
+        
+        // 字幕表示開始イベント発行（結合時は新規表示と見做す）
+        OnSubtitleStarted?.Invoke(combined.japaneseSubtitle);
+        
         Debug.Log($"[Subtitle] 日本語字幕結合表示開始: 『{combined.japaneseText}』 残り{combined.remainingDuration:F2}s");
     }
 

@@ -16,7 +16,10 @@
                 <ui:ScrollView name="LipSyncPathsScroll" class="avatar-paths-grid-scroll">
                     <ui:VisualElement name="LipSyncPathsContainer" class="avatar-paths-grid" />
                 </ui:ScrollView>
-                <ui:FloatField name="AvatarScaleInput" label="Avatar Scale" style="margin-top: 20px;" />
+                <ui:VisualElement style="flex-direction: row; gap: 10px; margin-top: 20px;">
+                    <ui:Toggle name="ShowWhileTalkingToggle" label="Show While Talking" style="flex: 1;" />
+                    <ui:FloatField name="AvatarScaleInput" label="Avatar Scale" style="flex: 1;" />
+                </ui:VisualElement>
             </ui:ScrollView>
             <ui:VisualElement class="avatar-dialog__buttons">
                 <ui:Button text="Save" name="SaveButton" class="avatar-dialog__button avatar-dialog__button--primary" />

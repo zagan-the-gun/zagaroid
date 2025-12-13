@@ -67,8 +67,10 @@ public class MainCanvasAvatarController : MonoBehaviour
     private void OnEnable() {
         // CentralManager のイベント購読
         CentralManager.OnActorsChanged += HandleActorsChanged;
-        // リップシンクイベント購読
+        // リップシンクイベント購読（アバター表示開始）
         CentralManager.OnLipSyncLevel += HandleLipSyncLevel;
+        // 字幕終了イベント購読（アバター表示終了）
+        SubtitleController.OnSubtitleEnded += HandleSubtitleEnded;
     }
 
     private void OnDisable() {
@@ -76,6 +78,8 @@ public class MainCanvasAvatarController : MonoBehaviour
         CentralManager.OnActorsChanged -= HandleActorsChanged;
         // リップシンクイベント購読解除
         CentralManager.OnLipSyncLevel -= HandleLipSyncLevel;
+        // 字幕終了イベント購読解除
+        SubtitleController.OnSubtitleEnded -= HandleSubtitleEnded;
     }
 
     private void Start() {
@@ -319,7 +323,13 @@ public class MainCanvasAvatarController : MonoBehaviour
         Debug.Log($"{LogPrefix} CreateAvatarUI: {actor.actorName} lipSyncPaths.Count={actor.avatarLipSyncPaths?.Count ?? 0}");
         InitializeLipSyncState(actor);
         
-        Debug.Log($"{LogPrefix} UI を作成: {actor.actorName} texture={image.texture?.name ?? "null"} color={image.color}");
+        // 初期表示状態を設定
+        // avatarShowWhileTalking が OFF なら常に表示、ON なら最初は非表示（リップシンク時に表示）
+        bool shouldDisplay = !actor.avatarShowWhileTalking;
+        image.enabled = shouldDisplay;
+        meshRenderer.enabled = shouldDisplay;
+        
+        Debug.Log($"{LogPrefix} UI を作成: {actor.actorName} texture={image.texture?.name ?? "null"} color={image.color} shouldDisplay={shouldDisplay} (ShowWhileTalking={actor.avatarShowWhileTalking})");
     }
 
     /// <summary>
@@ -582,7 +592,12 @@ public class MainCanvasAvatarController : MonoBehaviour
             };
             lipSyncStates[actor.actorName] = lipSyncState;
             
-            Debug.Log($"{LogPrefix} リップシンク状態を初期化: {actor.actorName} count={lipSyncTextures.Count} go={lipSyncGo.name}");
+            // リップシンク GameObject の初期表示状態を主アバター画像と同じにする
+            // avatarShowWhileTalking が OFF なら常に表示、ON なら最初は非表示（リップシンク時に表示）
+            bool shouldDisplayLipSync = !actor.avatarShowWhileTalking;
+            meshRenderer.enabled = shouldDisplayLipSync;
+            
+            Debug.Log($"{LogPrefix} リップシンク状態を初期化: {actor.actorName} count={lipSyncTextures.Count} go={lipSyncGo.name} shouldDisplay={shouldDisplayLipSync} (ShowWhileTalking={actor.avatarShowWhileTalking})") ;
         } else {
             Debug.LogWarning($"{LogPrefix} アバター UI が見つかりません: {actor.actorName}");
             lipSyncStates.Remove(actor.actorName);
@@ -628,6 +643,89 @@ public class MainCanvasAvatarController : MonoBehaviour
             kvp.Value.lastLipLevelTimeUnscaled = Time.unscaledTime;
             Debug.Log($"{LogPrefix} HandleLipSyncLevel: {kvp.Key} level={level01:F4}");
         }
+        
+        // アバターを表示（リップシンクイベントが来た = 発話中）
+        ShowAvatarsIfNeeded();
+    }
+    
+    /// <summary>
+    /// 字幕終了時のハンドラ（アバター非表示）
+    /// </summary>
+    private void HandleSubtitleEnded(string channel) {
+        Debug.Log($"{LogPrefix} 字幕表示終了: {channel}");
+        HideAvatarsIfNeeded();
+    }
+    
+    /// <summary>
+    /// avatarShowWhileTalking が ON なアクターのアバターを表示
+    /// 顔画像とリップシンク画像を同期して表示
+    /// </summary>
+    private void ShowAvatarsIfNeeded() {
+        foreach (var actor in cachedActors) {
+            if (!actor.avatarShowWhileTalking) continue; // OFF なら対象外
+            
+            if (actorAvatarUIMap.TryGetValue(actor.actorName, out var image)) {
+                // 顔画像を表示
+                image.enabled = true;
+                
+                // アニメーション Mesh Renderer を表示
+                if (animationStates.TryGetValue(actor.actorName, out var animState)) {
+                    if (animState.meshRenderer != null) {
+                        animState.meshRenderer.enabled = true;
+                    }
+                }
+                
+                // リップシンク画像を表示
+                if (lipSyncStates.TryGetValue(actor.actorName, out var lipState)) {
+                    if (lipState.lipSyncGameObject != null) {
+                        lipState.lipSyncGameObject.SetActive(true);
+                        // リップシンク Mesh Renderer も有効にする
+                        var lipMeshRenderer = lipState.lipSyncGameObject.GetComponent<MeshRenderer>();
+                        if (lipMeshRenderer != null) {
+                            lipMeshRenderer.enabled = true;
+                        }
+                    }
+                }
+                
+                Debug.Log($"{LogPrefix} アバター表示: {actor.actorName}");
+            }
+        }
+    }
+    
+    /// <summary>
+    /// avatarShowWhileTalking が ON なアクターのアバターを非表示
+    /// 顔画像とリップシンク画像を同期して非表示
+    /// </summary>
+    private void HideAvatarsIfNeeded() {
+        foreach (var actor in cachedActors) {
+            if (!actor.avatarShowWhileTalking) continue; // OFF なら対象外
+            
+            if (actorAvatarUIMap.TryGetValue(actor.actorName, out var image)) {
+                // 顔画像を非表示
+                image.enabled = false;
+                
+                // アニメーション Mesh Renderer を非表示
+                if (animationStates.TryGetValue(actor.actorName, out var animState)) {
+                    if (animState.meshRenderer != null) {
+                        animState.meshRenderer.enabled = false;
+                    }
+                }
+                
+                // リップシンク画像を非表示
+                if (lipSyncStates.TryGetValue(actor.actorName, out var lipState)) {
+                    if (lipState.lipSyncGameObject != null) {
+                        lipState.lipSyncGameObject.SetActive(false);
+                        // リップシンク Mesh Renderer も無効にする
+                        var lipMeshRenderer = lipState.lipSyncGameObject.GetComponent<MeshRenderer>();
+                        if (lipMeshRenderer != null) {
+                            lipMeshRenderer.enabled = false;
+                        }
+                    }
+                }
+                
+                Debug.Log($"{LogPrefix} アバター非表示: {actor.actorName}");
+            }
+        }
     }
 
     /// <summary>
@@ -669,4 +767,5 @@ public class MainCanvasAvatarController : MonoBehaviour
         
         return mesh;
     }
+    
 }
