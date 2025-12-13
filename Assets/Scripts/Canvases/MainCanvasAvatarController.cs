@@ -28,6 +28,7 @@ public class MainCanvasAvatarController : MonoBehaviour
 
     private const string LogPrefix = "[MainCanvasAvatarController]";
     private Dictionary<string, RawImage> actorAvatarUIMap = new Dictionary<string, RawImage>(); // Actor名 → Image
+    private Dictionary<string, MeshRenderer> avatarMeshRendererMap = new Dictionary<string, MeshRenderer>(); // Actor名 → 基本メッシュ
     private List<ActorConfig> cachedActors = new List<ActorConfig>();
     
     /// <summary>
@@ -152,6 +153,7 @@ public class MainCanvasAvatarController : MonoBehaviour
                 
                 Destroy(image.gameObject);
                 actorAvatarUIMap.Remove(actorName);
+                avatarMeshRendererMap.Remove(actorName);
                 animationStates.Remove(actorName);
                 lipSyncStates.Remove(actorName);
             }
@@ -269,6 +271,7 @@ public class MainCanvasAvatarController : MonoBehaviour
         // レンダリング設定
         meshRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         meshRenderer.receiveShadows = false;
+        avatarMeshRendererMap[actor.actorName] = meshRenderer;
 
         // RawImageは表示しないが、ドラッグ検知のために有効のままにする
         // 色を完全透明にして、raycastTargetをtrueに設定（UIDragMoveがドラッグを検知するため）
@@ -632,15 +635,15 @@ public class MainCanvasAvatarController : MonoBehaviour
     /// アクティブなアクターすべてに同じレベルを適用
     /// </summary>
     private void HandleLipSyncLevel(float level01) {
-        if (lipSyncStates.Count == 0) {
-            return; // リップシンク状態がない場合はスキップ
-        }
-        
-        foreach (var kvp in lipSyncStates) {
-            kvp.Value.mouthOpen01 = Mathf.Clamp01(level01);
-            kvp.Value.hasLipLevel = true;
-            kvp.Value.lastLipLevelTimeUnscaled = Time.unscaledTime;
-            Debug.Log($"{LogPrefix} HandleLipSyncLevel: {kvp.Key} level={level01:F4}");
+        // リップシンク画像が無くても「Show with Talk」で表示できるよう、
+        // 口形状の更新と表示制御を分離する
+        if (lipSyncStates.Count > 0) {
+            foreach (var kvp in lipSyncStates) {
+                kvp.Value.mouthOpen01 = Mathf.Clamp01(level01);
+                kvp.Value.hasLipLevel = true;
+                kvp.Value.lastLipLevelTimeUnscaled = Time.unscaledTime;
+                Debug.Log($"{LogPrefix} HandleLipSyncLevel: {kvp.Key} level={level01:F4}");
+            }
         }
         
         // アバターを表示（リップシンクイベントが来た = 発話中）
@@ -663,29 +666,7 @@ public class MainCanvasAvatarController : MonoBehaviour
         foreach (var actor in cachedActors) {
             if (!actor.avatarShowWithTalk) continue; // OFF なら対象外
             
-            if (actorAvatarUIMap.TryGetValue(actor.actorName, out var image)) {
-                // 顔画像を表示
-                image.enabled = true;
-                
-                // アニメーション Mesh Renderer を表示
-                if (animationStates.TryGetValue(actor.actorName, out var animState)) {
-                    if (animState.meshRenderer != null) {
-                        animState.meshRenderer.enabled = true;
-                    }
-                }
-                
-                // リップシンク画像を表示
-                if (lipSyncStates.TryGetValue(actor.actorName, out var lipState)) {
-                    if (lipState.lipSyncGameObject != null) {
-                        lipState.lipSyncGameObject.SetActive(true);
-                        // リップシンク Mesh Renderer も有効にする
-                        var lipMeshRenderer = lipState.lipSyncGameObject.GetComponent<MeshRenderer>();
-                        if (lipMeshRenderer != null) {
-                            lipMeshRenderer.enabled = true;
-                        }
-                    }
-                }
-                
+            if (SetAvatarVisibility(actor, true)) {
                 Debug.Log($"{LogPrefix} アバター表示: {actor.actorName}");
             }
         }
@@ -699,29 +680,7 @@ public class MainCanvasAvatarController : MonoBehaviour
         foreach (var actor in cachedActors) {
             if (!actor.avatarShowWithTalk) continue; // OFF なら対象外
             
-            if (actorAvatarUIMap.TryGetValue(actor.actorName, out var image)) {
-                // 顔画像を非表示
-                image.enabled = false;
-                
-                // アニメーション Mesh Renderer を非表示
-                if (animationStates.TryGetValue(actor.actorName, out var animState)) {
-                    if (animState.meshRenderer != null) {
-                        animState.meshRenderer.enabled = false;
-                    }
-                }
-                
-                // リップシンク画像を非表示
-                if (lipSyncStates.TryGetValue(actor.actorName, out var lipState)) {
-                    if (lipState.lipSyncGameObject != null) {
-                        lipState.lipSyncGameObject.SetActive(false);
-                        // リップシンク Mesh Renderer も無効にする
-                        var lipMeshRenderer = lipState.lipSyncGameObject.GetComponent<MeshRenderer>();
-                        if (lipMeshRenderer != null) {
-                            lipMeshRenderer.enabled = false;
-                        }
-                    }
-                }
-                
+            if (SetAvatarVisibility(actor, false)) {
                 Debug.Log($"{LogPrefix} アバター非表示: {actor.actorName}");
             }
         }
@@ -765,6 +724,50 @@ public class MainCanvasAvatarController : MonoBehaviour
         mesh.RecalculateNormals();
         
         return mesh;
+    }
+
+    /// <summary>
+    /// アバター表示用 MeshRenderer を取得（複数枚/単枚を意識せずに扱うためのヘルパー）
+    /// </summary>
+    private bool TryGetAvatarRenderer(string actorName, out MeshRenderer renderer) {
+        renderer = null;
+        if (animationStates.TryGetValue(actorName, out var animState) && animState.meshRenderer != null) {
+            renderer = animState.meshRenderer;
+            return true;
+        }
+        if (avatarMeshRendererMap.TryGetValue(actorName, out var baseRenderer) && baseRenderer != null) {
+            renderer = baseRenderer;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// アバター（顔＋リップシンク）の表示・非表示を一括で切り替える
+    /// </summary>
+    private bool SetAvatarVisibility(ActorConfig actor, bool visible) {
+        bool changed = false;
+        
+        if (actorAvatarUIMap.TryGetValue(actor.actorName, out var image)) {
+            image.enabled = visible;
+            changed = true;
+        }
+        
+        if (TryGetAvatarRenderer(actor.actorName, out var renderer)) {
+            renderer.enabled = visible;
+            changed = true;
+        }
+        
+        if (lipSyncStates.TryGetValue(actor.actorName, out var lipState) && lipState.lipSyncGameObject != null) {
+            lipState.lipSyncGameObject.SetActive(visible);
+            var lipMeshRenderer = lipState.lipSyncGameObject.GetComponent<MeshRenderer>();
+            if (lipMeshRenderer != null) {
+                lipMeshRenderer.enabled = visible;
+            }
+            changed = true;
+        }
+        
+        return changed;
     }
     
 }
