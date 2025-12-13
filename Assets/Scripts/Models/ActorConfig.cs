@@ -22,5 +22,5 @@ public class ActorConfig
     public float avatarAnimationWaitSeconds = 4f; // 1サイクル完了後の待機時間（秒）
     
     // アバター表示制御
-    public bool avatarShowWhileTalking = false;   // 発話中のみアバターを表示
+    public bool avatarShowWithTalk = false;   // 発話中のみアバターを表示
 }

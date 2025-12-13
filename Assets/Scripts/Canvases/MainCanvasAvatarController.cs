@@ -323,12 +323,12 @@ public class MainCanvasAvatarController : MonoBehaviour
         InitializeLipSyncState(actor);
         
         // 初期表示状態を設定
-        // avatarShowWhileTalking が OFF なら常に表示、ON なら最初は非表示（リップシンク時に表示）
-        bool shouldDisplay = !actor.avatarShowWhileTalking;
+        // avatarShowWithTalk が OFF なら常に表示、ON なら最初は非表示（リップシンク時に表示）
+        bool shouldDisplay = !actor.avatarShowWithTalk;
         image.enabled = shouldDisplay;
         meshRenderer.enabled = shouldDisplay;
         
-        Debug.Log($"{LogPrefix} UI を作成: {actor.actorName} texture={image.texture?.name ?? "null"} color={image.color} shouldDisplay={shouldDisplay} (ShowWhileTalking={actor.avatarShowWhileTalking})");
+        Debug.Log($"{LogPrefix} UI を作成: {actor.actorName} texture={image.texture?.name ?? "null"} color={image.color} shouldDisplay={shouldDisplay} (ShowWithTalk={actor.avatarShowWithTalk})");
     }
 
     /// <summary>
@@ -592,11 +592,11 @@ public class MainCanvasAvatarController : MonoBehaviour
             lipSyncStates[actor.actorName] = lipSyncState;
             
             // リップシンク GameObject の初期表示状態を主アバター画像と同じにする
-            // avatarShowWhileTalking が OFF なら常に表示、ON なら最初は非表示（リップシンク時に表示）
-            bool shouldDisplayLipSync = !actor.avatarShowWhileTalking;
+            // avatarShowWithTalk が OFF なら常に表示、ON なら最初は非表示（リップシンク時に表示）
+            bool shouldDisplayLipSync = !actor.avatarShowWithTalk;
             meshRenderer.enabled = shouldDisplayLipSync;
             
-            Debug.Log($"{LogPrefix} リップシンク状態を初期化: {actor.actorName} count={lipSyncTextures.Count} go={lipSyncGo.name} shouldDisplay={shouldDisplayLipSync} (ShowWhileTalking={actor.avatarShowWhileTalking})") ;
+            Debug.Log($"{LogPrefix} リップシンク状態を初期化: {actor.actorName} count={lipSyncTextures.Count} go={lipSyncGo.name} shouldDisplay={shouldDisplayLipSync} (ShowWithTalk={actor.avatarShowWithTalk})") ;
         } else {
             Debug.LogWarning($"{LogPrefix} アバター UI が見つかりません: {actor.actorName}");
             lipSyncStates.Remove(actor.actorName);
@@ -656,12 +656,12 @@ public class MainCanvasAvatarController : MonoBehaviour
     }
     
     /// <summary>
-    /// avatarShowWhileTalking が ON なアクターのアバターを表示
+    /// avatarShowWithTalk が ON なアクターのアバターを表示
     /// 顔画像とリップシンク画像を同期して表示
     /// </summary>
     private void ShowAvatarsIfNeeded() {
         foreach (var actor in cachedActors) {
-            if (!actor.avatarShowWhileTalking) continue; // OFF なら対象外
+            if (!actor.avatarShowWithTalk) continue; // OFF なら対象外
             
             if (actorAvatarUIMap.TryGetValue(actor.actorName, out var image)) {
                 // 顔画像を表示
@@ -692,12 +692,12 @@ public class MainCanvasAvatarController : MonoBehaviour
     }
     
     /// <summary>
-    /// avatarShowWhileTalking が ON なアクターのアバターを非表示
+    /// avatarShowWithTalk が ON なアクターのアバターを非表示
     /// 顔画像とリップシンク画像を同期して非表示
     /// </summary>
     private void HideAvatarsIfNeeded() {
         foreach (var actor in cachedActors) {
-            if (!actor.avatarShowWhileTalking) continue; // OFF なら対象外
+            if (!actor.avatarShowWithTalk) continue; // OFF なら対象外
             
             if (actorAvatarUIMap.TryGetValue(actor.actorName, out var image)) {
                 // 顔画像を非表示

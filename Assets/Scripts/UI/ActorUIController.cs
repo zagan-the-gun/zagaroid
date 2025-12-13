@@ -505,12 +505,12 @@ public class ActorUIController : MonoBehaviour
             );
         }
 
-        // Show While Talking トグルを設定
-        var showWhileTalkingToggle = overlay.Q<Toggle>("ShowWhileTalkingToggle");
-        if (showWhileTalkingToggle != null) {
-            showWhileTalkingToggle.value = config.avatarShowWhileTalking;
-            showWhileTalkingToggle.RegisterValueChangedCallback(evt => {
-                config.avatarShowWhileTalking = evt.newValue;
+        // Show with Talk トグルを設定
+        var showWithTalkToggle = overlay.Q<Toggle>("ShowWithTalkToggle");
+        if (showWithTalkToggle != null) {
+            showWithTalkToggle.value = config.avatarShowWithTalk;
+            showWithTalkToggle.RegisterValueChangedCallback(evt => {
+                config.avatarShowWithTalk = evt.newValue;
             });
         }
 

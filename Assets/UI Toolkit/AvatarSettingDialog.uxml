@@ -17,7 +17,7 @@
                     <ui:VisualElement name="LipSyncPathsContainer" class="avatar-paths-grid" />
                 </ui:ScrollView>
                 <ui:VisualElement style="flex-direction: row; gap: 10px; margin-top: 20px;">
-                    <ui:Toggle name="ShowWhileTalkingToggle" label="Show While Talking" style="flex: 1;" />
+                    <ui:Toggle name="ShowWithTalkToggle" label="Show with Talk" style="flex: 1;" />
                     <ui:FloatField name="AvatarScaleInput" label="Avatar Scale" style="flex: 1;" />
                 </ui:VisualElement>
             </ui:ScrollView>
