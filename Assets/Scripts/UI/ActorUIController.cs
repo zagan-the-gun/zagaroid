@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.UIElements;
+using SFB; // StandaloneFileBrowser for Windows file dialog
 
 public class ActorUIController : MonoBehaviour
 {
@@ -671,6 +672,7 @@ public class ActorUIController : MonoBehaviour
 
     private void OpenFileDialog(Action<string> onPathSelected) {
         #if UNITY_EDITOR
+        // Unity Editor では UnityEditor.EditorUtility.OpenFilePanel を使用
         string selectedPath = UnityEditor.EditorUtility.OpenFilePanel(
             "Select Image File",
             System.IO.Path.GetDirectoryName(Application.persistentDataPath),
@@ -680,8 +682,27 @@ public class ActorUIController : MonoBehaviour
             onPathSelected(selectedPath);
         }
         #else
-        // ランタイムではファイルダイアログが使用できないため、パス入力で対応
-        Debug.Log($"[ActorUI] File dialog not available in runtime. Please manually enter the file path.");
+        // スタンドアロンビルドでは StandaloneFileBrowser を使用
+        var extensions = new ExtensionFilter[] {
+            new ExtensionFilter("Image Files", "png", "jpg", "jpeg", "gif", "bmp"),
+            new ExtensionFilter("All Files", "*")
+        };
+        
+        string defaultPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyPictures);
+        if (string.IsNullOrEmpty(defaultPath)) {
+            defaultPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Desktop);
+        }
+        
+        string[] paths = StandaloneFileBrowser.OpenFilePanel(
+            "Select Image File",
+            defaultPath,
+            extensions,
+            false
+        );
+        
+        if (paths.Length > 0 && !string.IsNullOrEmpty(paths[0])) {
+            onPathSelected(paths[0]);
+        }
         #endif
     }
 

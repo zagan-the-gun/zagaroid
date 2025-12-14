@@ -170,7 +170,8 @@ public class FaceAnimatorController : MonoBehaviour {
         mouthImage.sprite = mouthFrames[idx];
     }
 
-    private void HandleLipSyncLevel(float level01) {
+    private void HandleLipSyncLevel(float level01, string actorName) {
+        // 旧UI用コンポーネント：actorName指定を無視して全体に適用（後方互換）
         SetMouthOpen01(level01);
     }
 

@@ -631,24 +631,39 @@ public class MainCanvasAvatarController : MonoBehaviour
     }
 
     /// <summary>
-    /// リップシンクレベルを受信（CentralManagerから通知）
-    /// アクティブなアクターすべてに同じレベルを適用
+    /// リップシンクレベルを受信（CentralManagerから通知、複数話者対応）
     /// </summary>
-    private void HandleLipSyncLevel(float level01) {
-        // リップシンク画像が無くても「Show with Talk」で表示できるよう、
-        // 口形状の更新と表示制御を分離する
+    private void HandleLipSyncLevel(float level01, string actorName) {
+        // actorNameが指定されている場合は該当アクターを優先（リップシンク画像が無くても表示させる）
+        if (!string.IsNullOrEmpty(actorName)) {
+            if (lipSyncStates.TryGetValue(actorName, out var lipState)) {
+                lipState.mouthOpen01 = Mathf.Clamp01(level01);
+                lipState.hasLipLevel = true;
+                lipState.lastLipLevelTimeUnscaled = Time.unscaledTime;
+                Debug.Log($"{LogPrefix} HandleLipSyncLevel: {actorName} level={level01:F4}");
+            }
+
+            var actor = CentralManager.Instance?.GetActorByName(actorName);
+            if (actor == null) {
+                Debug.LogWarning($"{LogPrefix} HandleLipSyncLevel: actorName={actorName} に対応するActorが見つかりません");
+                return; // 存在しない場合は他アクターを巻き込まず終了
+            }
+
+            // 該当アクターのアバターを表示（発話中）。リップシンク画像がなくても表示だけは行う。
+            ShowAvatarsIfNeeded(actor);
+            return;
+        }
+
+        // actorNameが未指定の場合は全アクターに適用（後方互換）
         if (lipSyncStates.Count > 0) {
             foreach (var kvp in lipSyncStates) {
                 kvp.Value.mouthOpen01 = Mathf.Clamp01(level01);
                 kvp.Value.hasLipLevel = true;
                 kvp.Value.lastLipLevelTimeUnscaled = Time.unscaledTime;
-                Debug.Log($"{LogPrefix} HandleLipSyncLevel: {kvp.Key} level={level01:F4}");
             }
         }
-        
-        // アバターを表示（リップシンクイベントが来た = 発話中）
-        var speakingActor = ResolveCurrentSpeakingActor();
-        ShowAvatarsIfNeeded(speakingActor);
+        var fallbackActor = ResolveCurrentSpeakingActor();
+        ShowAvatarsIfNeeded(fallbackActor);
     }
     
     /// <summary>
@@ -656,7 +671,12 @@ public class MainCanvasAvatarController : MonoBehaviour
     /// </summary>
     private void HandleSubtitleEnded(string channel) {
         Debug.Log($"{LogPrefix} 字幕表示終了: {channel}");
-        HideAvatarsIfNeeded();
+        var actor = ResolveActorBySubtitleChannel(channel);
+        if (actor == null) {
+            Debug.LogWarning($"{LogPrefix} 字幕チャンネルからアクターを特定できません: {channel}");
+            return; // 不明なチャンネルでは何もしない（他アクターを巻き込まない）
+        }
+        HideAvatarsIfNeeded(actor);
     }
     
     /// <summary>
@@ -679,8 +699,17 @@ public class MainCanvasAvatarController : MonoBehaviour
     /// avatarShowWithTalk が ON なアクターのアバターを非表示
     /// 顔画像とリップシンク画像を同期して非表示
     /// </summary>
-    private void HideAvatarsIfNeeded() {
-        ShowAvatarsIfNeeded(null);
+    private void HideAvatarsIfNeeded(ActorConfig targetActor = null) {
+        foreach (var actor in cachedActors) {
+            if (!actor.avatarShowWithTalk) continue; // OFF なら対象外
+
+            // targetActor が指定されていればそのアクターのみを非表示
+            if (targetActor != null && actor.actorName != targetActor.actorName) continue;
+
+            if (SetAvatarVisibility(actor, false)) {
+                Debug.Log($"{LogPrefix} アバター非表示: {actor.actorName}");
+            }
+        }
     }
 
     /// <summary>
@@ -697,6 +726,23 @@ public class MainCanvasAvatarController : MonoBehaviour
             Debug.LogWarning($"{LogPrefix} ShowWithTalk 対象アクターが見つかりません: targetUserId={targetUserId}");
         }
         return actor;
+    }
+
+    /// <summary>
+    /// 字幕チャンネル名から対応するアクターを特定
+    /// 既定: 「{actorName}_subtitle」の命名規則
+    /// </summary>
+    private ActorConfig ResolveActorBySubtitleChannel(string channel) {
+        if (string.IsNullOrEmpty(channel)) return null;
+
+        const string suffix = "_subtitle";
+        if (channel.EndsWith(suffix)) {
+            string actorName = channel.Substring(0, channel.Length - suffix.Length);
+            return cachedActors.FirstOrDefault(a => a.actorName == actorName);
+        }
+
+        // 命名規則外は未対応（将来の拡張余地）
+        return null;
     }
 
     /// <summary>

@@ -626,11 +626,11 @@ public class CentralManager : MonoBehaviour {
         OnObsSubtitlesSend?.Invoke(subtitle, subtitleText);
     }
 
-    // リップシンク用イベント
-    public delegate void LipSyncLevelDelegate(float level01);
+    // リップシンク用イベント（複数話者対応）
+    public delegate void LipSyncLevelDelegate(float level01, string actorName);
     public static event LipSyncLevelDelegate OnLipSyncLevel;
-    public static void SendLipSyncLevel(float level01) {
-        OnLipSyncLevel?.Invoke(level01);
+    public static void SendLipSyncLevel(float level01, string actorName = null) {
+        OnLipSyncLevel?.Invoke(level01, actorName);
     }
 
     public delegate void SpeakingChangedDelegate(bool speaking);

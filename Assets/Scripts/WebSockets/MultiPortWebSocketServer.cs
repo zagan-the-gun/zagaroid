@@ -365,6 +365,60 @@ public class MultiPortWebSocketServer : MonoBehaviour {
     }
 
     /// <summary>
+    /// 音声認識リクエストを送信（ReazonSpeech向け）
+    /// </summary>
+    /// <param name="audioData">音声データ（float配列）</param>
+    /// <param name="speaker">話者名</param>
+    /// <param name="sampleRate">サンプリングレート（デフォルト: 16000）</param>
+    public void SendAudioRecognitionRequest(float[] audioData, string speaker, int sampleRate = 16000) {
+        try {
+            if (audioData == null || audioData.Length == 0) {
+                Debug.LogWarning("[MCP] 音声データが空です");
+                return;
+            }
+
+            // float[] → PCM16LE → Base64
+            byte[] pcmBytes = ConvertFloatToPcm16Le(audioData);
+            string audioDataB64 = System.Convert.ToBase64String(pcmBytes);
+
+            // MCP JSON-RPC 2.0 リクエスト構築
+            var requestObj = new {
+                jsonrpc = "2.0",
+                method = "recognize_audio",
+                @params = new {
+                    speaker = speaker ?? "unknown",
+                    audio_data = audioDataB64,
+                    sample_rate = sampleRate,
+                    channels = 1,
+                    format = "pcm16le"
+                }
+            };
+
+            string jsonMessage = JsonConvert.SerializeObject(requestObj, Formatting.None);
+            var host = wss1.WebSocketServices["/"];
+            host.Sessions.Broadcast(jsonMessage);
+            
+            Debug.Log($"[MCP] 音声認識リクエスト送信: speaker={speaker}, samples={audioData.Length}, duration={audioData.Length / (float)sampleRate:F2}s");
+        } catch (Exception ex) {
+            Debug.LogError($"[MCP] 音声認識リクエスト送信エラー: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// float配列をPCM16LEバイト配列に変換
+    /// </summary>
+    private byte[] ConvertFloatToPcm16Le(float[] audioData) {
+        byte[] pcmBytes = new byte[audioData.Length * 2];
+        for (int i = 0; i < audioData.Length; i++) {
+            float sample = Mathf.Clamp(audioData[i], -1f, 1f);
+            short pcmValue = (short)(sample * 32767f);
+            pcmBytes[i * 2] = (byte)(pcmValue & 0xFF);
+            pcmBytes[i * 2 + 1] = (byte)((pcmValue >> 8) & 0xFF);
+        }
+        return pcmBytes;
+    }
+
+    /// <summary>
     /// 翻訳クライアントの接続状態を設定（TranslationServiceから呼ばれる）
     /// </summary>
     public static void SetTranslationClientConnectionState(bool connected) {

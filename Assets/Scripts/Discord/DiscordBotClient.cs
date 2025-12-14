@@ -75,8 +75,6 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private string discordToken;
     private string guildId;
     private string voiceChannelId;
-    private string targetUserId;
-    private string inputName = "Discord";
     private string witaiToken;
     // Bot自身の情報
     private string botUserId;
@@ -113,9 +111,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private IOpusDecoder _opusDecoder;
     private readonly object _opusDecodeLock = new object();
     private HttpClient _httpClient;
-    // 無音検出によるバッファリング
-    private DiscordVoiceNetworkManager _audioBuffer;
-    private bool _targetUserSpeaking = false;
+    // 複数話者対応：actor nameごとに音声バッファを管理
+    private Dictionary<string, DiscordVoiceNetworkManager> _audioBuffersByActorName = new Dictionary<string, DiscordVoiceNetworkManager>();
+    private readonly object _audioBuffersLock = new object();
+    // Discord User ID → Actor name マッピング（起動時にキャッシュ）
+    private Dictionary<string, string> _discordUserIdToActorName = new Dictionary<string, string>();
     
     // 役割集約により、プレロールはUDP側に移譲（このクラスでは保持しない）
     
@@ -183,23 +183,66 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// <summary>
     /// 音声パケット受信イベントのハンドラー
     /// </summary>
+    private int _audioPacketCount = 0;
+    
     private void OnAudioPacketReceived(byte[] opusData, uint ssrc, string userId) {
         try {
-            // UDP層でuserId付与済み。ここでは対象ユーザのみ処理
-            if (!string.IsNullOrEmpty(userId) && userId == targetUserId) {
-                _ = Task.Run(async () => {
-                    try {
-                        var pcmData = DecodeOpusToPcm(opusData);
-                        if (pcmData != null) {
-                            _audioBuffer?.AddAudioData(pcmData);
-                        }
-                    } catch (Exception ex) {
-                        LogMessage($"Opus data processing error: {ex.Message}", LogLevel.Error);
-                    }
-                });
+            if (string.IsNullOrEmpty(userId)) return;
+            
+            // Discord User ID → Actor name マッピングから高速lookup
+            if (!_discordUserIdToActorName.TryGetValue(userId, out string actorName)) {
+                // 登録されていないユーザー（対象外）
+                return;
             }
+            
+            // デバッグ: 100パケットに1回ログ出力
+            _audioPacketCount++;
+            if (_audioPacketCount % 100 == 0) {
+                LogMessage($"🎧 Audio packet: userId={userId}, actorName={actorName}, ssrc={ssrc}, size={opusData?.Length ?? 0}", LogLevel.Info);
+            }
+            
+            // Opus → PCM 変換して音声バッファに追加
+            _ = Task.Run(async () => {
+                try {
+                    var pcmData = DecodeOpusToPcm(opusData);
+                    if (pcmData != null) {
+                        var buffer = GetOrCreateAudioBuffer(actorName);
+                        buffer?.AddAudioData(pcmData);
+                    }
+                } catch (Exception ex) {
+                    LogMessage($"Opus data processing error (actor={actorName}): {ex.Message}", LogLevel.Error);
+                }
+            });
         } catch (Exception ex) {
             LogMessage($"Audio packet processing error: {ex.Message}", LogLevel.Error);
+        }
+    }
+    
+    /// <summary>
+    /// actor nameに対応する音声バッファを取得または作成
+    /// </summary>
+    private DiscordVoiceNetworkManager GetOrCreateAudioBuffer(string actorName) {
+        if (string.IsNullOrEmpty(actorName)) return null;
+        
+        lock (_audioBuffersLock) {
+            if (!_audioBuffersByActorName.ContainsKey(actorName)) {
+                // 新しいバッファを作成
+                var buffer = new DiscordVoiceNetworkManager(
+                    DiscordConstants.SILENCE_THRESHOLD,
+                    DiscordConstants.SILENCE_DURATION_MS,
+                    DiscordConstants.WITA_API_SAMPLE_RATE, // 16kHz
+                    DiscordConstants.WITA_API_CHANNELS,    // モノラル
+                    EnqueueMainThreadAction,
+                    actorName // actor nameを渡す
+                );
+                
+                // イベントハンドラーを設定
+                buffer.OnAudioBufferReady += OnAudioBufferReady;
+                
+                _audioBuffersByActorName[actorName] = buffer;
+                LogMessage($"🎤 新しい音声バッファを作成: actorName={actorName}", LogLevel.Info);
+            }
+            return _audioBuffersByActorName[actorName];
         }
     }
     
@@ -218,11 +261,15 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     private void OnDestroy() {
         LogMessage("🗑️ DiscordBotClient being destroyed - performing cleanup");
         
-        // AudioBufferのクリーンアップ
-        if (_audioBuffer != null) {
-            _audioBuffer.OnAudioBufferReady -= OnAudioBufferReady;
-            _audioBuffer.ClearBuffer();
-            _audioBuffer = null;
+        // AudioBuffersのクリーンアップ（複数話者対応）
+        lock (_audioBuffersLock) {
+            foreach (var kvp in _audioBuffersByActorName) {
+                if (kvp.Value != null) {
+                    kvp.Value.OnAudioBufferReady -= OnAudioBufferReady;
+                    kvp.Value.ClearBuffer();
+                }
+            }
+            _audioBuffersByActorName.Clear();
         }
         StopBot();
     }
@@ -236,21 +283,10 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             _opusDecoder = OpusCodecFactory.CreateDecoder(DiscordConstants.SAMPLE_RATE_48K, DiscordConstants.CHANNELS_STEREO);
             LogMessage("Opus decoder initialized");
             
-            // AudioBufferを初期化
-            _audioBuffer = new DiscordVoiceNetworkManager(
-                DiscordConstants.SILENCE_THRESHOLD,
-                DiscordConstants.SILENCE_DURATION_MS,
-                DiscordConstants.WITA_API_SAMPLE_RATE, // 16kHz
-                DiscordConstants.WITA_API_CHANNELS,    // モノラル
-                EnqueueMainThreadAction // コールバック関数を渡す
-            );
-            
-            // AudioBufferのイベントハンドラーを設定
-            _audioBuffer.OnAudioBufferReady += OnAudioBufferReady;
-            
-            LogMessage($"AudioBuffer initialized with silence threshold: {DiscordConstants.SILENCE_THRESHOLD}, duration: {DiscordConstants.SILENCE_DURATION_MS}ms");
+            // AudioBufferは複数話者対応のため、GetOrCreateAudioBuffer()で動的に作成
+            LogMessage($"AudioBuffer: 複数話者対応モード（動的作成）");
             return true;
-        }, "Opus decoder and AudioBuffer initialization", LogError);
+        }, "Opus decoder initialization", LogError);
     }
     
     /// <summary>
@@ -323,25 +359,23 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     }
     
     /// <summary>
-    /// AudioBufferから音声データが準備完了した時の処理
+    /// AudioBufferから音声データが準備完了した時の処理（複数話者対応）
     /// </summary>
-    private void OnAudioBufferReady(float[] audioData, int sampleRate, int channels) {        
-        // STT（MenZ字幕AI）選択時は字幕AI WebSocket へセグメント送信（FlushはRWC側が自動）
-        if (DiscordBotClient.IsMenZMode()) {
+    private void OnAudioBufferReady(float[] audioData, int sampleRate, int channels, string actorName) {
+        bool isMenZMode = DiscordBotClient.IsMenZMode();
+        LogMessage($"🎤 Audio buffer ready: actorName={actorName}, samples={audioData.Length}, isMenZMode={isMenZMode}", LogLevel.Info);
+        
+        // STT（MenZ字幕AI）選択時は MCP経由で音声認識リクエストを送信
+        if (isMenZMode) {
             // STTモードでもローカルでPCMデバッグ再生できるようにする
-            PlayPcmForDebug(audioData, "Combined Audio");
+            PlayPcmForDebug(audioData, $"Audio ({actorName})");
             EnqueueMainThreadAction(() => {
-                var ws = RealtimeWebSocketClient.Instance ?? FindObjectOfType<RealtimeWebSocketClient>();
-                if (ws == null) {
-                    var go = new GameObject("RealtimeWebSocketClient");
-                    ws = go.AddComponent<RealtimeWebSocketClient>();
-                }
-                // 送信可否を判定してフェイルオーバー
-                if (ws.CanSend) {
-                    ws.EnqueueFloatSegment(audioData);
+                // MultiPortWebSocketServer経由で音声認識リクエストを送信
+                if (MultiPortWebSocketServer.Instance != null) {
+                    MultiPortWebSocketServer.Instance.SendAudioRecognitionRequest(audioData, actorName, sampleRate);
                 } else {
-                    // 再接続を促しつつ、今回セグメントはWit.aiへフォールバック
-                    ws.TryEnsureConnecting();
+                    LogMessage("MultiPortWebSocketServerが見つかりません。音声認識リクエストを送信できません。", LogLevel.Warning);
+                    // フォールバック: WitAIで処理
                     StartCoroutine(ProcessAudioCoroutine(audioData));
                 }
             });
@@ -349,9 +383,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         }
 
         // WitAI選択時は従来フロー（デバッグ再生→音声認識）
-        PlayPcmForDebug(audioData, "Combined Audio");
+        LogMessage($"WitAIモードで音声認識を実行します (actor={actorName})", LogLevel.Info);
+        PlayPcmForDebug(audioData, $"Audio ({actorName})");
         StartCoroutine(ProcessAudioCoroutine(audioData));
     }
+    
 
     /// <summary>
     /// 音声認識処理（簡素化版）
@@ -364,7 +400,8 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         }
         
         if (task.IsCompletedSuccessfully && !string.IsNullOrEmpty(task.Result)) {
-            OnVoiceRecognized?.Invoke(inputName, task.Result);
+            // WitAI（旧方式）は単一ユーザー用なので固定値を使用
+            OnVoiceRecognized?.Invoke("Discord", task.Result);
         } else if (task.IsFaulted) {
             LogMessage($"Speech recognition error: {task.Exception?.GetBaseException().Message}", LogLevel.Error);
         }
@@ -467,34 +504,32 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     }
 
     /// <summary>
-    /// Voice GatewayのSpeakingメッセージを処理（Discord.js準拠）
+    /// Voice GatewayのSpeakingメッセージを処理（Discord.js準拠、複数話者対応）
     /// </summary>
     private void HandleVoiceSpeaking(bool speaking, uint ssrc, string userId) {
-        LogMessage($"🎤 Speaking event: user_id={userId}, ssrc={ssrc}, speaking={speaking}, target_user_id={targetUserId}", LogLevel.Info);
-        
         if (userId == null) return;
+        
+        // Discord User ID → Actor name マッピング確認
+        if (!_discordUserIdToActorName.TryGetValue(userId, out string actorName)) {
+            // 対象外のユーザー
+            return;
+        }
+        
+        LogMessage($"🎤 Speaking event: user_id={userId}, actorName={actorName}, ssrc={ssrc}, speaking={speaking}", LogLevel.Info);
         
         // SSRCマッピングはUDP層で一元管理
         _voiceUdpManager?.SetSSRCMapping(ssrc, userId);
         
-        if (userId == targetUserId) {
-            LogMessage($"DEAD BEEF 2 HandleVoiceSpeaking", LogLevel.Debug);
-            if (speaking) {
-                LogMessage($"DEAD BEEF 3 HandleVoiceSpeaking", LogLevel.Debug);
-                _targetUserSpeaking = true; // ターゲットユーザーの発話開始
-
-                // プレロールのフラッシュはUDP層で実施済み
-                // VOICE_EVENT 共通プレフィックスで、ターゲットユーザの暗号化方式を明示
-                LogMessage($"[VOICE_EVENT] target_user_id={targetUserId} ssrc={ssrc} encryption_mode={_encryptionMode} secret_key_len={_secretKey?.Length ?? 0}");
-
-                // 発話検出時に顔を表示（VOICE_STATE_UPDATEより先に字幕が出るケースの補完）
-                EnqueueMainThreadAction(() => CentralManager.SetFaceVisible(true));
-            } else {
-                LogMessage($"DEAD BEEF 4 HandleVoiceSpeaking", LogLevel.Debug);
-                _targetUserSpeaking = false; // ターゲットユーザーの発話終了
-                // 発話終了時にバッファされた音声データを処理
-                _audioBuffer?.ProcessBufferedAudio();
-            }
+        if (speaking) {
+            // 発話開始
+            LogMessage($"[VOICE_EVENT] actor={actorName} userId={userId} ssrc={ssrc} encryption_mode={_encryptionMode} secret_key_len={_secretKey?.Length ?? 0}");
+            
+            // 発話検出時に顔を表示
+            EnqueueMainThreadAction(() => CentralManager.SetFaceVisible(true));
+        } else {
+            // 発話終了時にバッファされた音声データを処理
+            var buffer = GetOrCreateAudioBuffer(actorName);
+            buffer?.ProcessBufferedAudio();
         }
     }
 
@@ -843,11 +878,22 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             discordToken = centralManager.GetDiscordToken();
             guildId = centralManager.GetDiscordGuildId();
             voiceChannelId = centralManager.GetDiscordVoiceChannelId();
-            targetUserId = centralManager.GetDiscordTargetUserId();
-            // 入力名はFriendNameに統一（未設定時は "Discord" を使用）
-            inputName = centralManager.GetFriendName();
-            if (string.IsNullOrEmpty(inputName)) inputName = "Discord";
             witaiToken = centralManager.GetDiscordWitaiToken();
+            
+            // friend Actorの Discord User ID → Actor name マッピングを構築
+            _discordUserIdToActorName.Clear();
+            var friendActors = centralManager.GetActors()?.Where(a => a.type == "friend" && !string.IsNullOrEmpty(a.discordUserId)).ToList();
+            if (friendActors != null) {
+                foreach (var actor in friendActors) {
+                    _discordUserIdToActorName[actor.discordUserId] = actor.actorName;
+                    LogMessage($"🎯 Friend Actor登録: {actor.actorName} (discordUserId={actor.discordUserId})", LogLevel.Info);
+                }
+            }
+            
+            // デバッグ: 設定確認
+            int friendCount = _discordUserIdToActorName.Count;
+            LogMessage($"🔧 Discord設定: guildId={guildId}, voiceChannelId={voiceChannelId}, friend actors={friendCount}", LogLevel.Info);
+            
             // STT（MenZ字幕AI）モードのキャッシュ
             try {
                 try {
@@ -856,7 +902,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 } catch {
                     s_isMenZMode = (centralManager.GetDiscordSubtitleMethod() == 1);
                 }
-                UnityEngine.Debug.Log($"[WS-PCM] cache isSTT={s_isMenZMode}");
+                UnityEngine.Debug.Log($"[DiscordBot] STTモード: {s_isMenZMode}");
             } catch { s_isMenZMode = false; }
         }
     }
@@ -905,9 +951,11 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _httpClient?.Dispose();
         _httpClient = null;
         
-        // AudioBufferのクリーンアップ
-        if (_audioBuffer != null) {
-            _audioBuffer.ClearBuffer();
+        // AudioBuffersのクリーンアップ（複数話者対応）
+        lock (_audioBuffersLock) {
+            foreach (var kvp in _audioBuffersByActorName) {
+                kvp.Value?.ClearBuffer();
+            }
         }
     }
     /// <summary>
@@ -959,17 +1007,20 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         _voiceSessionId = voiceStateData.session_id;
 
         try {
-            // ターゲットユーザのVC在席確認
-            if (!string.IsNullOrEmpty(targetUserId) && voiceStateData != null && voiceStateData.user_id == targetUserId) {
-                // 指定のボイスチャンネルに居るか
-                if (!string.IsNullOrEmpty(voiceChannelId) && voiceStateData.channel_id == voiceChannelId) {
-                    LogMessage($"Target user in watched VC: channel_id={voiceStateData.channel_id}", LogLevel.Info);
-                    EnqueueMainThreadAction(() => CentralManager.SetFaceVisible(true));
-                } else {
-                    // 退席 or 別チャンネルへ移動
-                    string ch = string.IsNullOrEmpty(voiceStateData.channel_id) ? "(none)" : voiceStateData.channel_id;
-                    LogMessage($"Target user not in watched VC (current={ch}) -> hide face", LogLevel.Info);
-                    EnqueueMainThreadAction(() => CentralManager.SetFaceVisible(false));
+            // 複数話者対応：friend Actorの誰かがVCに在席しているかチェック
+            if (voiceStateData != null && !string.IsNullOrEmpty(voiceStateData.user_id)) {
+                // このユーザーが監視対象か確認
+                if (_discordUserIdToActorName.TryGetValue(voiceStateData.user_id, out string actorName)) {
+                    // 指定のボイスチャンネルに居るか
+                    if (!string.IsNullOrEmpty(voiceChannelId) && voiceStateData.channel_id == voiceChannelId) {
+                        LogMessage($"Friend actor in watched VC: actor={actorName}, channel_id={voiceStateData.channel_id}", LogLevel.Info);
+                        EnqueueMainThreadAction(() => CentralManager.SetFaceVisible(true));
+                    } else {
+                        // 退席 or 別チャンネルへ移動
+                        string ch = string.IsNullOrEmpty(voiceStateData.channel_id) ? "(none)" : voiceStateData.channel_id;
+                        LogMessage($"Friend actor not in watched VC: actor={actorName} (current={ch})", LogLevel.Info);
+                        // 注：複数話者の場合、他のActorがいる可能性があるので顔を隠さない
+                    }
                 }
             }
         } catch (Exception ex) {
@@ -1028,12 +1079,16 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// </summary>
     private void OnSpeechEndDetected() {
         LogMessage($"🔇 Speech end detected via UDP timeout", LogLevel.Info);
-        // 発話終了時にバッファされた音声データを処理
-        _audioBuffer?.ProcessBufferedAudio();
+        
+        // 全ての音声バッファを処理（複数話者対応）
+        lock (_audioBuffersLock) {
+            foreach (var kvp in _audioBuffersByActorName) {
+                kvp.Value?.ProcessBufferedAudio();
+            }
+        }
 
         // 発話終了（UDP timeout）ログ
         LogMessage("[WS-PCM] 発話終了 (UDP timeout) - flush要求", LogLevel.Info);
-
     }
     
     /// <summary>
@@ -1063,7 +1118,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
 }
 
 /// <summary>
-/// 無音検出による音声バッファリングクラス
+/// 無音検出による音声バッファリングクラス（複数話者対応）
 /// </summary>
 public class DiscordVoiceNetworkManager {
     private List<float[]> audioChunks = new List<float[]>();
@@ -1071,7 +1126,8 @@ public class DiscordVoiceNetworkManager {
     private int silenceDurationMs = 0; // 無音継続時間（ミリ秒）
     private int sampleRate;
     private int channels;
-    public delegate void AudioBufferReadyDelegate(float[] audioData, int sampleRate, int channels);
+    private string actorName; // 話者識別用
+    public delegate void AudioBufferReadyDelegate(float[] audioData, int sampleRate, int channels, string actorName);
     public event AudioBufferReadyDelegate OnAudioBufferReady;
     private readonly Action<Action> _enqueueMainThreadAction;
 
@@ -1083,12 +1139,14 @@ public class DiscordVoiceNetworkManager {
     /// <param name="sampleRate">内部で扱うサンプルレート。</param>
     /// <param name="channels">チャンネル数。</param>
     /// <param name="enqueueMainThreadAction">メインスレッドでコールバックを実行するためのキュー関数。</param>
-    public DiscordVoiceNetworkManager(float silenceThreshold, int silenceDurationMs, int sampleRate, int channels, Action<Action> enqueueMainThreadAction) {
+    /// <param name="actorName">話者名（Actor名）。</param>
+    public DiscordVoiceNetworkManager(float silenceThreshold, int silenceDurationMs, int sampleRate, int channels, Action<Action> enqueueMainThreadAction, string actorName) {
         this.silenceThreshold = silenceThreshold;
         this.silenceDurationMs = silenceDurationMs;
         this.sampleRate = sampleRate;
         this.channels = channels;
         this._enqueueMainThreadAction = enqueueMainThreadAction;
+        this.actorName = actorName;
     }
     
     /// <summary>
@@ -1108,11 +1166,11 @@ public class DiscordVoiceNetworkManager {
         // リップシンク用: 正規化のみして通知（シンプル）
         float normalizedLevel = UnityEngine.Mathf.Clamp01(audioLevel * LevelScaleTo01);
 
-        // レベル通知（メインスレッド経由）
+        // レベル通知（メインスレッド経由、actor名を指定）
         if (_enqueueMainThreadAction != null) {
-            _enqueueMainThreadAction(() => CentralManager.SendLipSyncLevel(normalizedLevel));
+            _enqueueMainThreadAction(() => CentralManager.SendLipSyncLevel(normalizedLevel, actorName));
         } else {
-            CentralManager.SendLipSyncLevel(normalizedLevel);
+            CentralManager.SendLipSyncLevel(normalizedLevel, actorName);
         }
         
         // 🔧 デバッグ: バッファ追加時の音量レベルをログ出力（抑制可能）
@@ -1165,10 +1223,10 @@ public class DiscordVoiceNetworkManager {
             currentIndex += chunk.Length;
         }
         
-        // イベントを発火（メインスレッドで実行）
+        // イベントを発火（メインスレッドで実行、actorName付き）
         if (OnAudioBufferReady != null) {
             _enqueueMainThreadAction(() => {
-                OnAudioBufferReady.Invoke(combinedAudio, sampleRate, channels);
+                OnAudioBufferReady.Invoke(combinedAudio, sampleRate, channels, actorName);
             });
         }
         // バッファをクリア
