@@ -826,13 +826,6 @@ public class MainCanvasAvatarController : MonoBehaviour
                 lipState.lipSyncGameObject.SetActive(visible);
                 changed = true;
             }
-            var lipMeshRenderer = lipState.lipSyncGameObject.GetComponent<MeshRenderer>();
-            if (lipMeshRenderer != null) {
-                if (lipMeshRenderer.enabled != visible) {
-                    lipMeshRenderer.enabled = visible;
-                    changed = true;
-                }
-            }
         }
         
         return changed;
