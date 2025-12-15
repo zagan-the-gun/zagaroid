@@ -116,6 +116,16 @@ public class TranslationController : MonoBehaviour {
         }
 
         string requestId = Guid.NewGuid().ToString();
+
+        // 言語判定（同一言語なら翻訳不要）
+        string detectedSourceLang = DetectSourceLanguage(text);
+        string normalizedTargetLang = string.IsNullOrEmpty(targetLang) ? "ja" : targetLang.ToLower();
+        if (!string.IsNullOrEmpty(detectedSourceLang) &&
+            string.Equals(detectedSourceLang.Trim(), normalizedTargetLang.Trim(), StringComparison.OrdinalIgnoreCase)) {
+            Debug.Log($"[TranslationController:NMT] 翻訳スキップ（同一言語）: {detectedSourceLang} -> {normalizedTargetLang}");
+            onCompleted?.Invoke(text);
+            yield break;
+        }
         
         // MCPリクエスト作成
         var request = new McpTranslateRequest {
@@ -123,8 +133,8 @@ public class TranslationController : MonoBehaviour {
             @params = new McpTranslateParams {
                 text = text,
                 speaker = string.IsNullOrEmpty(speaker) ? "unknown" : speaker,
-                source_lang = DetectSourceLanguage(text),
-                target_lang = targetLang.ToLower(),
+                source_lang = detectedSourceLang,
+                target_lang = normalizedTargetLang,
                 priority = "normal"
             }
         };

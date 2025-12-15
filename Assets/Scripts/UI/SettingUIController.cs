@@ -42,7 +42,6 @@ public class SettingUIController : MonoBehaviour {
     private TextField discordGuildIdInput;
     private TextField discordVoiceChannelIdInput;
     private TextField discordTextChannelIdInput;
-    private TextField discordTargetUserIdInput;
     private DropdownField subtitleMethodDropdown;
     private TextField witaiTokenInput;
 
@@ -96,7 +95,6 @@ public class SettingUIController : MonoBehaviour {
         discordGuildIdInput = settingContentRoot.Q<TextField>("DiscordGuildIdInput");
         discordVoiceChannelIdInput = settingContentRoot.Q<TextField>("DiscordVoiceChannelIdInput");
         discordTextChannelIdInput = settingContentRoot.Q<TextField>("DiscordTextChannelIdInput");
-        discordTargetUserIdInput = uiDocument.rootVisualElement.Q<TextField>("DiscordTargetUserIdInput");
         subtitleMethodDropdown = settingContentRoot.Q<DropdownField>("SubtitleMethodDropdown");
         witaiTokenInput = settingContentRoot.Q<TextField>("WitaiTokenInput");
         
@@ -268,9 +266,6 @@ public class SettingUIController : MonoBehaviour {
         if (discordTextChannelIdInput != null) {
             discordTextChannelIdInput.value = CentralManager.Instance.GetDiscordTextChannelId();
         }
-        if (discordTargetUserIdInput != null) {
-            discordTargetUserIdInput.value = CentralManager.Instance.GetDiscordTargetUserId();
-        }
         if (subtitleMethodDropdown != null) {
             var choices = new List<string> { "WitAI", "STT" }; // WitAI: Wit.ai音声認識, STT: MenZ字幕AI
             subtitleMethodDropdown.choices = choices;
@@ -365,9 +360,6 @@ public class SettingUIController : MonoBehaviour {
         }
         if (discordTextChannelIdInput != null) {
             CentralManager.Instance.SetDiscordTextChannelId(discordTextChannelIdInput.value);
-        }
-        if (discordTargetUserIdInput != null) {
-            CentralManager.Instance.SetDiscordTargetUserId(discordTargetUserIdInput.value);
         }
         if (subtitleMethodDropdown != null) {
             CentralManager.Instance.SetDiscordSubtitleMethodString(subtitleMethodDropdown.value);

@@ -33,6 +33,7 @@ public class UIDragMove : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDr
     private Vector2 pointerOffsetLocal; // 親ローカル空間での、ポインタ位置と anchoredPosition の差分
     private RectTransform cachedParentRect;
     private bool initialPositionApplied;
+    private bool diagLoggedThisDrag;
 
     void Awake() {
         if (targetRectTransform == null) {
@@ -113,7 +114,7 @@ public class UIDragMove : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDr
                     // 子要素の Graphic 上かどうか判定
                     RectTransform childRect = child as RectTransform;
                     if (childRect != null) {
-                        Camera eventCamera = GetCanvasEventCameraFor(childRect);
+                        Camera eventCamera = GetEventCamera(eventData, childRect);
                         Vector2 childLocalPoint;
                         if (RectTransformUtility.ScreenPointToLocalPointInRectangle(childRect, eventData.position, eventCamera, out childLocalPoint)) {
                             onChildGraphic = true;
@@ -134,11 +135,12 @@ public class UIDragMove : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDr
         if (parentRect == null) return;
 
         // 親Rectローカルへ直接変換
-        Camera cam = GetCanvasEventCameraFor(parentRect);
+        Camera cam = GetEventCamera(eventData, parentRect);
         Vector2 localPointOnParent;
         if (RectTransformUtility.ScreenPointToLocalPointInRectangle(parentRect, eventData.position, cam, out localPointOnParent)) {
             pointerOffsetLocal = localPointOnParent - targetRectTransform.anchoredPosition;
-            if (enableDebugLogs) Debug.Log($"{LogPrefix} BeginDrag parentLocal={localPointOnParent} offset={pointerOffsetLocal}");
+            if (enableDebugLogs) Debug.Log($"{LogPrefix} BeginDrag parentLocal={localPointOnParent} offset={pointerOffsetLocal} cam={(cam!=null?cam.name:"null")} pressCam={(eventData!=null&&eventData.pressEventCamera!=null?eventData.pressEventCamera.name:"null")}");
+            LogDragDiagnosticsOnce(eventData, parentRect, cam, localPointOnParent);
         } else {
             pointerOffsetLocal = Vector2.zero;
             if (enableDebugLogs) Debug.Log($"{LogPrefix} BeginDrag map failed: screen -> parent local. screen={eventData.position}");
@@ -152,7 +154,7 @@ public class UIDragMove : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDr
         if (parentRect == null) return;
 
         // 親Rectローカルへ直接変換
-        Camera cam = GetCanvasEventCameraFor(parentRect);
+        Camera cam = GetEventCamera(eventData, parentRect);
         Vector2 localPointOnParent;
         if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(parentRect, eventData.position, cam, out localPointOnParent)) {
             if (enableDebugLogs) Debug.Log($"{LogPrefix} Drag map failed: screen -> parent local. screen={eventData.position}");
@@ -174,6 +176,7 @@ public class UIDragMove : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDr
 
     public void OnEndDrag(PointerEventData eventData) {
         SavePosition();
+        diagLoggedThisDrag = false;
     }
 
     public void OnPointerDown(PointerEventData eventData) {
@@ -245,6 +248,52 @@ public class UIDragMove : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDr
         if (c == null) return null;
         if (c.renderMode == RenderMode.ScreenSpaceOverlay) return null;
         return c.worldCamera;
+    }
+
+    /// <summary>
+    /// ScreenPointToLocalPointInRectangle に渡すカメラを決定します。
+    /// - Raycaster が使ったカメラ（pressEventCamera）を最優先
+    /// - それが無い場合は Canvas の worldCamera（ScreenSpaceCamera/WorldSpace）
+    /// - ScreenSpaceOverlay は null
+    /// </summary>
+    private static Camera GetEventCamera(PointerEventData eventData, RectTransform rect) {
+        if (eventData != null && eventData.pressEventCamera != null) return eventData.pressEventCamera;
+        return GetCanvasEventCameraFor(rect);
+    }
+
+    private void LogDragDiagnosticsOnce(PointerEventData eventData, RectTransform parentRect, Camera cam, Vector2 parentLocalPoint) {
+        if (!enableDebugLogs) return;
+        if (diagLoggedThisDrag) return;
+        diagLoggedThisDrag = true;
+
+        Canvas canvas = parentRect != null ? parentRect.GetComponentInParent<Canvas>() : null;
+        var raycaster = canvas != null ? canvas.GetComponent<GraphicRaycaster>() : null;
+
+        Vector3[] targetWorldCorners = new Vector3[4];
+        Vector3[] parentWorldCorners = new Vector3[4];
+        if (targetRectTransform != null) targetRectTransform.GetWorldCorners(targetWorldCorners);
+        if (parentRect != null) parentRect.GetWorldCorners(parentWorldCorners);
+
+        // 同一GOにMeshRendererがある場合、見た目側(Quad)の位置も出す（判定ズレの切り分け用）
+        var meshRenderer = GetComponent<MeshRenderer>();
+        string meshInfo = "mesh=null";
+        if (meshRenderer != null) {
+            Bounds b = meshRenderer.bounds;
+            meshInfo = $"mesh={meshRenderer.name} boundsCenter={b.center} boundsExt={b.extents} meshPos={meshRenderer.transform.position} meshScale={meshRenderer.transform.lossyScale}";
+        }
+
+        string msg =
+            $"{LogPrefix} DIAG\n" +
+            $"- screen={eventData.position} parentLocal={parentLocalPoint} offsetLocal={pointerOffsetLocal}\n" +
+            $"- canvas={(canvas!=null?canvas.name:"null")} mode={(canvas!=null?canvas.renderMode.ToString():"null")} worldCam={(canvas!=null&&canvas.worldCamera!=null?canvas.worldCamera.name:"null")} raycaster={(raycaster!=null)}\n" +
+            $"- pressCam={(eventData.pressEventCamera!=null?eventData.pressEventCamera.name:"null")} usedCam={(cam!=null?cam.name:"null")}\n" +
+            $"- target={SafeName(targetRectTransform)} anchored={targetRectTransform.anchoredPosition} size={targetRectTransform.rect.size} pivot={targetRectTransform.pivot} anchors=({targetRectTransform.anchorMin}..{targetRectTransform.anchorMax}) localPos={targetRectTransform.localPosition} worldPos={targetRectTransform.position} lossyScale={targetRectTransform.lossyScale}\n" +
+            $"- parent={SafeName(parentRect)} size={parentRect.rect.size} pivot={parentRect.pivot} anchors=({parentRect.anchorMin}..{parentRect.anchorMax}) localPos={parentRect.localPosition} worldPos={parentRect.position} lossyScale={parentRect.lossyScale}\n" +
+            $"- targetWorldCorners=[{targetWorldCorners[0]}, {targetWorldCorners[1]}, {targetWorldCorners[2]}, {targetWorldCorners[3]}]\n" +
+            $"- parentWorldCorners=[{parentWorldCorners[0]}, {parentWorldCorners[1]}, {parentWorldCorners[2]}, {parentWorldCorners[3]}]\n" +
+            $"- {meshInfo}";
+
+        Debug.Log(msg);
     }
 
     public void SetTarget(RectTransform target) {

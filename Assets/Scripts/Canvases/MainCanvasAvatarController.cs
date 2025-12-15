@@ -22,6 +22,10 @@ public class MainCanvasAvatarController : MonoBehaviour
 {
     [Header("Avatar Container")]
     [SerializeField] private RectTransform avatarControlPanel; // Avatar 配置先（Main Canvas 直下を推奨）
+    
+    [Header("UI Event Camera")]
+    [Tooltip("UIの描画/レイキャストに使うカメラ。未設定ならシーンの 'Main Camera' を探します。")]
+    [SerializeField] private Camera uiEventCamera;
 
     [Header("Avatar Icon Size")]
     [SerializeField] private Vector2 avatarIconSize = new Vector2(100, 100); // UI Icon サイズ
@@ -63,6 +67,15 @@ public class MainCanvasAvatarController : MonoBehaviour
     
     private Dictionary<string, AvatarAnimationState> animationStates = new Dictionary<string, AvatarAnimationState>();
     private Dictionary<string, AvatarLipSyncState> lipSyncStates = new Dictionary<string, AvatarLipSyncState>();
+    
+    [Header("Position Save")]
+    [Tooltip("RectTransform の anchoredPosition がこの閾値以上変化した時だけ保存します（微小誤差による毎フレーム保存を防止）")]
+    [SerializeField] private float positionSaveEpsilon = 0.05f;
+    
+    [Tooltip("保存の最短間隔（秒）。ドラッグ中の連打を防止します")]
+    [SerializeField] private float positionSaveMinIntervalSeconds = 0.20f;
+    
+    private float lastActorsSaveTimeUnscaled;
 
     private void OnEnable() {
         // CentralManager のイベント購読
@@ -116,6 +129,22 @@ public class MainCanvasAvatarController : MonoBehaviour
             Debug.LogError($"{LogPrefix} avatarControlPanel が見つかりません");
             return;
         }
+        
+        // 重要:
+        // Gameビューで見えている描画カメラと、UIのレイキャスト(eventCamera)が一致していないと
+        // 「上半分だけクリック/ドラッグできない」ようなズレが発生する。
+        // ここでは UI Canvas の worldCamera を "Main Camera" に寄せて、見た目と入力を一致させる。
+        var canvas = avatarControlPanel.GetComponentInParent<Canvas>();
+        if (canvas != null) {
+            if (uiEventCamera == null) {
+                var go = GameObject.Find("Main Camera");
+                uiEventCamera = go != null ? go.GetComponent<Camera>() : null;
+            }
+            if (uiEventCamera != null) {
+                canvas.renderMode = RenderMode.ScreenSpaceCamera;
+                canvas.worldCamera = uiEventCamera;
+            }
+        }
 
         // 初期化：現在の Actor リストから UI を生成
         var actors = CentralManager.Instance.GetActors();
@@ -131,7 +160,6 @@ public class MainCanvasAvatarController : MonoBehaviour
     private void HandleActorsChanged(List<ActorConfig> actors) {
         if (avatarControlPanel == null) return;
 
-        Debug.Log($"{LogPrefix} Actor リスト変更を検知: {actors.Count} 件");
         cachedActors = new List<ActorConfig>(actors);
 
         // 現在の UI マップ内の Actor を確認
@@ -195,7 +223,6 @@ public class MainCanvasAvatarController : MonoBehaviour
         // アバター画像パスが設定されていない場合はスキップ
         if (actor.avatarAnimePaths == null || actor.avatarAnimePaths.Count == 0)
         {
-            Debug.LogWarning($"{LogPrefix} avatarAnimePaths が空のためスキップ: {actor.actorName}");
             return;
         }
 
@@ -215,7 +242,6 @@ public class MainCanvasAvatarController : MonoBehaviour
 
         if (textures.Count == 0)
         {
-            Debug.LogWarning($"{LogPrefix} 有効なテクスチャが1つもないためスキップ: {actor.actorName}");
             return;
         }
 
@@ -230,6 +256,9 @@ public class MainCanvasAvatarController : MonoBehaviour
         // RectTransform を設定
         var rect = go.GetComponent<RectTransform>();
         rect.anchoredPosition = actor.avatarDisplayPosition;
+        // 念のため明示（pivotズレがあると Mesh(中心原点) と Rect(Raycast) がズレるため）
+        // ※ Mesh は pivot を考慮して生成するが、UI側も一般的な中心pivotで固定しておく
+        rect.pivot = new Vector2(0.5f, 0.5f);
 
         // Image の設定（ドラッグ検知のためにraycastTargetをtrueに設定）
         image.color = new Color(1f, 1f, 1f, 1f);
@@ -245,8 +274,6 @@ public class MainCanvasAvatarController : MonoBehaviour
             rect.sizeDelta = new Vector2(initialTexture.width, initialTexture.height);
         }
 
-        Debug.Log($"{LogPrefix} テクスチャ読み込み成功: {actor.actorName} size={initialTexture.width}x{initialTexture.height} count={textures.Count}");
-
         // 表示スケール（倍率）を適用
         rect.localScale = Vector3.one * actor.avatarDisplayScale;
 
@@ -260,7 +287,12 @@ public class MainCanvasAvatarController : MonoBehaviour
         if (meshWidth <= 0) meshWidth = 100f;
         if (meshHeight <= 0) meshHeight = 100f;
 
-        Mesh quadMesh = CreateQuadMesh(meshWidth, meshHeight);
+        // NOTE:
+        // ここで表示しているのは uGUI の RawImage ではなく、同一 GameObject 上の MeshRenderer(Quad) です。
+        // ドラッグ判定は透明 RawImage の RectTransform 上で行われるため、
+        // Mesh(原点中心) と RectTransform(pivot基準) がズレると「ドラッグ領域が半個分ズレる」症状になります。
+        // pivot を考慮した Quad を生成して、判定と見た目を一致させます。
+        Mesh quadMesh = CreateQuadMesh(meshWidth, meshHeight, rect.pivot);
         meshFilter.mesh = quadMesh;
 
         // Unlit/Transparentシェーダーでマテリアルを作成（透過対応）
@@ -347,18 +379,29 @@ public class MainCanvasAvatarController : MonoBehaviour
     /// ドラッグ終了時に位置を保存（毎フレーム監視）、アニメーション更新、リップシンク更新
     /// </summary>
     private void Update() {
+        // Save のスロットリング
+        bool canSaveNow = (Time.unscaledTime - lastActorsSaveTimeUnscaled) >= positionSaveMinIntervalSeconds;
+
         // 各 Actor の UI 位置が変更されていないか監視
         foreach (var actor in cachedActors)
         {
             if (actorAvatarUIMap.TryGetValue(actor.actorName, out var image))
             {
                 var rect = image.GetComponent<RectTransform>();
-                if (rect != null && actor.avatarDisplayPosition != rect.anchoredPosition)
+                if (rect != null)
                 {
-                    // 位置が変更されている → 保存
-                    actor.avatarDisplayPosition = rect.anchoredPosition;
-                    // CentralManager 経由で保存
-                    CentralManager.Instance?.SetActors(cachedActors);
+                    // 微小誤差で毎フレーム保存されないようにする
+                    float dist = Vector2.Distance(actor.avatarDisplayPosition, rect.anchoredPosition);
+                    if (dist >= positionSaveEpsilon && canSaveNow)
+                    {
+                        // 位置が変更されている → 保存
+                        actor.avatarDisplayPosition = rect.anchoredPosition;
+                        // CentralManager 経由で保存（OnActorsChanged が飛ぶので、ここは頻度制限必須）
+                        lastActorsSaveTimeUnscaled = Time.unscaledTime;
+                        CentralManager.Instance?.SetActors(cachedActors);
+                        // 1フレームで複数回保存しない（OnActorsChanged連鎖を抑える）
+                        break;
+                    }
                 }
             }
         }
@@ -570,7 +613,7 @@ public class MainCanvasAvatarController : MonoBehaviour
             var meshRenderer = lipSyncGo.AddComponent<MeshRenderer>();
             
             // Quad メッシュを作成（アバターと同じサイズ）
-            Mesh lipSyncMesh = CreateQuadMesh(avatarSize.x, avatarSize.y);
+            Mesh lipSyncMesh = CreateQuadMesh(avatarSize.x, avatarSize.y, avatarRect.pivot);
             meshFilter.mesh = lipSyncMesh;
             
             // マテリアルを作成（最初のリップシンク画像を表示）
@@ -596,8 +639,16 @@ public class MainCanvasAvatarController : MonoBehaviour
             
             // リップシンク GameObject の初期表示状態を主アバター画像と同じにする
             // avatarShowWithTalk が OFF なら常に表示、ON なら最初は非表示（リップシンク時に表示）
+            //
+            // 注意:
+            // - 以降の表示切替は SetAvatarVisibility() で GameObject の active を切り替える前提なので、
+            //   ここで MeshRenderer.enabled を弄ると「発話しても表示されない」状態になる。
+            // - 初期状態は GameObject 側で統一して管理する。
             bool shouldDisplayLipSync = !actor.avatarShowWithTalk;
-            meshRenderer.enabled = shouldDisplayLipSync;
+            if (meshRenderer != null) {
+                meshRenderer.enabled = true; // 常に有効化（可視性は GameObject 側で制御）
+            }
+            lipSyncGo.SetActive(shouldDisplayLipSync);
             
             Debug.Log($"{LogPrefix} リップシンク状態を初期化: {actor.actorName} count={lipSyncTextures.Count} go={lipSyncGo.name} shouldDisplay={shouldDisplayLipSync} (ShowWithTalk={actor.avatarShowWithTalk})") ;
         } else {
@@ -650,7 +701,7 @@ public class MainCanvasAvatarController : MonoBehaviour
             }
 
             // 該当アクターのアバターを表示（発話中）。リップシンク画像がなくても表示だけは行う。
-            ShowAvatarsIfNeeded(actor);
+            ShowAvatarIfNeeded(actor);
             return;
         }
 
@@ -662,8 +713,7 @@ public class MainCanvasAvatarController : MonoBehaviour
                 kvp.Value.lastLipLevelTimeUnscaled = Time.unscaledTime;
             }
         }
-        var fallbackActor = ResolveCurrentSpeakingActor();
-        ShowAvatarsIfNeeded(fallbackActor);
+        // 旧仕様（DiscordTargetUser依存）は廃止。speaker特定できない場合は表示制御しない。
     }
     
     /// <summary>
@@ -680,18 +730,15 @@ public class MainCanvasAvatarController : MonoBehaviour
     }
     
     /// <summary>
-    /// 現在話しているアクターのみ表示（Show with Talk ON のみ対象）
-    /// 顔画像とリップシンク画像を同期して表示／非表示を切り替える
+    /// 指定アクターを表示（Show with Talk ON のみ対象）
+    /// 複数話者対応のため、他アクターの表示状態は変更しない
     /// </summary>
-    private void ShowAvatarsIfNeeded(ActorConfig speakingActor) {
-        foreach (var actor in cachedActors) {
-            if (!actor.avatarShowWithTalk) continue; // OFF なら対象外
-            
-            bool shouldShow = speakingActor != null && actor.actorName == speakingActor.actorName;
-            if (SetAvatarVisibility(actor, shouldShow)) {
-                string action = shouldShow ? "アバター表示" : "アバター非表示";
-                Debug.Log($"{LogPrefix} {action}: {actor.actorName}");
-            }
+    private void ShowAvatarIfNeeded(ActorConfig targetActor) {
+        if (targetActor == null) return;
+        if (!targetActor.avatarShowWithTalk) return; // OFF なら対象外
+
+        if (SetAvatarVisibility(targetActor, true)) {
+            Debug.Log($"{LogPrefix} アバター表示: {targetActor.actorName}");
         }
     }
     
@@ -710,22 +757,6 @@ public class MainCanvasAvatarController : MonoBehaviour
                 Debug.Log($"{LogPrefix} アバター非表示: {actor.actorName}");
             }
         }
-    }
-
-    /// <summary>
-    /// 現在のDiscordターゲットユーザーに紐づくアクターを取得
-    /// </summary>
-    private ActorConfig ResolveCurrentSpeakingActor() {
-        if (CentralManager.Instance == null) return null;
-
-        string targetUserId = CentralManager.Instance.GetDiscordTargetUserId();
-        if (string.IsNullOrEmpty(targetUserId)) return null;
-
-        var actor = CentralManager.Instance.GetActorByDiscordUserId(targetUserId);
-        if (actor == null) {
-            Debug.LogWarning($"{LogPrefix} ShowWithTalk 対象アクターが見つかりません: targetUserId={targetUserId}");
-        }
-        return actor;
     }
 
     /// <summary>
@@ -786,6 +817,49 @@ public class MainCanvasAvatarController : MonoBehaviour
     }
 
     /// <summary>
+    /// RectTransform の pivot を考慮して Quad を生成します（uGUI の表示領域と Mesh を一致させる）。
+    /// pivot=(0.5,0.5) なら従来通り中心原点。
+    /// pivot がズレていても、RawImage の Rect と Mesh の表示が一致するため、ドラッグ領域ズレが出ません。
+    /// </summary>
+    private Mesh CreateQuadMesh(float width, float height, Vector2 pivot) {
+        Mesh mesh = new Mesh();
+        mesh.name = "AvatarQuad(pivoted)";
+
+        // RectTransform のローカル座標系に合わせる:
+        // 左 = -pivot.x * width, 右 = (1 - pivot.x) * width
+        // 下 = -pivot.y * height, 上 = (1 - pivot.y) * height
+        float left = -pivot.x * width;
+        float right = (1f - pivot.x) * width;
+        float bottom = -pivot.y * height;
+        float top = (1f - pivot.y) * height;
+
+        Vector3[] vertices = new Vector3[4] {
+            new Vector3(left,  bottom, 0), // 左下
+            new Vector3(right, bottom, 0), // 右下
+            new Vector3(left,  top,    0), // 左上
+            new Vector3(right, top,    0)  // 右上
+        };
+
+        Vector2[] uv = new Vector2[4] {
+            new Vector2(0, 0),
+            new Vector2(1, 0),
+            new Vector2(0, 1),
+            new Vector2(1, 1)
+        };
+
+        int[] triangles = new int[6] {
+            0, 2, 1,
+            2, 3, 1
+        };
+
+        mesh.vertices = vertices;
+        mesh.uv = uv;
+        mesh.triangles = triangles;
+        mesh.RecalculateNormals();
+        return mesh;
+    }
+
+    /// <summary>
     /// アバター表示用 MeshRenderer を取得（複数枚/単枚を意識せずに扱うためのヘルパー）
     /// </summary>
     private bool TryGetAvatarRenderer(string actorName, out MeshRenderer renderer) {
@@ -824,6 +898,12 @@ public class MainCanvasAvatarController : MonoBehaviour
         if (lipSyncStates.TryGetValue(actor.actorName, out var lipState) && lipState.lipSyncGameObject != null) {
             if (lipState.lipSyncGameObject.activeSelf != visible) {
                 lipState.lipSyncGameObject.SetActive(visible);
+                changed = true;
+            }
+            // 念のため MeshRenderer.enabled も同期（過去状態で無効になっていると表示されないため）
+            var mr = lipState.lipSyncGameObject.GetComponent<MeshRenderer>();
+            if (mr != null && mr.enabled != visible) {
+                mr.enabled = visible;
                 changed = true;
             }
         }

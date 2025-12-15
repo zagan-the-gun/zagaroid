@@ -2,6 +2,7 @@ using UnityEngine;
 
 public class GreenBackgroundController : MonoBehaviour 
 {
+    [SerializeField] private Camera targetCamera;
     private Camera mainCamera;
     private int lastScreenWidth;
     private int lastScreenHeight;
@@ -24,8 +25,17 @@ public class GreenBackgroundController : MonoBehaviour
 
     void Awake()
     {
-        // シーン内のメインカメラを自動的に取得
-        mainCamera = Camera.main;
+        // NOTE:
+        // このプロジェクトは「MainCameraタグ」が複数カメラに付いている場合があり、
+        // Camera.main は意図しないカメラを返すことがある。
+        // ここでは明示指定 > "Main Camera" > Camera.main の順で選ぶ。
+        if (targetCamera != null) {
+            mainCamera = targetCamera;
+        } else {
+            var go = GameObject.Find("Main Camera");
+            mainCamera = go != null ? go.GetComponent<Camera>() : null;
+            if (mainCamera == null) mainCamera = Camera.main;
+        }
         
         if (mainCamera == null)
         {

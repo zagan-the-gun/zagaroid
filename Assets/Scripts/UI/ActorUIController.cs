@@ -121,7 +121,7 @@ public class ActorUIController : MonoBehaviour
             if (child == null) continue;
             if (child.name == "PanelActorAdd") continue;
             var nameField = child.Q<TextField>("ActorNameInput");
-            var idField = child.Q<TextField>("DiscordTargetUserIdInput");
+            var idField = child.Q<TextField>("DiscordUserIdInput");
             var toggle = child.Q<Toggle>("EnableActorToggle");
             if (nameField == null && idField == null && toggle == null) continue;
             var cfg = new ActorConfig {
@@ -237,7 +237,7 @@ public class ActorUIController : MonoBehaviour
         panel.Add(avatarContainer);
 
         // type ドロップダウン（local / friend / wipe）- display name の直下に配置
-        var idField = new TextField("Discord User ID") { name = "DiscordTargetUserIdInput" };
+        var idField = new TextField("Discord User ID") { name = "DiscordUserIdInput" };
         var typeDropdown = new DropdownField("type") { name = "ActorTypeDropdown" };
         var typeChoices = new List<string> { "local", "friend", "wipe" };
         typeDropdown.choices = typeChoices;
@@ -708,12 +708,25 @@ public class ActorUIController : MonoBehaviour
 
     private Texture2D LoadTextureFromPath(string path) {
         if (string.IsNullOrEmpty(path)) return null;
-        byte[] bytes = System.IO.File.ReadAllBytes(path);
-        Texture2D texture = new Texture2D(2, 2); // テクスチャを作成
-        if (texture.LoadImage(bytes)) {
-            return texture;
+
+        try {
+            if (!System.IO.File.Exists(path)) {
+                Debug.LogWarning($"{LogPrefix} Avatar image file not found: {path}");
+                return null;
+            }
+
+            byte[] bytes = System.IO.File.ReadAllBytes(path);
+            var texture = new Texture2D(2, 2); // テクスチャを作成
+            if (texture.LoadImage(bytes)) {
+                return texture;
+            }
+
+            Debug.LogWarning($"{LogPrefix} Failed to decode texture from path: {path}");
+            return null;
         }
-        Debug.LogError($"{LogPrefix} Failed to load texture from path: {path}");
-        return null;
+        catch (Exception ex) {
+            Debug.LogWarning($"{LogPrefix} Failed to load texture from path: {path} ({ex.GetType().Name})");
+            return null;
+        }
     }
 }

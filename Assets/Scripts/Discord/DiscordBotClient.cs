@@ -79,8 +79,13 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     // Bot自身の情報
     private string botUserId;
     // イベント
+    // 旧イベント（互換維持用）。speaker情報が無いので新規実装では使用しない想定。
     public delegate void VoiceRecognizedDelegate(string inputName, string recognizedText);
     public static event VoiceRecognizedDelegate OnVoiceRecognized;
+
+    // 新イベント：複数話者対応（actorName付き）
+    public delegate void VoiceRecognizedWithActorDelegate(string inputName, string actorName, string recognizedText);
+    public static event VoiceRecognizedWithActorDelegate OnVoiceRecognizedWithActor;
     public delegate void DiscordLogDelegate(string logMessage);
     public static event DiscordLogDelegate OnDiscordLog;
     public delegate void DiscordBotStateChangedDelegate(bool isRunning);
@@ -376,7 +381,7 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 } else {
                     LogMessage("MultiPortWebSocketServerが見つかりません。音声認識リクエストを送信できません。", LogLevel.Warning);
                     // フォールバック: WitAIで処理
-                    StartCoroutine(ProcessAudioCoroutine(audioData));
+                    StartCoroutine(ProcessAudioCoroutine(audioData, actorName));
                 }
             });
             return;
@@ -385,14 +390,14 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         // WitAI選択時は従来フロー（デバッグ再生→音声認識）
         LogMessage($"WitAIモードで音声認識を実行します (actor={actorName})", LogLevel.Info);
         PlayPcmForDebug(audioData, $"Audio ({actorName})");
-        StartCoroutine(ProcessAudioCoroutine(audioData));
+        StartCoroutine(ProcessAudioCoroutine(audioData, actorName));
     }
     
 
     /// <summary>
     /// 音声認識処理（簡素化版）
     /// </summary>
-    private IEnumerator ProcessAudioCoroutine(float[] audioData) {
+    private IEnumerator ProcessAudioCoroutine(float[] audioData, string actorName) {
         var task = TranscribeWithWitAI(audioData);
         
         while (!task.IsCompleted) {
@@ -400,7 +405,10 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
         }
         
         if (task.IsCompletedSuccessfully && !string.IsNullOrEmpty(task.Result)) {
-            // WitAI（旧方式）は単一ユーザー用なので固定値を使用
+            // WitAIでも actorName は分かるので、複数話者対応イベントを優先して投げる
+            OnVoiceRecognizedWithActor?.Invoke("Discord", actorName, task.Result);
+
+            // 互換維持：旧イベントも投げる（ただしspeaker不明）
             OnVoiceRecognized?.Invoke("Discord", task.Result);
         } else if (task.IsFaulted) {
             LogMessage($"Speech recognition error: {task.Exception?.GetBaseException().Message}", LogLevel.Error);

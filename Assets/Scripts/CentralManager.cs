@@ -94,8 +94,8 @@ public class CentralManager : MonoBehaviour {
     void Start() {
         // Twitchからコメントを受信するイベントを登録
         UnityTwitchChatController.OnTwitchMessageReceived += HandleTwitchMessageReceived;
-        // DiscordBotからの音声認識結果を受信するイベントを登録
-        DiscordBotClient.OnVoiceRecognized += HandleDiscordVoiceRecognized;
+        // DiscordBotからの音声認識結果を受信するイベントを登録（複数話者対応：actorName付き）
+        DiscordBotClient.OnVoiceRecognizedWithActor += HandleDiscordVoiceRecognizedWithActor;
         DiscordBotClient.OnDiscordLog += HandleDiscordLog;
         // 顔表示制御に必要な最小通知のみBOTから受けてCentralManagerでハンドル
         DiscordBotClient.OnDiscordBotStateChanged += HandleDiscordBotStateChanged;
@@ -431,13 +431,6 @@ public class CentralManager : MonoBehaviour {
         PlayerPrefs.SetString("DiscordTextChannelId", value);
     }
 
-    public string GetDiscordTargetUserId() {
-        return PlayerPrefs.GetString("DiscordTargetUserId", "");
-    }
-    public void SetDiscordTargetUserId(string value) {
-        PlayerPrefs.SetString("DiscordTargetUserId", value);
-    }
-
     public string GetDiscordInputName() {
         return PlayerPrefs.GetString("DiscordInputName", "Discord");
     }
@@ -641,7 +634,7 @@ public class CentralManager : MonoBehaviour {
 
     void OnDisable() {
         UnityTwitchChatController.OnTwitchMessageReceived -= HandleTwitchMessageReceived;
-        DiscordBotClient.OnVoiceRecognized -= HandleDiscordVoiceRecognized;
+        DiscordBotClient.OnVoiceRecognizedWithActor -= HandleDiscordVoiceRecognizedWithActor;
         DiscordBotClient.OnDiscordLog -= HandleDiscordLog;
         DiscordBotClient.OnDiscordBotStateChanged -= HandleDiscordBotStateChanged;
         DiscordBotClient.OnDiscordLoggedIn -= HandleDiscordLoggedIn;
@@ -662,7 +655,7 @@ public class CentralManager : MonoBehaviour {
 
     void OnDestroy() {
         UnityTwitchChatController.OnTwitchMessageReceived -= HandleTwitchMessageReceived;
-        DiscordBotClient.OnVoiceRecognized -= HandleDiscordVoiceRecognized;
+        DiscordBotClient.OnVoiceRecognizedWithActor -= HandleDiscordVoiceRecognizedWithActor;
         DiscordBotClient.OnDiscordLog -= HandleDiscordLog;
         DiscordBotClient.OnDiscordBotStateChanged -= HandleDiscordBotStateChanged;
         if (MultiPortWebSocketServer.Instance != null) {
@@ -705,20 +698,24 @@ public class CentralManager : MonoBehaviour {
         }
     }
 
-    // DiscordBotから音声認識結果を受け取る
-    private void HandleDiscordVoiceRecognized(string inputName, string recognizedText) {
+    // DiscordBotから音声認識結果を受け取る（複数話者対応：actorName付き）
+    private void HandleDiscordVoiceRecognizedWithActor(string inputName, string actorName, string recognizedText) {
         if (string.IsNullOrEmpty(recognizedText)) {
             return;
         }
 
-        // Discord User ID に紐づく Actor を必須とし、見つからなければ送出しない
-        var actor = GetActorByDiscordUserId(GetDiscordTargetUserId());
-        if (actor == null || string.IsNullOrEmpty(actor.actorName)) {
-            Debug.LogWarning($"[DiscordVoice] 対象Discord User IDに紐づくActorが見つからないため字幕送出をスキップします: targetUserId={GetDiscordTargetUserId()}");
+        if (string.IsNullOrEmpty(actorName)) {
+            Debug.LogWarning("[DiscordVoice] actorName が空のため字幕送出をスキップします");
             return;
         }
 
-        Debug.Log($"[DiscordVoice] targetUserId={GetDiscordTargetUserId()} mapped_actor={actor.actorName}, displayName={actor.displayName}");
+        var actor = GetActorByName(actorName);
+        if (actor == null || string.IsNullOrEmpty(actor.actorName)) {
+            Debug.LogWarning($"[DiscordVoice] actorName に対応するActorが見つからないため字幕送出をスキップします: actorName={actorName}");
+            return;
+        }
+
+        Debug.Log($"[DiscordVoice] mapped_actor={actor.actorName}, displayName={actor.displayName}");
 
         string subtitleChannel = actor.actorName + "_subtitle";
         string speaker = actor.actorName;

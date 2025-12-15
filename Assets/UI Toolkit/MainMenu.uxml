@@ -124,7 +124,7 @@
                             <ui:Label text="Actor3設定" name="Label" class="panel__title" />
                             <ui:Toggle label="Enable" name="EnableActorToggle" style="margin-bottom: 5px;" />
                             <ui:TextField label="actor name" value="actor name" name="ActorNameInput" />
-                            <ui:TextField label="Discord User ID" name="DiscordTargetUserIdInput" style="margin-bottom: 5px;" />
+                            <ui:TextField label="Discord User ID" name="DiscordUserIdInput" style="margin-bottom: 5px;" />
                             <ui:Button text="Delete" parse-escape-sequences="true" display-tooltip-when-elided="true" name="ActorDeleteButton" class="panel__button panel__button--danger" />
                         </ui:VisualElement>
                     </ui:VisualElement>
