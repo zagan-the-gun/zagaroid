@@ -13,6 +13,8 @@ public class SettingUIController : MonoBehaviour {
     private VisualElement settingContentRoot;
 
     // 各設定UI要素への参照
+    private Toggle autoStartSubtitleAIToggle; // 字幕AI自動起動
+
     private Toggle autoStartVoiceVoxToggle;
     private TextField voiceVoxExecutionPathInput;
     private Button browseVoiceVoxPathButton; // 参照ボタン
@@ -68,6 +70,8 @@ public class SettingUIController : MonoBehaviour {
         }
 
         // 各UI要素を取得
+        autoStartSubtitleAIToggle = settingContentRoot.Q<Toggle>("AutoStartSubtitleAIToggle"); // 字幕AI
+
         autoStartVoiceVoxToggle = settingContentRoot.Q<Toggle>("AutoStartVoiceVoxToggle");
         voiceVoxExecutionPathInput = settingContentRoot.Q<TextField>("VoiceVoxExecutionPathInput");
         browseVoiceVoxPathButton = settingContentRoot.Q<Button>("BrowseVoiceVoxPathButton"); // 参照ボタン
@@ -186,6 +190,10 @@ public class SettingUIController : MonoBehaviour {
     // 設定値をUIに読み込むメソッド
     private void LoadSettingsToUI() {
         // PlayerPrefsから読み込み、UIに設定
+        if (autoStartSubtitleAIToggle != null) {
+            autoStartSubtitleAIToggle.value = CentralManager.Instance.GetAutoStartSubtitleAI();
+        }
+
         if (autoStartVoiceVoxToggle != null) {
             autoStartVoiceVoxToggle.value = CentralManager.Instance.GetAutoStartVoiceVox();
         }
@@ -286,6 +294,10 @@ public class SettingUIController : MonoBehaviour {
 
     // UIから設定値を読み込み、保存するメソッド
     private void SaveSettingsFromUI() {
+        if (autoStartSubtitleAIToggle != null) {
+            CentralManager.Instance.SetAutoStartSubtitleAI(autoStartSubtitleAIToggle.value);
+        }
+
         if (autoStartVoiceVoxToggle != null) {
             CentralManager.Instance.SetAutoStartVoiceVox(autoStartVoiceVoxToggle.value);
         }
