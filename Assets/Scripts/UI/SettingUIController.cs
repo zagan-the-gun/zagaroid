@@ -14,6 +14,9 @@ public class SettingUIController : MonoBehaviour {
 
     // 各設定UI要素への参照
     private Toggle autoStartSubtitleAIToggle; // 字幕AI自動起動
+    private TextField subtitleAIExecutionPathInput;
+    private Button browseSubtitleAIPathButton; // 参照ボタン
+    private Button startSubtitleAIButton; // 手動起動ボタン
 
     private Toggle autoStartVoiceVoxToggle;
     private TextField voiceVoxExecutionPathInput;
@@ -71,6 +74,9 @@ public class SettingUIController : MonoBehaviour {
 
         // 各UI要素を取得
         autoStartSubtitleAIToggle = settingContentRoot.Q<Toggle>("AutoStartSubtitleAIToggle"); // 字幕AI
+        subtitleAIExecutionPathInput = settingContentRoot.Q<TextField>("SubtitleAIExecutionPathInput");
+        browseSubtitleAIPathButton = settingContentRoot.Q<Button>("BrowseSubtitleAIPathButton"); // 参照ボタン
+        startSubtitleAIButton = settingContentRoot.Q<Button>("StartSubtitleAIButton"); // 手動起動ボタン
 
         autoStartVoiceVoxToggle = settingContentRoot.Q<Toggle>("AutoStartVoiceVoxToggle");
         voiceVoxExecutionPathInput = settingContentRoot.Q<TextField>("VoiceVoxExecutionPathInput");
@@ -116,6 +122,15 @@ public class SettingUIController : MonoBehaviour {
         Debug.LogWarning("設定UI LoadSettingsToUI処理終了");
 
         // --- イベントリスナーの登録 ---
+        if (browseSubtitleAIPathButton != null)
+        {
+            browseSubtitleAIPathButton.clicked += OnBrowseSubtitleAIPathClicked;
+        }
+
+        if (startSubtitleAIButton != null) {
+            startSubtitleAIButton.clicked += OnStartSubtitleAIClicked;
+        }
+
         if (browseVoiceVoxPathButton != null)
         {
             browseVoiceVoxPathButton.clicked += OnBrowseVoiceVoxPathClicked;
@@ -155,6 +170,14 @@ public class SettingUIController : MonoBehaviour {
 
     void OnDisable() {
         // イベントリスナーの解除 (オブジェクトが無効になったときにメモリリークを防ぐ)
+        if (browseSubtitleAIPathButton != null) {
+            browseSubtitleAIPathButton.clicked -= OnBrowseSubtitleAIPathClicked;
+        }
+
+        if (startSubtitleAIButton != null) {
+            startSubtitleAIButton.clicked -= OnStartSubtitleAIClicked;
+        }
+
         if (browseVoiceVoxPathButton != null) {
             browseVoiceVoxPathButton.clicked -= OnBrowseVoiceVoxPathClicked;
         }
@@ -192,6 +215,10 @@ public class SettingUIController : MonoBehaviour {
         // PlayerPrefsから読み込み、UIに設定
         if (autoStartSubtitleAIToggle != null) {
             autoStartSubtitleAIToggle.value = CentralManager.Instance.GetAutoStartSubtitleAI();
+        }
+
+        if (subtitleAIExecutionPathInput != null) {
+            subtitleAIExecutionPathInput.value = CentralManager.Instance.GetSubtitleAIExecutionPath();
         }
 
         if (autoStartVoiceVoxToggle != null) {
@@ -296,6 +323,10 @@ public class SettingUIController : MonoBehaviour {
     private void SaveSettingsFromUI() {
         if (autoStartSubtitleAIToggle != null) {
             CentralManager.Instance.SetAutoStartSubtitleAI(autoStartSubtitleAIToggle.value);
+        }
+
+        if (subtitleAIExecutionPathInput != null) {
+            CentralManager.Instance.SetSubtitleAIExecutionPath(subtitleAIExecutionPathInput.value);
         }
 
         if (autoStartVoiceVoxToggle != null) {
@@ -445,6 +476,30 @@ public class SettingUIController : MonoBehaviour {
     }
 
     // --- 参照ボタンのクリックハンドラ ---
+    private void OnBrowseSubtitleAIPathClicked() {
+        Debug.Log("字幕AIパス参照ボタンがクリックされました。");
+        
+        BrowseExecutableFile(
+            "字幕AI実行ファイルを選択",
+            CentralManager.Instance.GetSubtitleAIExecutionPath(),
+            (selectedPath) => {
+                // 選択されたパスをTextFieldに設定
+                subtitleAIExecutionPathInput.value = selectedPath;
+                
+                // CentralManagerに保存
+                CentralManager.Instance.SetSubtitleAIExecutionPath(selectedPath);
+                
+                Debug.Log($"字幕AIパスが設定されました: {selectedPath}");
+            }
+        );
+    }
+
+    // --- 字幕AI手動起動ボタンのクリックハンドラ ---
+    private void OnStartSubtitleAIClicked() {
+        Debug.Log("字幕AI手動起動ボタンがクリックされました");
+        CentralManager.Instance.StartSubtitleAI();
+    }
+
     private void OnBrowseVoiceVoxPathClicked() {
         Debug.Log("VoiceVoxパス参照ボタンがクリックされました。");
         
