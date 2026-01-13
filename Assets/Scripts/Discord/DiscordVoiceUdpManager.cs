@@ -47,8 +47,8 @@ public class DiscordVoiceUdpManager : IDisposable
     public delegate void ConnectionStateChangedDelegate(bool isConnected);
     public event ConnectionStateChangedDelegate OnConnectionStateChanged;
     
-    // 発話終了検出イベント
-    public delegate void SpeechEndDetectedDelegate();
+    // 発話終了検出イベント（話者特定）
+    public delegate void SpeechEndDetectedDelegate(uint ssrc, string discordUserId);
     public event SpeechEndDetectedDelegate OnSpeechEndDetected;
     
     // UDP関連
@@ -65,8 +65,12 @@ public class DiscordVoiceUdpManager : IDisposable
     // 音声関連
     private byte[] _secretKey;
     private string _encryptionMode;
-    private Dictionary<uint, string> _ssrcToUserMap = new Dictionary<uint, string>();
+    private Dictionary<uint, string> _ssrcToDiscordUserIdMap = new Dictionary<uint, string>();
     private uint _ourSSRC;
+    
+    // SSRCごとの最終受信時刻（発話終了検出用）
+    private Dictionary<uint, DateTime> _lastReceivedTimeBySsrc = new Dictionary<uint, DateTime>();
+    private const int SPEECH_TIMEOUT_MS = 500; // 500ms音声が来なければ発話終了と判定
     
     // SSRC判定レース対策: SSRCごとのOpusプレロールバッファ（時間基準）
     private class PrerollFrame { public byte[] opusData; public DateTime enqueuedAtUtc; }
@@ -373,7 +377,6 @@ public class DiscordVoiceUdpManager : IDisposable
         LogMessage($"🎧 Starting UDP audio reception loop. UDP Client: {_udpClient != null}, Connected: {_isConnected}", LogLevel.Info);
         LogMessage($"🎧 Voice Server Endpoint: {_voiceServerEndpoint}", LogLevel.Info);
         LogMessage($"🎧 Local Endpoint: {GetLocalEndpoint()}", LogLevel.Info);
-        bool timeoutNotified = false;
         Task<UdpReceiveResult> receiveTask = null;
 
         // 最初の受信タスクを発行
@@ -394,17 +397,13 @@ public class DiscordVoiceUdpManager : IDisposable
                 var completedTask = await Task.WhenAny(receiveTask, Task.Delay(100)); // 100ms timeout
                 if (completedTask == receiveTask) {
                     var result = await receiveTask; // 完了済み
-                    // 有効な音声パケットを受信した場合のみサイレンス解除
-                    bool isAudio = ProcessAudioPacket(result.Buffer);
-                    if (isAudio) {
-                        timeoutNotified = false;
-                    }
+                    // 音声パケットを処理（内部で最終受信時刻を更新）
+                    ProcessAudioPacket(result.Buffer);
                     // 次の受信を開始
                     receiveTask = _udpClient.ReceiveAsync();
-                } else if (!timeoutNotified) {
-                    // タイムアウト時に発話終了を一度だけ通知
-                    OnSpeechEndDetected?.Invoke();
-                    timeoutNotified = true;
+                } else {
+                    // タイムアウト時：SSRCごとに発話終了をチェック
+                    CheckSpeechTimeout();
                 }
             } catch (Exception ex) {
                 if (_isConnected) {
@@ -416,6 +415,40 @@ public class DiscordVoiceUdpManager : IDisposable
             }
         }
         LogMessage("🎧 UDP audio reception stopped", LogLevel.Info);
+    }
+    
+    /// <summary>
+    /// SSRCごとに発話終了をチェック
+    /// </summary>
+    private void CheckSpeechTimeout() {
+        DateTime now = DateTime.UtcNow;
+        List<uint> timedOutSsrcs = new List<uint>();
+        
+        lock (_lastReceivedTimeBySsrc) {
+            foreach (var kvp in _lastReceivedTimeBySsrc) {
+                uint ssrc = kvp.Key;
+                DateTime lastReceived = kvp.Value;
+                double elapsedMs = (now - lastReceived).TotalMilliseconds;
+                
+                if (elapsedMs >= SPEECH_TIMEOUT_MS) {
+                    timedOutSsrcs.Add(ssrc);
+                }
+            }
+            
+            // タイムアウトしたSSRCを削除
+            foreach (var ssrc in timedOutSsrcs) {
+                _lastReceivedTimeBySsrc.Remove(ssrc);
+            }
+        }
+        
+        // タイムアウトした話者ごとにイベント発火
+        foreach (var ssrc in timedOutSsrcs) {
+            string discordUserId = null;
+            _ssrcToDiscordUserIdMap.TryGetValue(ssrc, out discordUserId);
+            
+            LogMessage($"🔇 Speech timeout detected: ssrc={ssrc}, discordUserId={discordUserId}", LogLevel.Info);
+            OnSpeechEndDetected?.Invoke(ssrc, discordUserId);
+        }
     }
     
     /// <summary>
@@ -436,17 +469,22 @@ public class DiscordVoiceUdpManager : IDisposable
                           (((ssrc >> 16) & 0xFF) << 8) | ((ssrc >> 24) & 0xFF);
                 }
 
-                // ユーザーIDを取得（未マッピングの可能性あり）
-                string userId = null;
-                _ssrcToUserMap.TryGetValue(ssrc, out userId);
+                // discordUserIdを取得（未マッピングの可能性あり）
+                string discordUserId = null;
+                _ssrcToDiscordUserIdMap.TryGetValue(ssrc, out discordUserId);
                 
                 // 音声データの前処理を実行
                 byte[] processedOpusData = ProcessAudioData(packet);
                 
                 if (processedOpusData != null) {
-                    if (!string.IsNullOrEmpty(userId)) {
+                    // SSRCの最終受信時刻を更新
+                    lock (_lastReceivedTimeBySsrc) {
+                        _lastReceivedTimeBySsrc[ssrc] = DateTime.UtcNow;
+                    }
+                    
+                    if (!string.IsNullOrEmpty(discordUserId)) {
                         // マッピング済みなら即時発行
-                        OnAudioPacketReceived?.Invoke(processedOpusData, ssrc, userId);
+                        OnAudioPacketReceived?.Invoke(processedOpusData, ssrc, discordUserId);
                         return true; // 有効な音声
                     } else {
                         // 未マッピングならプレロールに積む（時間基準で古いものは捨てる）
@@ -709,14 +747,14 @@ public class DiscordVoiceUdpManager : IDisposable
     /// <summary>
     /// SSRC とユーザーIDのマッピングを設定
     /// </summary>
-    public void SetSSRCMapping(uint ssrc, string userId) {
+    public void SetSSRCMapping(uint ssrc, string discordUserId) {
         // 既存の同一ユーザーの古いSSRCを除去（切替耐性）
-        var stale = _ssrcToUserMap.Where(kv => kv.Value == userId && kv.Key != ssrc).Select(kv => kv.Key).ToList();
+        var stale = _ssrcToDiscordUserIdMap.Where(kv => kv.Value == discordUserId && kv.Key != ssrc).Select(kv => kv.Key).ToList();
         foreach (var old in stale) {
-            _ssrcToUserMap.Remove(old);
+            _ssrcToDiscordUserIdMap.Remove(old);
         }
-        _ssrcToUserMap[ssrc] = userId;
-        LogMessage($"👤 SSRC mapping set: {ssrc} -> {userId}", LogLevel.Debug);
+        _ssrcToDiscordUserIdMap[ssrc] = discordUserId;
+        LogMessage($"[VOICE_EVENT] SSRC mapping updated: ssrc={ssrc}, discordUserId={discordUserId}", LogLevel.Info);
 
         // プレロールをフラッシュ
         Queue<PrerollFrame> preRoll = null;
@@ -730,7 +768,7 @@ public class DiscordVoiceUdpManager : IDisposable
             while (preRoll.Count > 0) {
                 var frame = preRoll.Dequeue();
                 try {
-                    OnAudioPacketReceived?.Invoke(frame.opusData, ssrc, userId);
+                    OnAudioPacketReceived?.Invoke(frame.opusData, ssrc, discordUserId);
                 } catch (Exception ex) {
                     LogMessage($"⚠️ PreRoll dispatch error: {ex.Message}", LogLevel.Warning);
                 }
@@ -800,7 +838,7 @@ public class DiscordVoiceUdpManager : IDisposable
         _udpClient?.Dispose();
         _udpClient = null;
         
-        _ssrcToUserMap.Clear();
+        _ssrcToDiscordUserIdMap.Clear();
         
         LogMessage("✅ DiscordVoiceUdpManager cleanup completed", LogLevel.Info);
     }

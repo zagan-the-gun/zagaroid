@@ -377,6 +377,9 @@ public class MultiPortWebSocketServer : MonoBehaviour {
                 return;
             }
 
+            // 🔧 診断ログ: 送信開始（デバッグレベル）
+            // Debug.Log($"[DIAG][SendAudioRecognitionRequest] 開始: speaker={speaker}, samples={audioData.Length}");
+
             // float[] → PCM16LE → Base64
             byte[] pcmBytes = ConvertFloatToPcm16Le(audioData);
             string audioDataB64 = System.Convert.ToBase64String(pcmBytes);
@@ -395,12 +398,23 @@ public class MultiPortWebSocketServer : MonoBehaviour {
             };
 
             string jsonMessage = JsonConvert.SerializeObject(requestObj, Formatting.None);
+            
+            // 🔧 診断ログ: WebSocket接続状態確認（デバッグレベル）
             var host = wss1.WebSocketServices["/"];
+            int sessionCount = host.Sessions.Count;
+            // Debug.Log($"[DIAG][SendAudioRecognitionRequest] WebSocket接続数: {sessionCount}");
+            
+            if (sessionCount == 0) {
+                Debug.LogWarning($"[DIAG][SendAudioRecognitionRequest] ⚠️ WebSocketクライアントが接続されていません！");
+            }
+            
             host.Sessions.Broadcast(jsonMessage);
             
             Debug.Log($"[MCP] 音声認識リクエスト送信: speaker={speaker}, samples={audioData.Length}, duration={audioData.Length / (float)sampleRate:F2}s");
+            // Debug.Log($"[DIAG][SendAudioRecognitionRequest] ブロードキャスト完了: speaker={speaker}, clients={sessionCount}");
         } catch (Exception ex) {
             Debug.LogError($"[MCP] 音声認識リクエスト送信エラー: {ex.Message}");
+            // Debug.LogError($"[DIAG][SendAudioRecognitionRequest] 例外詳細: {ex}");
         }
     }
 

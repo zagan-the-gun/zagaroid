@@ -120,7 +120,7 @@
                             <ui:TextField label="my subtitle" value="my_subtitle" name="MySubtitleInput" />
                             <ui:TextField picking-mode="Ignore" label="my english subtitle" value="my_subtitle_en" name="MyEnglishSubtitleInput" />
                         </ui:VisualElement>
-                        <ui:VisualElement name="PanelActor" class="panel actors-cell">
+                        <ui:VisualElement name="PanelActor" class="panel actors-cell" style="display: none;">
                             <ui:Label text="Actor3設定" name="Label" class="panel__title" />
                             <ui:Toggle label="Enable" name="EnableActorToggle" style="margin-bottom: 5px;" />
                             <ui:TextField label="actor name" value="actor name" name="ActorNameInput" />

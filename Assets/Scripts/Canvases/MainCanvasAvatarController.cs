@@ -691,7 +691,7 @@ public class MainCanvasAvatarController : MonoBehaviour
                 lipState.mouthOpen01 = Mathf.Clamp01(level01);
                 lipState.hasLipLevel = true;
                 lipState.lastLipLevelTimeUnscaled = Time.unscaledTime;
-                Debug.Log($"{LogPrefix} HandleLipSyncLevel: {actorName} level={level01:F4}");
+                // Debug.Log($"{LogPrefix} HandleLipSyncLevel: {actorName} level={level01:F4}");
             }
 
             var actor = CentralManager.Instance?.GetActorByName(actorName);
