@@ -59,9 +59,6 @@ public class LogUIController : MonoBehaviour {
         if (logScrollView == null) {
             Debug.LogWarning("LogUIController: 'logOutput' TextFieldの親としてScrollViewが見つかりませんでした。スクロール機能が正しく動作しない可能性があります。");
         } else {
-            // スクロール速度を高速化（デフォルトの3倍）
-            logScrollView.mouseWheelScrollSize = 60.0f; // デフォルトは約18
-            
             // スクロールオフセットの変更イベントを購読
             logScrollView.RegisterCallback<ChangeEvent<Vector2>>(OnScrollViewScrollChanged); 
             

@@ -3,9 +3,9 @@
     <ui:VisualElement name="AvatarSettingOverlay" class="avatar-overlay">
         <ui:VisualElement name="DialogBox" class="avatar-dialog">
             <ui:Label text="Avatar Setting" name="DialogTitle" class="avatar-dialog__title" />
-            <ui:ScrollView class="avatar-dialog__scroll" style="flex-direction: column;">
+            <ui:ScrollView mouse-wheel-scroll-size="2000" class="avatar-dialog__scroll" style="flex-direction: column;">
                 <ui:Label text="Avatar Animation Paths" class="avatar-dialog__section-title" />
-                <ui:ScrollView name="AnimePathsScroll" class="avatar-paths-grid-scroll">
+                <ui:ScrollView mouse-wheel-scroll-size="1500" name="AnimePathsScroll" class="avatar-paths-grid-scroll">
                     <ui:VisualElement name="AnimePathsContainer" class="avatar-paths-grid" />
                 </ui:ScrollView>
                 <ui:VisualElement style="flex-direction: row; gap: 10px; margin-top: 20px;">
@@ -13,7 +13,7 @@
                     <ui:FloatField name="AnimationWaitInput" label="Wait (s)" style="flex: 1;" />
                 </ui:VisualElement>
                 <ui:Label text="Avatar LipSync Paths" class="avatar-dialog__section-title" style="margin-top: 20px;" />
-                <ui:ScrollView name="LipSyncPathsScroll" class="avatar-paths-grid-scroll">
+                <ui:ScrollView mouse-wheel-scroll-size="1500" name="LipSyncPathsScroll" class="avatar-paths-grid-scroll">
                     <ui:VisualElement name="LipSyncPathsContainer" class="avatar-paths-grid" />
                 </ui:ScrollView>
                 <ui:VisualElement style="flex-direction: row; gap: 10px; margin-top: 20px;">

@@ -10,12 +10,12 @@
         </ui:VisualElement>
         <ui:VisualElement name="contentDisplayArea" style="flex-grow: 1; background-color: rgba(0, 4, 255, 0); max-height: 150px; display: flex; min-height: 0; overflow: visible;">
             <ui:VisualElement name="logContent" style="flex-grow: 1; display: none;">
-                <ui:ScrollView>
+                <ui:ScrollView mouse-wheel-scroll-size="2000">
                     <ui:TextField name="logOutput" picking-mode="Ignore" value="これは非常に長いテキストです。&#10;このテキストが十分に長ければ、TextFieldにスクロールバーが表示されるはずです。&#10;UnityのUI Toolkitでは、TextFieldのmultilineプロパティがtrueに設定されており、&#10;かつテキストがTextFieldの表示領域を超えた場合に自動的に垂直スクロールバーが表示されます。&#10;さらに長いテキストをここに追加し、スクロールバーの動作を確認しましょう。&#10;新しい行を追加するために&#10;改行コード（&#10;）を使用しています。&#10;どんどんとテキストを書き足して、&#10;スクロールバーがいつ出現するかを試してみてください。&#10;" style="flex-grow: 1; max-height: none; flex-wrap: wrap;" />
                 </ui:ScrollView>
             </ui:VisualElement>
             <ui:VisualElement name="settingContent" style="flex-grow: 1; display: none;">
-                <ui:ScrollView style="flex-grow: 1; background-color: rgba(0, 0, 0, 0); overflow: visible;">
+                <ui:ScrollView mouse-wheel-scroll-size="2000" style="flex-grow: 1; background-color: rgba(0, 0, 0, 0); overflow: visible;">
                     <ui:VisualElement name="1" style="flex-grow: 1; flex-direction: row; background-color: rgba(255, 255, 255, 0);">
                         <ui:VisualElement name="PanelSubtitleAI" class="panel" style="flex-grow: 1; flex-basis: 1px;">
                             <ui:Label text="字幕AI設定" class="panel__title" />
@@ -112,7 +112,7 @@
                 </ui:ScrollView>
             </ui:VisualElement>
             <ui:VisualElement name="actorContent" style="flex-grow: 1; display: flex;">
-                <ui:ScrollView style="flex-grow: 1; background-color: rgba(0, 0, 0, 0); overflow: visible;">
+                <ui:ScrollView mouse-wheel-scroll-size="2000" style="flex-grow: 1; background-color: rgba(0, 0, 0, 0); overflow: visible;">
                     <ui:VisualElement name="1" style="flex-grow: 1; flex-direction: row; background-color: rgba(255, 255, 255, 0);">
                         <ui:VisualElement name="PanelZagan" class="panel" style="flex-grow: 1; flex-basis: 1px;">
                             <ui:Label text="zagan設定" name="Label" class="panel__title" />
