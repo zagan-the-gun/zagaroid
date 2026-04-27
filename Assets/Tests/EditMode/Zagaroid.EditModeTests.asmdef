@@ -1,0 +1,23 @@
+{
+    "name": "Zagaroid.EditModeTests",
+    "rootNamespace": "Zagaroid.Tests",
+    "references": [
+        "Zagaroid.Runtime"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [
+        "BouncyCastle.Crypto.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false,
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ]
+}

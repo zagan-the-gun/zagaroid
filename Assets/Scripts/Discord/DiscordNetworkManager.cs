@@ -57,7 +57,7 @@ public class DiscordNetworkManager : IDisposable
     /// <summary>
     /// Discord Gateway用のJSONオブジェクト作成ヘルパー
     /// </summary>
-    private static class DiscordPayloadHelper {
+    internal static class DiscordPayloadHelper {
         /// <summary>
         /// メインGateway用ハートビートペイロードを作成
         /// </summary>

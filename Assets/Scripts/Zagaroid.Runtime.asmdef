@@ -1,0 +1,23 @@
+{
+    "name": "Zagaroid.Runtime",
+    "rootNamespace": "",
+    "references": [
+        "Concentus",
+        "WebSocketSharp",
+        "StandaloneFileBrowser",
+        "Newtonsoft.Json",
+        "Newtonsoft.Json.UnityConverters",
+        "Unity.TextMeshPro",
+        "UnityEngine.UI",
+        "lexonegit.unity-twitch-chat"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

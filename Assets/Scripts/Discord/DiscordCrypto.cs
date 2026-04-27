@@ -348,7 +348,7 @@ public static class DiscordCrypto
     /// HChaCha20: XChaCha20のキー導出関数
     /// RFC 7539のChaCha20を基にした32バイトのサブキー導出
     /// </summary>
-    private static byte[] HChaCha20(byte[] key, byte[] nonce24)
+    internal static byte[] HChaCha20(byte[] key, byte[] nonce24)
     {
         if (key == null || key.Length != 32)
             throw new ArgumentException("Key must be 32 bytes");

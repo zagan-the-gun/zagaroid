@@ -874,7 +874,6 @@ public class CentralManager : MonoBehaviour {
     private float calculateDisplayDuration(int charCount) { return 0f; }
 
     // 旧APIスタブ（残置呼び出し対策）
-
     private void HandleWebSocketMessageFromPort50002(string subtitle, string subtitleText) {
         Debug.Log($"[Port 50002] Subtitle: {subtitle}, Message: {subtitleText}");
         // ポート50002からのメッセージに対する処理
