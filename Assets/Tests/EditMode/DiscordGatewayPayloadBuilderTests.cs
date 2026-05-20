@@ -45,10 +45,21 @@ public class DiscordGatewayPayloadBuilderTests
         public MainVoiceStateD d;
     }
 
-    private sealed class VoiceHeartbeatEnvelope
+    // Voice Gateway v8 形式の Heartbeat. `d` がオブジェクトで `t` と `seq_ack` を含む。
+    // v3 以前の `d = <long>` 形式に戻すと Discord は HB を無効扱いし、
+    // `4006 Session is no longer valid` で session を破棄するため、
+    // 形式の回帰防止としてここで構造ごと固定する（docs/integrations/discord.md § 12.4）。
+    // seq_ack は number 型必須（@discordjs/voice 公式実装も -1 番兵を送る形）。
+    private sealed class VoiceHeartbeatV8D
+    {
+        public long t;
+        public long seq_ack;
+    }
+
+    private sealed class VoiceHeartbeatV8Envelope
     {
         public int op;
-        public long d;
+        public VoiceHeartbeatV8D d;
     }
 
     private sealed class VoiceIdentifyD
@@ -138,13 +149,37 @@ public class DiscordGatewayPayloadBuilderTests
     }
 
     [Test]
-    public void VoiceGateway_Heartbeat_Op3()
+    public void VoiceGateway_Heartbeat_Op3_V8WithSeqAck()
     {
-        var obj = DiscordVoiceGatewayManager.VoicePayloadHelper.CreateHeartbeatPayload(777L);
+        // 通常運用ケース: gateway から numbered message が来た後の Heartbeat.
+        // d.t は nonce, d.seq_ack は最後に受け取った seq.
+        var obj = DiscordVoiceGatewayManager.VoicePayloadHelper.CreateHeartbeatPayload(777L, 42L);
         var json = DiscordJsonSerialization.SerializeObject(obj);
-        var p = DiscordJsonSerialization.Deserialize<VoiceHeartbeatEnvelope>(json);
+        var p = DiscordJsonSerialization.Deserialize<VoiceHeartbeatV8Envelope>(json);
         Assert.AreEqual(3, p.op);
-        Assert.AreEqual(777L, p.d);
+        Assert.IsNotNull(p.d);
+        Assert.AreEqual(777L, p.d.t);
+        Assert.AreEqual(42L, p.d.seq_ack);
+        // フィールド名のタイポを防ぐためのガード（v8 仕様で必須）
+        StringAssert.Contains("\"t\"", json);
+        StringAssert.Contains("seq_ack", json);
+    }
+
+    [Test]
+    public void VoiceGateway_Heartbeat_Op3_V8SentinelSeqAckBeforeFirstNumberedMessage()
+    {
+        // 接続直後 (Hello〜最初の numbered message 受信前) の Heartbeat.
+        // この区間ではまだ受信した seq が無いので、@discordjs/voice 公式実装と同じく
+        // 番兵値 -1 を送る。null や省略は公式仕様にも公式実装にも存在しないため避ける。
+        var obj = DiscordVoiceGatewayManager.VoicePayloadHelper.CreateHeartbeatPayload(123L, -1L);
+        var json = DiscordJsonSerialization.SerializeObject(obj);
+        var p = DiscordJsonSerialization.Deserialize<VoiceHeartbeatV8Envelope>(json);
+        Assert.AreEqual(3, p.op);
+        Assert.IsNotNull(p.d);
+        Assert.AreEqual(123L, p.d.t);
+        Assert.AreEqual(-1L, p.d.seq_ack);
+        // 番兵値でも seq_ack キーは JSON に出ること
+        StringAssert.Contains("seq_ack", json);
     }
 
     [Test]
