@@ -132,17 +132,13 @@ public class MultiPortWebSocketServer : MonoBehaviour {
                     RouteMcpMessage(message);
                 } else {
                     // レガシー形式（ゆかりネット/ゆかコネNEO）は STT なので常に Wipe へ送る
-                    // ① 字幕表示タスク
                     OnMessageReceivedFromPort50001?.Invoke(user, message);
-                    
-                    // ② Wipe へ送信タスク（旧形式は常に人間の音声なので送る）
-                    // 字幕ソース名 user から speaker 名に変換
+
+                    // 旧形式は常に人間の音声なので Wipe へ送信
                     string speaker = ResolveSubtitleSourceToSpeaker(user) ?? user;
                     if (Instance != null) {
                         Instance.BroadcastToWipeAIClients(message, speaker, "subtitle");
                     }
-                    
-                    Debug.Log($"[MCP] レガシー形式の字幕を受信: user={user}, speaker={speaker}");
                 }
             } else if (port == 50002) {
                 OnMessageReceivedFromPort50002?.Invoke(user, message);
@@ -193,30 +189,30 @@ public class MultiPortWebSocketServer : MonoBehaviour {
                             var actor = CentralManager.Instance?.GetActorByName(speaker);
                             bool enableTranslation = actor?.translationEnabled ?? true;
 
-                            Debug.Log($"[MCP] subtitle route: speaker={speaker}, subtitle={subtitleName}, actorName={actor?.actorName}, actorType={actor?.type}, enableTranslation={enableTranslation}");
-                            
+                            // 字幕パイプラインの最終要点。1発話1回。speaker/actorType/enableTranslation/ttsEnabled を一行に集約
+                            Debug.Log($"[MCP] subtitle route: speaker={speaker}, subtitle={subtitleName}, actorName={actor?.actorName}, actorType={actor?.type}, type={messageType}, enableTranslation={enableTranslation}, ttsEnabled={actor?.ttsEnabled}");
+
                             // ① 字幕の表示・翻訳処理
                             CentralManager.Instance?.HandleWebSocketMessageFromPort50001(
-                                subtitleName, 
-                                text ?? string.Empty, 
+                                subtitleName,
+                                text ?? string.Empty,
                                 enableTranslation
                             );
 
                             // ② Wipe 由来でなければ、Wipe AI（MenZ-GeminiCLI）へも転送してコメント生成
+                            // Wipe ループ防止条件は docs/companion-apps.md § 6.1 を参照
                             if (actor?.type != "wipe") {
                                 if (Instance != null) {
                                     Instance.BroadcastToWipeAIClients(text ?? string.Empty, speaker, "subtitle");
                                 }
                             }
-                            
+
                             // ③ Wipe AI のコメント（type="comment"）で TTS が有効なら VoiceVox で音声化
                             if (actor?.type == "wipe" && messageType == "comment" && actor?.ttsEnabled == true) {
                                 if (Instance != null) {
                                     CentralManager.Instance?.RequestVoiceVoxTTS(text ?? string.Empty, actor.actorName);
                                 }
                             }
-
-                            Debug.Log($"[MCP] 字幕通知を受信: {method}, speaker={speaker}, type={messageType}, actorType={actor?.type}, enableTranslation={enableTranslation}, ttsEnabled={actor?.ttsEnabled}");
                         } catch (Exception ex) {
                             Debug.LogError($"[MCP] 字幕通知の解析に失敗: {ex.Message}");
                         }
@@ -236,12 +232,11 @@ public class MultiPortWebSocketServer : MonoBehaviour {
             else if (!string.IsNullOrEmpty(id)) {
                 bool hasResult = obj["result"] != null;
                 bool hasError = obj["error"] != null;
-                
+
                 if (hasResult || hasError) {
-                    // 翻訳レスポンス → TranslationController
+                    // 翻訳レスポンス → TranslationController（TranslationController 側でログするのでここでは出さない）
                     if (TranslationController.Instance != null) {
                         TranslationController.Instance.OnWebSocketMessage(message);
-                        Debug.Log($"[MCP] 翻訳レスポンスをTranslationControllerへ転送");
                     } else {
                         Debug.LogWarning("[MCP] TranslationControllerが見つかりません");
                     }
@@ -290,16 +285,11 @@ public class MultiPortWebSocketServer : MonoBehaviour {
         try {
             if (string.IsNullOrEmpty(sourceName)) return null;
 
-            // 字幕ソース名から "_subtitle" を削除して speaker 名を取得
-            // 例: "zagan_subtitle" → "zagan"
+            // 字幕ソース名 "{actorName}_subtitle" から speaker 名（actorName）を取得
             if (sourceName.EndsWith("_subtitle", StringComparison.OrdinalIgnoreCase)) {
-                string speaker = sourceName.Substring(0, sourceName.Length - 9);  // "_subtitle" = 9文字
-                Debug.Log($"[MCP] Converted sourceName '{sourceName}' to speaker '{speaker}'");
-                return speaker;
+                return sourceName.Substring(0, sourceName.Length - 9);
             }
 
-            // "_subtitle" がない場合はそのまま返す
-            Debug.Log($"[MCP] sourceName '{sourceName}' has no '_subtitle' suffix, returning as-is");
             return sourceName;
         } catch (Exception ex) {
             Debug.LogError($"[MCP] ResolveSubtitleSourceToSpeaker error: {ex.Message}");
@@ -314,19 +304,18 @@ public class MultiPortWebSocketServer : MonoBehaviour {
         if (!isTranslationClientConnected) {
             throw new Exception("翻訳クライアントが接続されていません");
         }
-        
+
         try {
             if (wss1 == null) {
                 throw new Exception("WebSocketサーバーが初期化されていません");
             }
-            
+
             var host = wss1.WebSocketServices["/translate_text"];
             if (host == null) {
                 throw new Exception("翻訳サービスが見つかりません");
             }
-            
+
             host.Sessions.Broadcast(message);
-            Debug.Log("[MCP] 翻訳クライアントにメッセージを送信");
         } catch (Exception ex) {
             Debug.LogError($"[MCP] 翻訳クライアントへの送信エラー: {ex.Message}");
             throw;
@@ -357,8 +346,6 @@ public class MultiPortWebSocketServer : MonoBehaviour {
             string jsonMessage = JsonConvert.SerializeObject(messageObj, Formatting.None);
             var host = wss1.WebSocketServices["/"];
             host.Sessions.Broadcast(jsonMessage);
-            
-            Debug.Log($"[MCP] WipeAI クライアントにブロードキャスト: speaker={speaker}, type={messageType}, text_length={text.Length}");
         } catch (Exception ex) {
             Debug.LogError($"[MCP] WipeAI クライアントへのブロードキャストエラー: {ex.Message}");
         }
@@ -377,14 +364,9 @@ public class MultiPortWebSocketServer : MonoBehaviour {
                 return;
             }
 
-            // 🔧 診断ログ: 送信開始（デバッグレベル）
-            // Debug.Log($"[DIAG][SendAudioRecognitionRequest] 開始: speaker={speaker}, samples={audioData.Length}");
-
-            // float[] → PCM16LE → Base64
             byte[] pcmBytes = ConvertFloatToPcm16Le(audioData);
             string audioDataB64 = System.Convert.ToBase64String(pcmBytes);
 
-            // MCP JSON-RPC 2.0 リクエスト構築
             var requestObj = new {
                 jsonrpc = "2.0",
                 method = "recognize_audio",
@@ -398,23 +380,22 @@ public class MultiPortWebSocketServer : MonoBehaviour {
             };
 
             string jsonMessage = JsonConvert.SerializeObject(requestObj, Formatting.None);
-            
-            // 🔧 診断ログ: WebSocket接続状態確認（デバッグレベル）
+
             var host = wss1.WebSocketServices["/"];
             int sessionCount = host.Sessions.Count;
-            // Debug.Log($"[DIAG][SendAudioRecognitionRequest] WebSocket接続数: {sessionCount}");
-            
+
+            // STT クライアント未接続は字幕が出ない直接原因なので Warning で必ず出す
             if (sessionCount == 0) {
-                Debug.LogWarning($"[DIAG][SendAudioRecognitionRequest] ⚠️ WebSocketクライアントが接続されていません！");
+                Debug.LogWarning($"[MCP] 音声認識リクエスト送信: STTクライアント(MenZ-Whisper等)が未接続のためブロードキャストされません: speaker={speaker}, samples={audioData.Length}");
+                return;
             }
-            
+
             host.Sessions.Broadcast(jsonMessage);
-            
-            Debug.Log($"[MCP] 音声認識リクエスト送信: speaker={speaker}, samples={audioData.Length}, duration={audioData.Length / (float)sampleRate:F2}s");
-            // Debug.Log($"[DIAG][SendAudioRecognitionRequest] ブロードキャスト完了: speaker={speaker}, clients={sessionCount}");
+
+            // 字幕パイプラインの要点。1発話1回。Discord BOT 経路かどうかも speaker で判別可能
+            Debug.Log($"[MCP] 音声認識リクエスト送信: speaker={speaker}, samples={audioData.Length}, duration={audioData.Length / (float)sampleRate:F2}s, clients={sessionCount}");
         } catch (Exception ex) {
             Debug.LogError($"[MCP] 音声認識リクエスト送信エラー: {ex.Message}");
-            // Debug.LogError($"[DIAG][SendAudioRecognitionRequest] 例外詳細: {ex}");
         }
     }
 
