@@ -736,9 +736,25 @@ public class CentralManager : MonoBehaviour {
     }
 
     // DiscordBotからログメッセージを受け取る
+    // 
+    // Discord 系ロガー（DiscordBotClient / DiscordNetworkManager / DiscordVoiceGatewayManager /
+    // DiscordVoiceUdpManager）はメッセージ先頭に LogLevel 由来の絵文字を付けてくる:
+    //   ❌ Error / ⚠️ Warning / 🔍 Debug / ℹ️ Info
+    // それを Unity Console の 3 段階フィルタ（Info / Warning / Error）に振り分けることで、
+    // Console 上で Info を切ると Warning + Error だけが残り、原因究明が一気にやりやすくなる。
+    // 
+    // 絵文字判定は脆いように見えるが、Discord 系ログのプレフィックス絵文字は
+    // 4 つのロガーで統一されており、メッセージ本文の途中に同じ絵文字が出る可能性は
+    // 「❌ Voice Gateway connection failed」「⚠️ STT クライアント未接続」のような
+    // **そもそも Warning/Error として扱いたい**ものだけなので、運用上問題にならない。
     private void HandleDiscordLog(string logMessage) {
-        Debug.Log(logMessage);
-        // 必要に応じてUIに表示したり、ファイルに保存したりする
+        if (logMessage != null && logMessage.Contains("❌")) {
+            Debug.LogError(logMessage);
+        } else if (logMessage != null && logMessage.Contains("⚠️")) {
+            Debug.LogWarning(logMessage);
+        } else {
+            Debug.Log(logMessage);
+        }
         SendGlobalMessage($"[Discord] {logMessage}");
     }
 

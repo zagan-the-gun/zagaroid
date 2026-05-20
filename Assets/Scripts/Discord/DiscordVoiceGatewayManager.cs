@@ -74,7 +74,16 @@ public class DiscordVoiceGatewayManager : IDisposable {
         };
         
         /// <summary>
-        /// Voice Gateway用Identifyペイロードを作成
+        /// Voice Gateway用Identifyペイロードを作成。
+        /// 
+        /// `max_dave_protocol_version` は Discord が 2024 年に導入した E2EE プロトコル
+        /// (DAVE: Discord Audio & Video End-to-End Encryption) の対応宣言フィールド。
+        /// - 値 0 = DAVE 非対応（従来の transport-only encryption だけ使う）
+        /// - 値 1 = DAVE v1 対応
+        /// このフィールドを送らないと Discord は `4017 E2EE/DAVE protocol required` で
+        /// Identify を拒否してくる（観測済み）。zagaroid は DAVE 復号を実装していないため
+        /// 0 を送って「従来モードで繋がせてくれ」と宣言する。
+        /// 詳細は docs/integrations/discord.md § 4.1 / § 11.1。
         /// </summary>
         public static object CreateVoiceIdentifyPayload(string guildId, string userId, string sessionId, string token) => new {
             op = 0,
@@ -82,7 +91,8 @@ public class DiscordVoiceGatewayManager : IDisposable {
                 server_id = guildId,
                 user_id = userId,
                 session_id = sessionId,
-                token = token
+                token = token,
+                max_dave_protocol_version = 0
             }
         };
         
@@ -137,7 +147,11 @@ public class DiscordVoiceGatewayManager : IDisposable {
             using (var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30)))
             using (var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token, timeoutCts.Token))
             {
-                await _webSocket.ConnectAsync(new Uri($"wss://{endpoint}/?v=4"), combinedCts.Token);
+                // Discord Voice Gateway は v8 で DAVE protocol（E2EE）を導入した。
+                // 2024 年後半から DAVE 非対応の Identify は `4017 E2EE/DAVE protocol required` で拒否されるため、
+                // v8 まで上げたうえで Identify に `max_dave_protocol_version = 0` を明示する必要がある。
+                // 詳細は docs/integrations/discord.md § 11.1 / § 4.1。
+                await _webSocket.ConnectAsync(new Uri($"wss://{endpoint}/?v=8"), combinedCts.Token);
             }
             
             _isConnected = true;
@@ -221,9 +235,23 @@ public class DiscordVoiceGatewayManager : IDisposable {
                         _ = ProcessVoiceMessage(message);
                     }
                 } else if (result.MessageType == WebSocketMessageType.Close) {
-                    LogMessage("Voice Gateway connection closed", LogLevel.Info);
+                    // Discord は Identify 拒否時などに 4001/4004/4011/4014 等の close code を返す。
+                    // ここを潰すと「Voice Gateway connection closed」だけが残り原因不明になるため、
+                    // 必ず code / status / reason をセットで出すこと（docs/integrations/discord.md § 11.1）。
+                    int? code = result.CloseStatus.HasValue ? (int?)(int)result.CloseStatus.Value : null;
+                    string reason = string.IsNullOrEmpty(result.CloseStatusDescription) ? "(none)" : result.CloseStatusDescription;
+                    LogMessage(
+                        $"⚠️ Voice Gateway connection closed by server: code={(code?.ToString() ?? "null")} status={result.CloseStatus} reason='{reason}'",
+                        LogLevel.Warning);
                     break;
                 }
+            } catch (WebSocketException wsex) {
+                // 切断直後の例外ルート。WebSocketException 経由でも _webSocket.CloseStatus から close code が拾える場合がある。
+                int? code = _webSocket?.CloseStatus.HasValue == true ? (int?)(int)_webSocket.CloseStatus.Value : null;
+                LogMessage(
+                    $"⚠️ Voice Gateway receive WebSocketException: {wsex.Message} (WebSocketErrorCode={wsex.WebSocketErrorCode}, closeCode={(code?.ToString() ?? "null")})",
+                    LogLevel.Warning);
+                break;
             } catch (Exception ex) {
                 LogMessage($"Voice Gateway receive error: {ex.Message}", LogLevel.Error);
                 break;

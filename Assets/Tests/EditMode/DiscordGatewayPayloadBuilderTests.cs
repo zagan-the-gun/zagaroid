@@ -57,6 +57,10 @@ public class DiscordGatewayPayloadBuilderTests
         public string user_id;
         public string session_id;
         public string token;
+        // Discord 2024 年導入の DAVE protocol 対応宣言。
+        // 削ると Voice Gateway が `4017 E2EE/DAVE protocol required` で切断するため、
+        // ペイロードに含まれていることを必ずテストで担保する。
+        public int max_dave_protocol_version;
     }
 
     private sealed class VoiceIdentifyEnvelope
@@ -155,6 +159,12 @@ public class DiscordGatewayPayloadBuilderTests
         Assert.AreEqual("u1", p.d.user_id);
         Assert.AreEqual("sess", p.d.session_id);
         Assert.AreEqual("tok", p.d.token);
+        // DAVE protocol 対応宣言。0 = DAVE 非対応モードで接続することを Discord に伝える。
+        // ここを 1 にすると Discord は MLS 鍵交換を始めて、zagaroid 側で復号できなくなる。
+        Assert.AreEqual(0, p.d.max_dave_protocol_version);
+        // 念のため JSON 文字列にもフィールド名が含まれていることを確認する
+        // （フィールド名のタイポを防ぐためのガード）。
+        StringAssert.Contains("max_dave_protocol_version", json);
     }
 
     [Test]

@@ -12,6 +12,7 @@
 - **SSRC → discordUserId → actorName の 3 段マッピング**を崩すと話者特定が壊れる。SSRC マッピングは UDP 層で一元管理（§ 6）
 - **音声バッファは actor ごとに独立**。無音検出は actor 単位、UDP タイムアウトは SSRC 単位で発火する（§ 7）
 - 既存テスト（`Assets/Tests/EditMode/Discord*Tests.cs`）が守っている範囲だけ自動回帰チェックされる（§ 9）。それ以外は手動配信で確認するしかない
+- **2026-03-02 以降、通常ボイスチャンネルでは Discord が E2EE (DAVE) を強制**しているため `4017` で切断される。**運用はステージチャンネル前提**（§ 12）
 
 ## 1. なぜ SDK を使わないのか
 
@@ -123,6 +124,8 @@ sequenceDiagram
 - **`Identify` は `Hello` 直後に自動送信**される（事前に `SetIdentity()` で情報を渡しておく必要あり、`DiscordBotClient.cs:1059-1064`）
 - **`Speaking` イベントには `userId` が含まれる**ので、ここで SSRC → discordUserId のマッピングを更新する（`DiscordBotClient.cs:540-555`）。**音声パケット受信より先に Speaking が来るとは限らない**ので、UDP 側でプレロール（先取り）バッファを持つ
 - `op=5 Resumed` は未対応。切断後は完全な再接続でやり直す
+- **接続 URL は `wss://{endpoint}/?v=8` 固定**（`DiscordVoiceGatewayManager.cs:140` 周辺）。v4 / v5 / v7 だと `4017 E2EE/DAVE protocol required` で切断される（後述 § 4.1.1）
+- **Identify には `max_dave_protocol_version = 0` を必ず含める**（同 § 4.1.1）。これを送らないと Discord は DAVE 対応必須クライアントとみなして即切断する
 
 ### 4.1 暗号化モードの選択
 
@@ -136,6 +139,33 @@ Voice Ready の `modes[]` に Discord 側がサポートする暗号化モード
 ```
 
 > **重要**: この優先順を勝手に変えると、古い Discord サーバ（一部 Voice Region で残る）で動かなくなる。新しいモードが追加されたときは、**この配列の先頭に追加**するのが正しい変更の入れ方。
+
+#### 4.1.1 DAVE protocol（E2EE）と `max_dave_protocol_version`
+
+Discord は 2024 年から **DAVE (Discord Audio & Video End-to-End Encryption)** を段階的に展開している。Voice Gateway version 8 以降では、Identify ペイロードに `max_dave_protocol_version` が **必須フィールド**になっており、これを送らないと `4017 E2EE/DAVE protocol required` で接続を切られる。
+
+zagaroid は **DAVE 復号を実装していない**ため、Identify で常に `0` を送って「従来の transport-only encryption だけ使う」と宣言する（`DiscordVoiceGatewayManager.VoicePayloadHelper.CreateVoiceIdentifyPayload`）:
+
+```text
+{
+  op: 0,
+  d: {
+    server_id, user_id, session_id, token,
+    max_dave_protocol_version: 0   # ← 必須。送らないと 4017 で切断される
+  }
+}
+```
+
+| 値 | 意味 | zagaroid の挙動 |
+| :-- | :-- | :-- |
+| `0` | DAVE 非対応 | **これを送る**。従来通り `aead_*_rtpsize` / `xsalsa20_*` で暗号化 |
+| `1` | DAVE v1 対応 | 未実装。送ると Discord が E2EE 鍵交換（MLS）を始めて復号できなくなる |
+
+**変更時の注意**:
+
+- `?v=4` などの古い Voice Gateway version に **戻してはいけない**。古い version でも `max_dave_protocol_version` を要求する挙動に変わったため、戻すと即 `4017` で切断される（2025 年時点で実測済み）
+- Discord サーバ側で **「音声・ビデオに E2EE を強制」が ON のサーバ**だと、`max_dave_protocol_version=0` 宣言を拒否される可能性がある。その場合は **Discord クライアント側でサーバ管理者に E2EE を OFF にしてもらう** か、本格的に DAVE プロトコル（X3DH / MLS / SFrame）を実装する必要がある（数千行規模）
+- DAVE 実装を行う場合は <https://daveprotocol.com/> を参照
 
 ### 4.2 暗号化モードごとの差異
 
@@ -313,6 +343,8 @@ WitAI モードの実装:
 | rtpsize モードの 8B 余分ヘッダ剥がし | `DiscordVoiceUdpManager.cs:620-626` | 上記と二重防御 |
 | Payload Type による制御パケット除外 | `DiscordCrypto.cs:108-115`, `144-148` | 範囲を変えると Keep-Alive を音声扱いして暴発 |
 | `DISCORD_INTENTS = 32509` | `DiscordBotClient.cs:37` | Discord 側のインテント要件が変わったら更新 |
+| Voice Gateway URL `?v=8` 固定 | `DiscordVoiceGatewayManager.cs:140` 周辺 | v4 等に戻すと `4017` で切断される（§ 4.1.1） |
+| Identify の `max_dave_protocol_version = 0` | `DiscordVoiceGatewayManager.VoicePayloadHelper.CreateVoiceIdentifyPayload` | 削ると `4017` で切断、値を 1 にすると DAVE 鍵交換が始まって復号不能になる |
 | Identify の `os/browser/device` プロパティ | `DiscordNetworkManager.cs:21-23` | Discord 側のフィルタ強化で弾かれた事例あり |
 | 3:1 デシメーション | `DiscordBotClient.cs:582-588` | アンチエイリアス無し。精度要求が上がったら見直し |
 | `_opusDecodeLock` | `DiscordBotClient.cs:117` | Concentus デコーダーは非スレッドセーフ。lock 必須 |
@@ -326,10 +358,51 @@ WitAI モードの実装:
 
 | プレフィックス | 出処 | 内容 |
 | :-- | :-- | :-- |
-| `[DiscordBot]` | `DiscordBotClient.LogMessage` | Bot 状態全般。`enableDebugLogging=false` だと Debug レベル抑制 |
+| `[DiscordBot]` | `DiscordBotClient.LogMessage` / `[DiscordVoiceUdp]` / `[DiscordVoiceGateway]` / `[DiscordNetwork]` | Bot 状態全般。`enableDebugLogging=false`（既定）だと Debug レベルは出ない |
 | `[VOICE_EVENT]` | `DiscordBotClient` | 暗号化モード・SecretKey 長・SSRC・actor の組をひとまとめにした診断行。**実機問題切り分けのキー** |
+| `[MCP]` | `MultiPortWebSocketServer` | `subtitle route` / `音声認識リクエスト送信` / 兄弟アプリ接続状態など、字幕パイプラインの要点 |
 | `[GCM]` | `DiscordCrypto` | AES-GCM / XChaCha20 復号エラー時に AAD/IV/seqSuffix の hex を出す |
-| `[DIAG]` | `DiscordBotClient` 各所 | UDP timeout / バッファ蓄積など内部診断（コードコメントで残っている） |
+
+> 過去にあった `[DIAG]` / `[WS-PCM]` プレフィックスのデバッグログは整理済み。重複・連発するログを削減し、要点（接続/切断・暗号化モード確定・SSRC マッピング・音声バッファ完成・STT リクエスト送信・字幕ルーティング）が **1 発話で 1 行ずつ流れる**ことを目指している。
+>
+> 字幕が出ない時の最小診断ログ列（順に出れば正常、途中で途切れた箇所が原因）:
+>
+> 1. `[DiscordBot] Bot logged in: ...`
+> 2. `[DiscordVoiceGateway] Voice Gateway Ready received`
+> 3. `[DiscordBot] 🔐 Encryption mode: ...` / `[VOICE_EVENT] encryption_mode=...`
+> 4. `[DiscordVoiceUdp] [VOICE_EVENT] SSRC mapping updated: ssrc=..., discordUserId=...`
+> 5. `[DiscordBot] 🎤 Audio buffer ready: actorName=..., samples=..., isMenZMode=...`
+> 6. `[MCP] 音声認識リクエスト送信: speaker=..., samples=..., clients=...`（`clients=0` だと兄弟アプリ未接続）
+> 7. `[MCP] subtitle route: speaker=..., subtitle=..., actorType=..., enableTranslation=...`
+>
+> **2 で詰まる（Hello は来るが Ready が来ない）場合**は `⚠️ Voice Gateway connection closed by server: code=...` の Warning ログを必ず確認する。Discord は Identify 拒否時に [Voice Close Event Codes](https://docs.discord.com/developers/topics/opcodes-and-status-codes#voice-voice-close-event-codes) を返してくる:
+>
+> - `4001` Unknown opcode / バージョン不整合
+> - `4004` Authentication failed（token/session_id 不正）
+> - `4006` Session no longer valid
+> - `4011` Server not found
+> - `4012` Unknown protocol（DAVE 等、新フィールド必須化）
+> - `4014` Disconnected（BOT が切られた／Channel 削除）
+> - `4016` Unknown encryption mode
+> - `4017` E2EE/DAVE protocol required（Identify に `max_dave_protocol_version` が無い／Voice Gateway version が古い）— `DiscordVoiceGatewayManager.CreateVoiceIdentifyPayload` で `max_dave_protocol_version = 0` を送ることと、Connect URL を `?v=8` まで上げることで回避できる
+
+#### Unity Console フィルタで原因究明を高速化する
+
+`CentralManager.HandleDiscordLog` はメッセージ先頭の絵文字を見て Unity Console のレベルに振り分ける（`CentralManager.cs:738-757`）:
+
+| メッセージ先頭の絵文字 | Unity Console レベル | 例 |
+| :-- | :-- | :-- |
+| `❌` | Error（`Debug.LogError`） | `❌ Discord token is not set` / `❌ Voice Gateway connection failed` |
+| `⚠️` | Warning（`Debug.LogWarning`） | `⚠️ Voice Gateway connection closed by server: code=4014` |
+| その他 | Info（`Debug.Log`） | `🔌 ✅ ℹ️ 🔍 🎤 🔐 [VOICE_EVENT]` ほか |
+
+このため、字幕が出ない時の調査フローは次の通り:
+
+1. Unity Console 右上の **Info アイコンをクリックして非表示**にする
+2. Warning と Error だけが残る
+3. その中に `⚠️ Voice Gateway connection closed by server: code=XXXX` があれば、上の表で `XXXX` を引いて原因確定
+
+> 補足: Console フィルタは Unity 標準で Info / Warning / Error の 3 段階のみ。「Debug だけ表示」ボタンは存在しない。zagaroid 内部の `LogLevel.Debug`（`🔍` プレフィックス）は Unity 上は Info 扱いになる。Console 検索欄に `🔍` を入れれば Debug 行だけ抽出可能。
 
 ### 11.2 PCM デバッグ再生
 
@@ -339,7 +412,50 @@ WitAI モードの実装:
 
 Discord Voice UDP は暗号化されているのでペイロードは見えないが、**SSRC とパケット頻度**は確認できる。「Speaking イベントが来てないのに UDP は流れている」状態を切り分けるとき有用。
 
-## 12. 関連ドキュメント
+## 12. ステージチャンネル運用（DAVE 強制への対処）
+
+### 12.1 経緯
+
+Discord は 2026-03-02 から **非ステージのボイスチャンネルに対して E2EE (DAVE protocol) を強制**した（[公式アナウンス](https://support.discord.com/hc/en-us/articles/38749827197591-A-V-E2EE-Enforcement-for-Non-Stage-Voice-Calls)）。zagaroid は DAVE 復号を実装していないため、Identify 時に `max_dave_protocol_version = 0` を送って「DAVE 非対応」を宣言するが、**通常ボイスチャンネルでは `4017 E2EE/DAVE protocol required` で即切断される**。
+
+ただし公式が明言している通り **ステージチャンネル (Stage Channel) だけは E2EE 強制対象外**:
+
+> Stage channels also will not be end-to-end encrypted.
+
+そのため、Discord 経由で音声字幕を運用する場合は **ステージチャンネルを使うのが現在唯一の現実解**。
+
+### 12.2 サーバ側設定（管理者作業）
+
+1. Discord サーバ設定で「チャンネルを作成」を開く
+2. チャンネルタイプで **「ステージ」** を選択（「ボイス」ではない、別タイプ）
+3. zagaroid Bot のロールに、そのステージチャンネルに対して以下の権限を付与（多くは既存ロールが既に持っている）:
+   - `View Channel`（チャンネルを見る）
+   - `Connect`（接続）
+4. 配信参加者の利便性のため、参加者ロールに **「ステージ・モデレーター」** を付与しておくと、ステージに入った瞬間に自動でスピーカー昇格して話せる（毎回スピーカーリクエストを押す手間が省ける）
+5. ステージチャンネルの **ID をコピー** して zagaroid 設定の `voiceChannelId` に貼る
+
+### 12.3 zagaroid 側の挙動
+
+Bot はステージに入ると自動的に **観客 (Audience)** として配置される（`suppress = true`）。観客でも RTP 音声パケットは普通のボイチャと同じ仕組みで届くため、**zagaroid のコード変更は不要**。`channel_id` をステージのものに差し替えるだけで以下が順に動く:
+
+```text
+[DiscordVoiceGateway] Voice Gateway Ready received
+[DiscordBot] 🔐 Encryption mode: aead_aes256_gcm_rtpsize     ← DAVE ではなく従来の transport encryption
+[DiscordVoiceUdp] [VOICE_EVENT] SSRC mapping updated
+[DiscordBot] 🎤 Audio buffer ready
+[MCP] subtitle route
+```
+
+### 12.4 既知の警告と既知の不安定（未対処）
+
+Stage Channel + v8 Voice Gateway 接続時に観測されている挙動。**音声受信そのものには影響しない**ため、運用上の支障がなければ現状放置で良いが、頻発するなら下記の対処が必要:
+
+| 事象 | 内容 | 対処方針 |
+| :-- | :-- | :-- |
+| `op=15 Unknown Voice Gateway message: data={"any":N,"6240":N}` | v8 で追加された非公開 op。クライアント別音声品質設定とみられる。音声処理に無影響 | `DiscordVoiceGatewayManager.ProcessVoiceMessage` の無視 op リスト（現状 `11`, `18`, `20`）に `15` を追加すれば警告ごと消える |
+| 接続から十数秒で `4006 Session is no longer valid` で切断される | 公式コメントは "Try reconnecting"。Stage 参加直後に Discord 側で voice_state を再構成する関係で初期セッションが一度無効化されている可能性が高い | `DiscordVoiceGatewayManager.ReceiveMessages` で close を検知したときに自動的に `Reconnect(endpoint)` を呼ぶよう繋ぐ。実装時は **無限再接続ループ**にならないようリトライ上限と back-off を入れる |
+
+## 13. 関連ドキュメント
 
 - 全体の3層構成 → [`docs/architecture.md`](../architecture.md) § 5.5
 - 兄弟アプリへの音声認識リクエスト → [`docs/companion-apps.md`](../companion-apps.md) § 3.4 / § 4.1〜4.3

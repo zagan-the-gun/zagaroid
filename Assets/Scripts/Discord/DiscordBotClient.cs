@@ -138,10 +138,20 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     
     /// <summary>
     /// ログメッセージを生成し、イベントを発行します。
+    /// 
+    /// 下位ロガー（DiscordNetworkManager / DiscordVoiceGatewayManager / DiscordVoiceUdpManager）が
+    /// 既に "[Discord*] HH:mm:ss <prefix> ..." の形でプレフィックスを付けた文字列を
+    /// このメソッドへ流し込むため、二重ヘッダー化を避けて素通しする。
+    /// 自分自身のログだけ "[DiscordBot]" を被せる。
     /// </summary>
     private void LogMessage(string message, LogLevel level = LogLevel.Info) {
         if (!enableDebugLogging && level == LogLevel.Debug) return;
-        
+
+        if (message != null && message.StartsWith("[Discord")) {
+            OnDiscordLog?.Invoke(message);
+            return;
+        }
+
         string prefix;
         switch (level) {
             case LogLevel.Debug:
@@ -200,10 +210,10 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
                 return;
             }
             
-            // デバッグ: 100パケットに1回ログ出力
+            // 連発するパケット系ログは Debug。enableDebugLogging=true のときだけ出る
             _audioPacketCount++;
             if (_audioPacketCount % 100 == 0) {
-                LogMessage($"🎧 Audio packet: discordUserId={discordUserId}, actorName={actorName}, ssrc={ssrc}, size={opusData?.Length ?? 0}", LogLevel.Info);
+                LogMessage($"🎧 Audio packet: discordUserId={discordUserId}, actorName={actorName}, ssrc={ssrc}, size={opusData?.Length ?? 0}", LogLevel.Debug);
             }
             
             // Opus → PCM 変換して音声バッファに追加
@@ -368,39 +378,25 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// </summary>
     private void OnAudioBufferReady(float[] audioData, int sampleRate, int channels, string actorName) {
         bool isMenZMode = DiscordBotClient.IsMenZMode();
+        // 字幕パイプラインの要点。発話単位で1回だけ出るので Info 維持
         LogMessage($"🎤 Audio buffer ready: actorName={actorName}, samples={audioData.Length}, isMenZMode={isMenZMode}", LogLevel.Info);
-        
-        // 🔧 診断ログ: OnAudioBufferReady呼び出し確認（デバッグレベル）
-        // UnityEngine.Debug.Log($"[DIAG][OnAudioBufferReady] CALLED: actor={actorName}, samples={audioData.Length}, isMenZMode={isMenZMode}");
-        
-        // STT（MenZ字幕AI）選択時は MCP経由で音声認識リクエストを送信
+
         if (isMenZMode) {
             // STTモードでもローカルでPCMデバッグ再生できるようにする
             PlayPcmForDebug(audioData, $"Audio ({actorName})");
-            
-            // 🔧 診断ログ: EnqueueMainThreadAction前（デバッグレベル）
-            // UnityEngine.Debug.Log($"[DIAG][OnAudioBufferReady] EnqueueMainThreadAction実行前: actor={actorName}");
-            
+
             EnqueueMainThreadAction(() => {
-                // 🔧 診断ログ: メインスレッドで実行開始（デバッグレベル）
-                // UnityEngine.Debug.Log($"[DIAG][OnAudioBufferReady] メインスレッドで実行開始: actor={actorName}");
-                
-                // MultiPortWebSocketServer経由で音声認識リクエストを送信
                 if (MultiPortWebSocketServer.Instance != null) {
-                    // UnityEngine.Debug.Log($"[DIAG][OnAudioBufferReady] SendAudioRecognitionRequest呼び出し: actor={actorName}");
                     MultiPortWebSocketServer.Instance.SendAudioRecognitionRequest(audioData, actorName, sampleRate);
-                    // UnityEngine.Debug.Log($"[DIAG][OnAudioBufferReady] SendAudioRecognitionRequest完了: actor={actorName}");
                 } else {
-                    LogMessage("MultiPortWebSocketServerが見つかりません。音声認識リクエストを送信できません。", LogLevel.Warning);
-                    UnityEngine.Debug.LogWarning($"[DIAG][OnAudioBufferReady] MultiPortWebSocketServer.Instance is NULL!");
-                    // フォールバック: WitAIで処理
+                    // 例外的な状況。WitAIへフォールバック
+                    LogMessage("MultiPortWebSocketServerが見つかりません。WitAIにフォールバックします。", LogLevel.Warning);
                     StartCoroutine(ProcessAudioCoroutine(audioData, actorName));
                 }
             });
             return;
         }
 
-        // WitAI選択時は従来フロー（デバッグ再生→音声認識）
         LogMessage($"WitAIモードで音声認識を実行します (actor={actorName})", LogLevel.Info);
         PlayPcmForDebug(audioData, $"Audio ({actorName})");
         StartCoroutine(ProcessAudioCoroutine(audioData, actorName));
@@ -536,13 +532,14 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
             return;
         }
         
-        LogMessage($"🎤 Speaking event: user_id={userId}, actorName={actorName}, ssrc={ssrc}, speaking={speaking}", LogLevel.Info);
-        
+        // 詳細は Debug。要点（VOICE_EVENT）は下で出す
+        LogMessage($"🎤 Speaking event: user_id={userId}, actorName={actorName}, ssrc={ssrc}, speaking={speaking}", LogLevel.Debug);
+
         // SSRCマッピングはUDP層で一元管理（discordUserIdを使用）
         _voiceUdpManager?.SetSSRCMapping(ssrc, userId);
-        
+
         if (speaking) {
-            // 発話開始
+            // 発話開始の要点。pipeline 切り分けに必要なので Info 維持
             LogMessage($"[VOICE_EVENT] actor={actorName} userId={userId} ssrc={ssrc} encryption_mode={_encryptionMode} secret_key_len={_secretKey?.Length ?? 0}");
             
             // 発話検出時に顔を表示
@@ -1099,33 +1096,25 @@ public class DiscordBotClient : MonoBehaviour, IDisposable {
     /// UDP受信タイムアウトによる発話終了検出（話者特定版）
     /// </summary>
     private void OnSpeechEndDetected(uint ssrc, string discordUserId) {
-        // DiscordUserID → ActorName に変換（zagaroid内部の識別子）
         string actorName = null;
         if (!string.IsNullOrEmpty(discordUserId)) {
             _discordUserIdToActorName.TryGetValue(discordUserId, out actorName);
         }
-        
-        LogMessage($"🔇 Speech end detected via UDP timeout: ssrc={ssrc}, discordUserId={discordUserId}, actor={actorName}", LogLevel.Info);
-        
-        // 🔧 診断ログ: UDP timeout検出
-        UnityEngine.Debug.Log($"[DIAG][OnSpeechEndDetected] UDP timeout検出: ssrc={ssrc}, discordUserId={discordUserId}, actor={actorName}");
-        
-        // 特定の話者のバッファのみを処理
+
+        // 発話終了の要点。発話単位で1回。actor が解決できない場合は警告を兼ねる
         if (!string.IsNullOrEmpty(actorName)) {
+            LogMessage($"🔇 Speech end detected via UDP timeout: ssrc={ssrc}, discordUserId={discordUserId}, actor={actorName}", LogLevel.Info);
             lock (_audioBuffersLock) {
                 if (_audioBuffersByActorName.TryGetValue(actorName, out var buffer)) {
-                    UnityEngine.Debug.Log($"[DIAG][OnSpeechEndDetected] ProcessBufferedAudio呼び出し: actor={actorName}");
                     buffer?.ProcessBufferedAudio();
                 } else {
-                    UnityEngine.Debug.LogWarning($"[DIAG][OnSpeechEndDetected] バッファが見つからない: actor={actorName}");
+                    LogMessage($"⚠️ Speech end: actorName='{actorName}' に対応する音声バッファが存在しません（未発話状態でtimeoutした可能性）", LogLevel.Warning);
                 }
             }
         } else {
-            UnityEngine.Debug.LogWarning($"[DIAG][OnSpeechEndDetected] actorNameがnullまたは空: ssrc={ssrc}, discordUserId={discordUserId}");
+            // discordUserId が ActorConfig に未登録 = 監視対象外なので Debug 扱い
+            LogMessage($"Speech end (unmapped): ssrc={ssrc}, discordUserId={discordUserId}", LogLevel.Debug);
         }
-
-        // 発話終了（UDP timeout）ログ
-        LogMessage($"[WS-PCM] 発話終了 (UDP timeout) - flush要求: discordUserId={discordUserId}, actor={actorName}", LogLevel.Info);
     }
     
     /// <summary>
@@ -1195,52 +1184,37 @@ public class DiscordVoiceNetworkManager {
 
     public void AddAudioData(float[] pcmData) {
         if (pcmData == null || pcmData.Length == 0) return;
-        
-        // 音声レベルを計算
+
         float audioLevel = DiscordVoiceNetworkManager.CalculateAudioLevel(pcmData);
         bool isSilent = audioLevel < silenceThreshold;
-        
-        // リップシンク用: 正規化のみして通知（シンプル）
+
         float normalizedLevel = UnityEngine.Mathf.Clamp01(audioLevel * LevelScaleTo01);
 
-        // レベル通知（メインスレッド経由、actor名を指定）
         if (_enqueueMainThreadAction != null) {
             _enqueueMainThreadAction(() => CentralManager.SendLipSyncLevel(normalizedLevel, actorName));
         } else {
             CentralManager.SendLipSyncLevel(normalizedLevel, actorName);
         }
-        
-        // 🔧 デバッグ: バッファ追加時の音量レベルをログ出力（抑制可能）
+
+        // ノイズが極端に多くなるため、必要なときだけ EnableVoiceBufferLog=true にして調査する
         if (EnableVoiceBufferLog) {
-            UnityEngine.Debug.Log($"VOICE_BUFFER: Adding audio chunk - level={audioLevel:F6}, threshold={silenceThreshold:F6}, silent={isSilent}, samples={pcmData.Length}");
+            UnityEngine.Debug.Log($"VOICE_BUFFER: actor={actorName}, level={audioLevel:F6}, threshold={silenceThreshold:F6}, silent={isSilent}, samples={pcmData.Length}");
         }
-        
-        // 音声データをバッファに追加
+
         audioChunks.Add(pcmData);
-        
-        // 🔧 診断ログ: バッファ蓄積状況を監視（10チャンクごと）
-        if (audioChunks.Count % 10 == 0) {
-            int totalSamples = audioChunks.Sum(chunk => chunk.Length);
-            float totalDuration = totalSamples / (float)sampleRate;
-            UnityEngine.Debug.Log($"[DIAG][AddAudioData] actor={actorName}, chunks={audioChunks.Count}, totalDuration={totalDuration:F2}s, isSilent={isSilent}, silenceDurationMs={silenceDurationMs}");
-        }
-        
-        // PCMデータの実際の時間を計算
+
         int pcmDurationMs = (int)((float)pcmData.Length / sampleRate * 1000);
-        
-        // 無音状態の更新
+
         if (!isSilent) {
-            // 音声が検出された - 無音時間をリセット
             silenceDurationMs = 0;
         } else {
-            // 無音が検出された - 無音時間を加算
             silenceDurationMs += pcmDurationMs;
-            
-            // 無音が1000ms以上続いたら処理
+
+            // 無音が1000ms以上続いたら処理。Push-to-Talk 以外では Discord が無音時にパケットを送らないため、
+            // この経路はあまり通らない（メインの発火経路は Speaking=false / UDP timeout 経由、docs/integrations/discord.md § 7.1）
             if (silenceDurationMs >= 1000) {
-                UnityEngine.Debug.Log($"[DIAG][AddAudioData] 無音1000ms検出→ProcessBufferedAudio呼び出し: actor={actorName}");
-                ProcessBufferedAudio(); // 無言になるとすぐにパケットが送信されなくなるので、PushToTalkで以外はここに処理が及ぶことはない
-                silenceDurationMs = 0; // リセット
+                ProcessBufferedAudio();
+                silenceDurationMs = 0;
             }
         }
     }
@@ -1250,39 +1224,32 @@ public class DiscordVoiceNetworkManager {
     /// </summary>
     public void ProcessBufferedAudio() {
         if (audioChunks.Count == 0) return;
-        
-        // 全チャンクの合計サンプル数を計算
+
         int totalSamples = audioChunks.Sum(chunk => chunk.Length);
-        // 最小バッファサイズチェック（0.２秒分）
-        int minSamples = sampleRate / 5; // 0.2秒分
-        
-        // 🔧 診断ログ: バッファ処理開始
-        UnityEngine.Debug.Log($"[DIAG][ProcessBufferedAudio] actor={actorName}, chunks={audioChunks.Count}, totalSamples={totalSamples}, minSamples={minSamples}, duration={totalSamples / (float)sampleRate:F2}s");
-        
+        // 最小バッファサイズチェック（0.2秒分）。docs/integrations/discord.md § 7.2 参照
+        int minSamples = sampleRate / 5;
+
         if (totalSamples < minSamples) {
-            // 小さすぎるバッファは処理しない
-            UnityEngine.Debug.Log($"[DIAG][ProcessBufferedAudio] バッファが小さすぎるため処理スキップ: actor={actorName}");
+            // 短すぎる発話は STT に投げても認識されないためスキップ。
+            // ここで Clear せずに return しているのは、次に音声が積まれてきた時に結合して再評価するため（意図）
             return;
         }
-        
-        // 結合された音声データを作成
+
         float[] combinedAudio = new float[totalSamples];
         int currentIndex = 0;
         foreach (var chunk in audioChunks) {
             Array.Copy(chunk, 0, combinedAudio, currentIndex, chunk.Length);
             currentIndex += chunk.Length;
         }
-        
-        // イベントを発火（メインスレッドで実行、actorName付き）
+
         if (OnAudioBufferReady != null) {
-            UnityEngine.Debug.Log($"[DIAG][ProcessBufferedAudio] OnAudioBufferReadyイベント発火: actor={actorName}");
             _enqueueMainThreadAction(() => {
                 OnAudioBufferReady.Invoke(combinedAudio, sampleRate, channels, actorName);
             });
         } else {
-            UnityEngine.Debug.LogWarning($"[DIAG][ProcessBufferedAudio] OnAudioBufferReadyがnull: actor={actorName}");
+            // 通常はあり得ない（DiscordBotClient.GetOrCreateAudioBuffer で必ず購読される）
+            UnityEngine.Debug.LogWarning($"[DiscordBot] OnAudioBufferReady がバインドされていません: actor={actorName}");
         }
-        // バッファをクリア
         audioChunks.Clear();
     }
     

@@ -259,9 +259,24 @@ public class DiscordNetworkManager : IDisposable
                 }
                 else if (result.MessageType == WebSocketMessageType.Close)
                 {
-                    LogMessage($"{connectionName} connection closed", LogLevel.Info);
+                    // Voice Gateway 側と同じく、Identify 拒否や強制切断の原因究明には
+                    // close code / reason が必須。「connection closed」だけ残ると追跡不能になる。
+                    // 詳細は docs/integrations/discord.md § 11.1。
+                    int? code = result.CloseStatus.HasValue ? (int?)(int)result.CloseStatus.Value : null;
+                    string reason = string.IsNullOrEmpty(result.CloseStatusDescription) ? "(none)" : result.CloseStatusDescription;
+                    LogMessage(
+                        $"⚠️ {connectionName} connection closed by server: code={(code?.ToString() ?? "null")} status={result.CloseStatus} reason='{reason}'",
+                        LogLevel.Warning);
                     break;
                 }
+            }
+            catch (WebSocketException wsex)
+            {
+                int? code = webSocket?.CloseStatus.HasValue == true ? (int?)(int)webSocket.CloseStatus.Value : null;
+                LogMessage(
+                    $"⚠️ {connectionName} receive WebSocketException: {wsex.Message} (WebSocketErrorCode={wsex.WebSocketErrorCode}, closeCode={(code?.ToString() ?? "null")})",
+                    LogLevel.Warning);
+                break;
             }
             catch (Exception ex)
             {
